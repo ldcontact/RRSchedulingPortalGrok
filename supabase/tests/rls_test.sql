@@ -65,6 +65,7 @@ select pg_temp.fails('tech cannot change role', $$update profiles set role='admi
 select pg_temp.fails('tech cannot reschedule', $$update jobs set starts_at=starts_at+interval '1 day' where id='30000000-0000-0000-0000-000000000001'$$);
 select pg_temp.fails('tech cannot approve', $$update jobs set status='approved' where id='30000000-0000-0000-0000-000000000001'$$);
 update jobs set status='in_progress' where id='30000000-0000-0000-0000-000000000001';
+select pg_temp.fails('tech cannot submit without photo + note', $$update jobs set status='completed' where id='30000000-0000-0000-0000-000000000001'$$);
 insert into photos (project_id, job_id, kind, storage_path, uploaded_by) values
   ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','completion','20000000-0000-0000-0000-000000000001/completion/c1.jpg', auth.uid());
 insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000001','24 of 42 panels done');
@@ -74,6 +75,7 @@ select pg_temp.fails('tech cannot upload to other job', $$insert into photos (pr
 select pg_temp.fails('tech cannot store object in other project', $$insert into storage.objects (bucket_id, name) values ('photos','20000000-0000-0000-0000-000000000002/completion/x.jpg')$$);
 select pg_temp.fails('tech cannot note other job', $$insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000002','x')$$);
 update jobs set status='completed' where id='30000000-0000-0000-0000-000000000001';
+select pg_temp.check('project moves to awaiting_review', (select status from projects where id='20000000-0000-0000-0000-000000000001')='awaiting_review');
 select pg_temp.check('completion stamped by trigger', (select completed_by = auth.uid() and completed_at is not null from jobs where id='30000000-0000-0000-0000-000000000001'));
 reset role;
 
@@ -83,6 +85,7 @@ select pg_temp.check('manager sees all customers', (select count(*) from custome
 select pg_temp.check('manager sees all jobs', (select count(*) from jobs)=2);
 insert into customers (name, city) values ('Prairie Bean','Palatine');
 update jobs set status='approved', approved_by=auth.uid(), approved_at=now() where id='30000000-0000-0000-0000-000000000001';
+select pg_temp.check('approving last visit completes project', (select status from projects where id='20000000-0000-0000-0000-000000000001')='complete');
 select pg_temp.check('manager sees team', (select count(*) from profiles)=6);
 select pg_temp.check('manager cannot see invites', (select count(*) from invites)=0);
 select pg_temp.fails('manager cannot invite', $$insert into invites(email, role) values ('new@gmail.com','tech')$$);
