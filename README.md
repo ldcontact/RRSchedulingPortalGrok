@@ -182,8 +182,8 @@ npm run lint       # ESLint
 npm run test:db    # runs the migrations + ~40 RLS/trigger checks on an in-memory Postgres 17 (PGlite); no Docker needed
 ```
 
-End-to-end click-through tests (Python Playwright, against `npm run dev` in mock mode on port 3417) live outside the repo
-in the build box (`app_test.py` for phase 1, `p2_test.py` for phase 2). They cover every flow listed above, including drag-and-drop.
+End-to-end click-through tests (Python Playwright, against `npm run dev` in mock mode on port 3417) live
+in `e2e/` (`phase1_test.py`, `phase2_test.py`; `pip install playwright`, then `python3 e2e/phase2_test.py` with `.mock-db.json` deleted first). They cover every flow listed above, including drag-and-drop.
 
 `npm run test:db` loads `supabase/tests/supabase_stubs.sql` (minimal stand-ins for the `auth` and `storage` schemas),
 then the real migration, then `supabase/tests/rls_test.sql`. That file signs in as a stranger, a tech, a manager and an
