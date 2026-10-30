@@ -200,7 +200,7 @@ export const mockRepo: Repo = {
     return db.customers
       .map((c) => {
         const cs = db.contacts.filter((x) => x.customer_id === c.id);
-        return { ...c, primary_contact: cs.find((x) => x.is_primary)?.name ?? cs[0]?.name ?? null, project_count: 0 };
+        return { ...c, primary_contact: cs.find((x) => x.is_primary)?.name ?? cs[0]?.name ?? null, project_count: db.projects.filter((p) => p.customer_id === c.id).length };
       })
       .filter((c) => !term || [c.name, c.city, c.email, c.phone, c.primary_contact, ...c.tags].join(" ").toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name));

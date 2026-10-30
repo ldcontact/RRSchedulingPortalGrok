@@ -7,6 +7,9 @@ import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { addContact, deleteContact } from "../actions";
+import { MessageLog } from "@/components/messages";
+import { ProjectStatusPill } from "@/components/status";
+import { fmtWhen, money } from "@/lib/time";
 
 export async function generateMetadata({ params }: PageProps<"/customers/[id]">): Promise<Metadata> {
   const c = await (await getRepo()).getCustomer((await params).id).catch(() => null);
@@ -20,7 +23,7 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
   const { id } = await params;
   const { saved } = await searchParams;
   const repo = await getRepo();
-  const [c, contacts] = await Promise.all([repo.getCustomer(id), repo.listContacts(id)]);
+  const [c, contacts, projects, messages] = await Promise.all([repo.getCustomer(id), repo.listContacts(id), repo.listProjects({ customerId: id }), repo.listMessages({ customerId: id })]);
   if (!c) notFound();
   const primary = contacts.find((x) => x.is_primary) ?? contacts[0];
   const addr = [c.address, [c.city, c.state].filter(Boolean).join(", "), c.zip].filter(Boolean).join(" ");
@@ -47,9 +50,18 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
             </dl>
           </div>
           <div className="card">
-            <div className="card-hd"><h3 className="font-semibold">Projects</h3><span className="rounded-full bg-white/10 text-xs font-semibold text-muted">Phase 2</span></div>
-            <div className="p-6 text-center text-sm text-muted">Projects with scope, proposed timelines and before photos arrive in phase 2.</div>
+            <div className="card-hd"><h3 className="font-semibold">Projects</h3><Link href={`/projects/new?customer=${c.id}`} className="btn btn-sm"><Icon name="plus" />New project</Link></div>
+            <div className="divide-y divide-line">
+              {projects.length === 0 && <div className="p-6 text-center text-sm text-muted">No projects yet.</div>}
+              {projects.map((p) => (
+                <Link key={p.id} href={`/projects/${p.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-[#fafbf9]">
+                  <div className="min-w-0 flex-1"><div className="truncate font-semibold">{p.name}</div><div className="text-[12.5px] text-muted">{money(p.value)} · {money(p.est_rebate)} rebate · {p.next_visit ? `next visit ${fmtWhen(p.next_visit)}` : "no visit scheduled"}</div></div>
+                  <ProjectStatusPill status={p.status} />
+                </Link>
+              ))}
+            </div>
           </div>
+          <MessageLog messages={messages} customerId={c.id} />
         </div>
         <div className="card">
           <div className="card-hd"><h3 className="font-semibold">Contacts</h3><span className="text-xs text-muted">{contacts.length}</span></div>

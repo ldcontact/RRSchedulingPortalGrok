@@ -24,6 +24,17 @@ const P: Record<string, string> = {
   note: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8",
   lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
   shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  camera: "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2zM12 9a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
+  image: "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8.5 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM21 15l-5-5L5 21",
+  clock: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2",
+  nav: "M3 11l19-9-9 19-2-8-8-2z",
+  play: "M6 4l14 8-14 8z",
+  flag: "M4 22V4M4 4h13l-2 4 2 4H4",
+  alert: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01",
+  undo: "M3 7v6h6M3 13a9 9 0 1 0 3-7.7L3 8",
+  dollar: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  x: "M18 6 6 18M6 6l12 12",
 };
 
 export function Icon({ name, className = "size-[18px]", ...rest }: { name: keyof typeof P | string } & SVGProps<SVGSVGElement>) {

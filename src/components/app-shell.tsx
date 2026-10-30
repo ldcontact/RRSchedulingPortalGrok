@@ -10,15 +10,15 @@ type NavItem = { href: string; label: string; icon: string; soon?: boolean };
 const NAV: Record<Role, NavItem[]> = {
   admin: [
     { href: "/", label: "Home", icon: "home" },
-    { href: "/schedule", label: "Schedule", icon: "calendar", soon: true },
+    { href: "/schedule", label: "Schedule", icon: "calendar" },
     { href: "/customers", label: "Customers", icon: "users" },
-    { href: "/projects", label: "Projects", icon: "briefcase", soon: true },
+    { href: "/projects", label: "Projects", icon: "briefcase" },
     { href: "/team", label: "Team", icon: "hardhat" },
   ],
   manager: [],
   tech: [
     { href: "/", label: "My Jobs", icon: "wrench" },
-    { href: "/schedule", label: "Schedule", icon: "calendar", soon: true },
+    { href: "/schedule", label: "Schedule", icon: "calendar" },
     { href: "/account", label: "Profile", icon: "user" },
   ],
 };

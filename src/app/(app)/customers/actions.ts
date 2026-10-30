@@ -50,3 +50,21 @@ export async function deleteContact(customerId: string, contactId: string) {
   await (await getRepo()).deleteContact(contactId);
   revalidatePath(`/customers/${customerId}`);
 }
+
+/** Log a call / text / email with a customer. Log only: real sending goes through lib/messaging.ts later. */
+export async function logCustomerMessage(customerId: string, projectId: string | null, fd: FormData) {
+  await requireRole("admin", "manager");
+  const channel = s(fd, "channel");
+  const body = s(fd, "body");
+  if (!body || !["call", "text", "email", "note"].includes(channel)) return;
+  const repo = await getRepo();
+  const direction = s(fd, "direction") === "inbound" ? "inbound" : "outbound";
+  if (direction === "outbound" && (channel === "text" || channel === "email")) {
+    const { sendCustomerMessage } = await import("@/lib/messaging");
+    const c = await repo.getCustomer(customerId);
+    await sendCustomerMessage({ channel, to: { phone: c?.phone, email: c?.email }, subject: n(s(fd, "subject")), body });
+  }
+  await repo.logMessage({ customer_id: customerId, project_id: projectId, channel: channel as "call" | "text" | "email" | "note", direction, subject: n(s(fd, "subject")), body });
+  revalidatePath(`/customers/${customerId}`);
+  if (projectId) revalidatePath(`/projects/${projectId}`);
+}
