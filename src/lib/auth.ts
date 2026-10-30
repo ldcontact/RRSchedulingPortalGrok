@@ -10,8 +10,8 @@ export const MOCK_COOKIE = "rr_mock_uid";
 /** The signed-in user with their app role (null role = authenticated but not on the team list). */
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   if (MOCK_MODE) {
+    const uid = (await cookies()).get(MOCK_COOKIE)?.value; // read cookies first: keeps routes dynamic
     assertMockAllowed();
-    const uid = (await cookies()).get(MOCK_COOKIE)?.value;
     if (!uid) return null;
     const { mockProfiles } = await import("@/lib/data/mock-repo");
     const p = mockProfiles().find((x) => x.id === uid);
