@@ -1,0 +1,101 @@
+-- RLS behaviour tests. Run with: npm run test:db   (expects a fresh database)
+create or replace function pg_temp.as_user(p uuid) returns void language plpgsql as $$
+begin perform set_config('request.jwt.claim.sub', coalesce(p::text, ''), false); execute 'set role authenticated'; end $$;
+create or replace function pg_temp.check(label text, ok boolean) returns void language plpgsql as $$
+begin if not ok then raise exception 'FAIL: %', label; end if; raise notice 'ok  %', label; end $$;
+create or replace function pg_temp.fails(label text, stmt text) returns void language plpgsql as $$
+begin
+  begin execute stmt; exception when others then raise notice 'ok  % (blocked: %)', label, sqlerrm; return; end;
+  raise exception 'FAIL: % (statement was allowed)', label;
+end $$;
+
+-- invites first (as superuser), then users sign up
+insert into public.invites (email, role, full_name) values
+  ('luke@example.com','admin','Luke Dlugosz'), ('maria@gmail.com','manager','Maria Santos'),
+  ('carlos@yahoo.com','tech','Carlos Mendez'), ('emily@outlook.com','tech','Emily Chen');
+insert into auth.users (id, email, email_confirmed_at) values
+  ('00000000-0000-0000-0000-00000000000a','Luke@Example.com', now()),
+  ('00000000-0000-0000-0000-00000000000b','maria@gmail.com', now()),
+  ('00000000-0000-0000-0000-00000000000c','carlos@yahoo.com', now()),
+  ('00000000-0000-0000-0000-00000000000d','emily@outlook.com', now()),
+  ('00000000-0000-0000-0000-00000000000e','stranger@hotmail.com', now());
+-- invited email squatted via raw signup API without confirming -> no role until confirmed
+insert into invites (email, role) values ('newtech@gmail.com','tech');
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000000f','newtech@gmail.com');
+
+select pg_temp.check('admin profile got admin role', (select role from profiles where email='luke@example.com')='admin');
+select pg_temp.check('uninvited user has no role', (select role from profiles where email='stranger@hotmail.com') is null);
+select pg_temp.check('unconfirmed signup gets no role', (select role from profiles where email='newtech@gmail.com') is null);
+update auth.users set email_confirmed_at = now() where email='newtech@gmail.com';
+select pg_temp.check('role granted once email confirmed', (select role from profiles where email='newtech@gmail.com')='tech');
+select pg_temp.check('invite marked accepted', (select accepted_at is not null from invites where email='carlos@yahoo.com'));
+
+-- seed business data as superuser
+insert into customers (id, name) values ('10000000-0000-0000-0000-000000000001','Lakeview Dental'), ('10000000-0000-0000-0000-000000000002','Golf Rd Auto');
+insert into projects (id, customer_id, name, scope) values
+  ('20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','LED Troffers','Replace 42 troffers'),
+  ('20000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000002','High-bays','Replace 18 MH');
+insert into jobs (id, project_id, title, starts_at, ends_at) values
+  ('30000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Install','2026-11-02 13:00Z','2026-11-02 20:00Z'),
+  ('30000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000002','Install','2026-11-03 13:00Z','2026-11-03 20:00Z');
+insert into job_assignments values ('30000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-00000000000c'),
+                                   ('30000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-00000000000d');
+insert into photos (project_id, kind, storage_path) values
+  ('20000000-0000-0000-0000-000000000001','before','20000000-0000-0000-0000-000000000001/before/a.jpg'),
+  ('20000000-0000-0000-0000-000000000002','before','20000000-0000-0000-0000-000000000002/before/b.jpg');
+insert into messages (customer_id, channel, body) values ('10000000-0000-0000-0000-000000000001','text','On my way');
+
+-- ---- stranger (signed in, not invited)
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');
+select pg_temp.check('stranger sees no customers', (select count(*) from customers)=0);
+select pg_temp.check('stranger sees only own profile', (select count(*) from profiles)=1);
+select pg_temp.fails('stranger cannot self-promote', $$update profiles set role='admin' where id=auth.uid()$$);
+reset role;
+
+-- ---- tech Carlos
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select pg_temp.check('tech sees only assigned job', (select count(*) from jobs)=1);
+select pg_temp.check('tech sees only that project', (select count(*) from projects)=1 and (select scope from projects)='Replace 42 troffers');
+select pg_temp.check('tech sees that customer only', (select count(*) from customers)=1);
+select pg_temp.check('tech sees only own project before photos', (select count(*) from photos)=1);
+select pg_temp.check('tech cannot read messages', (select count(*) from messages)=0);
+select pg_temp.check('tech cannot read invites', (select count(*) from invites)=0);
+select pg_temp.fails('tech cannot add customer', $$insert into customers(name) values ('x')$$);
+select pg_temp.fails('tech cannot change role', $$update profiles set role='admin' where id=auth.uid()$$);
+select pg_temp.fails('tech cannot reschedule', $$update jobs set starts_at=starts_at+interval '1 day' where id='30000000-0000-0000-0000-000000000001'$$);
+select pg_temp.fails('tech cannot approve', $$update jobs set status='approved' where id='30000000-0000-0000-0000-000000000001'$$);
+update jobs set status='in_progress' where id='30000000-0000-0000-0000-000000000001';
+insert into photos (project_id, job_id, kind, storage_path, uploaded_by) values
+  ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','completion','20000000-0000-0000-0000-000000000001/completion/c1.jpg', auth.uid());
+insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000001','24 of 42 panels done');
+insert into storage.objects (bucket_id, name) values ('photos','20000000-0000-0000-0000-000000000001/completion/c1.jpg');
+select pg_temp.fails('tech cannot upload before photo row', $$insert into photos (project_id, job_id, kind, storage_path, uploaded_by) values ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','before','x/before/z.jpg', auth.uid())$$);
+select pg_temp.fails('tech cannot upload to other job', $$insert into photos (project_id, job_id, kind, storage_path, uploaded_by) values ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','y.jpg', auth.uid())$$);
+select pg_temp.fails('tech cannot store object in other project', $$insert into storage.objects (bucket_id, name) values ('photos','20000000-0000-0000-0000-000000000002/completion/x.jpg')$$);
+select pg_temp.fails('tech cannot note other job', $$insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000002','x')$$);
+update jobs set status='completed' where id='30000000-0000-0000-0000-000000000001';
+select pg_temp.check('completion stamped by trigger', (select completed_by = auth.uid() and completed_at is not null from jobs where id='30000000-0000-0000-0000-000000000001'));
+reset role;
+
+-- ---- manager Maria
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select pg_temp.check('manager sees all customers', (select count(*) from customers)=2);
+select pg_temp.check('manager sees all jobs', (select count(*) from jobs)=2);
+insert into customers (name, city) values ('Prairie Bean','Palatine');
+update jobs set status='approved', approved_by=auth.uid(), approved_at=now() where id='30000000-0000-0000-0000-000000000001';
+select pg_temp.check('manager sees team', (select count(*) from profiles)=6);
+select pg_temp.check('manager cannot see invites', (select count(*) from invites)=0);
+select pg_temp.fails('manager cannot invite', $$insert into invites(email, role) values ('new@gmail.com','tech')$$);
+update profiles set role='admin' where email='carlos@yahoo.com';  -- RLS: matches 0 rows
+select pg_temp.check('manager cannot change roles', (select role from profiles where email='carlos@yahoo.com')='tech');
+reset role;
+
+-- ---- admin Luke
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+insert into invites (email, role, full_name) values ('stranger@hotmail.com','tech','Now Invited');
+select pg_temp.check('invite after signup grants role', (select role from profiles where email='stranger@hotmail.com')='tech');
+update invites set role='manager' where email='carlos@yahoo.com';
+select pg_temp.check('admin role change syncs to profile', (select role from profiles where email='carlos@yahoo.com')='manager');
+delete from invites where email='emily@outlook.com';
+select pg_temp.check('removing from team list revokes role', (select role from profiles where email='emily@outlook.com') is null);
+reset role;
