@@ -7,7 +7,7 @@ It is responsive and installs as a PWA on phones ("Add to Home Screen").
 | Phase | Status |
 |---|---|
 | 1 | ✅ Sign-in: Google **or** email/password, invite-only. Role-based layout: desktop sidebar, mobile bottom nav. Customers and contacts: list, search, add, edit, detail. Team: admins invite by email and set roles. Route protection. Full DB schema and RLS policies. |
-| 2 | ⏳ Projects with scope and before-photo upload, jobs and assignments, schedule calendar, tech completion photos and notes, manager approval. The **database for all of this already exists** (see the migration); only the screens are left. |
+| 2 | ✅ Projects (status filters, scope, value and rebate, proposed timeline with milestones, before photos), visits with multi-tech crews and double-booking warnings, a schedule with day, week and month views, a dispatch board by tech, drag-and-drop on desktop, the tech "My Jobs" flow (start, completion photos, notes, submit), manager review (approve or send back), dashboard counts, and a customer message log. |
 
 ## Roles
 
@@ -18,6 +18,36 @@ It is responsive and installs as a PWA on phones ("Add to Home Screen").
 | **Field Tech** | Only jobs assigned to them, plus those projects' scope and *before* photos. Can upload *completion* photos and add notes on their own jobs, and move their job scheduled → in progress → completed. |
 
 These rules are enforced **in Postgres with RLS** (`supabase/migrations/…_init.sql`), not only in the UI.
+
+## What's in the app
+
+| Area | Who | What |
+|---|---|---|
+| **Home** | Admin/Manager | Counts (visits today, awaiting review, active projects, proposals out), *Awaiting your review* list, today's visits |
+| | Tech | **My Jobs**: today's jobs as big cards, any "sent back" notes, coming up, recently submitted |
+| **Projects** | Admin/Manager | List with status tabs (Proposed → Scheduled → In progress → Awaiting review → Complete, Cancelled) and search. Create and edit with type, value and estimated rebate (customer net is calculated). Detail page shows the **scope of work**, a **proposed timeline** (milestones: add, rename, re-date with auto-save, check off, delete), **Send to customer** (email/text, log only for now) and **Mark approved**, visits, assigned team, **before photos** (camera or gallery, resized on the device), field notes and the customer log |
+| **Visits** (`/jobs`) | Admin/Manager | Schedule from a project, the schedule or Home. One or more techs. **Double-booking warning** listing the clash, with *Save anyway*. Reschedule or reassign, cancel, reopen |
+| | Tech (assigned only) | Date and time, address with **Directions** (Google Maps), call or text the on-site contact, scope, visit instructions, before photos → **Start job** → add **completion photos** (camera or gallery) and **notes** → **Mark complete & submit for review**. Submitting needs at least one completion photo **and** a note. This is enforced in the UI, the server action **and** a Postgres trigger |
+| **Review** | Admin/Manager | On a submitted visit: **Approve**, or **Send back** with a note the tech sees on their visit and on My Jobs |
+| **Schedule** | Admin/Manager | **Day** (dispatch board: a row per tech on an hour timeline), **Week** (techs × days) and **Month** views. Tech filter, prev/today/next. **Drag and drop** (desktop) to move a visit to another day, time (day view) or tech; dropping onto a busy tech asks you to confirm the double-booking. Red outline = double-booked. On phones it's an agenda list; tap a visit to edit it |
+| | Tech | Their own agenda |
+| **Customers** | Admin/Manager | Plus projects and a **customer log** (call/text/email/note, incoming or outgoing, and sent timelines) |
+
+Project status follows its visits automatically (trigger `sync_project_status`): a scheduled visit makes it *Scheduled*; started → *In progress*; submitted → *Awaiting review*; all approved → *Complete*. *Cancelled* projects are left alone.
+
+### Messaging (log only for now)
+
+*Send to customer* and the log form record entries in `public.messages`. **Nothing is delivered to the customer yet.**
+All outbound messages go through `src/lib/messaging.ts` (`sendCustomerMessage` → `getProvider(channel)`). To go live, implement
+a `MessagingProvider` there, e.g. **Twilio** for texts (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`) and **Resend**
+for email (`RESEND_API_KEY`, `RESEND_FROM`), and return it from `getProvider`. The callers and the log don't change.
+
+### Photos
+
+Photos are resized on the device before upload (longest side 1600px, JPEG ~80%, usually 200–600 KB) and sent through a server action
+to the **private** Storage bucket `photos` at `{project_id}/before/…` or `{project_id}/completion/…`. Pages show them with
+1-hour signed URLs. Storage policies mirror the table rules: staff can upload anything; techs can only upload completion
+photos to projects they're assigned to.
 
 ## How access works (invite-only)
 
@@ -45,15 +75,19 @@ npm run dev        # http://localhost:3000
 ```
 
 In mock mode the login page shows a **demo-user picker** (Admin, Manager, Techs, and an uninvited user), and the
-top bar has a "Viewing as" switcher. Data is kept in `.mock-db.json` (delete it to reset). There is **no real
+top bar has a "Viewing as" switcher. Data is kept in `.mock-db.json` and uploaded photos in `.mock-uploads/` (delete both
+to reset). Sample projects and visits are placed around today, including one deliberate double-booking and one visit
+waiting for review. Mock mode also emulates the database rules (a tech only sees their own visits, the job guard
+trigger, project status sync). There is **no real
 authentication** in mock mode. The app refuses to run it in a production build unless you also set
 `RR_ALLOW_MOCK_IN_PRODUCTION=1` (don't).
 
 ## 2. Create the Supabase project
 
 1. Sign up at <https://supabase.com>, then **New project**. Pick a region near you (e.g. `us-east-1`/Ohio) and save the DB password.
-2. **Run the migration** using either option:
-   * **SQL Editor** (easiest): open `supabase/migrations/20261030000001_init.sql`, paste the whole file, and click **Run**.
+2. **Run the migrations** using either option:
+   * **SQL Editor** (easiest): paste and **Run** each file in `supabase/migrations/` in order:
+     `20261030000001_init.sql`, then `20261030000002_phase2.sql`.
    * **CLI:** `npx supabase login && npx supabase link --project-ref <ref> && npx supabase db push`
 3. **Make yourself the first admin.** In the SQL Editor:
    ```sql
@@ -127,6 +161,7 @@ email **and** use *Sign in with Google* with the same Gmail address; both reach 
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser + server | publishable key (`sb_publishable_…`) or legacy anon key (`NEXT_PUBLIC_SUPABASE_ANON_KEY` also works) |
 | `SUPABASE_SERVICE_ROLE_KEY` | **server only** | secret / service_role key. Needed only so admins can **send invite emails** from the Team page. Without it, adding people still works and they sign in with Google. **Never** expose it to the browser or commit it. |
 | `NEXT_PUBLIC_SITE_URL` | server | public URL of the app, e.g. `https://rr-scheduler.vercel.app` (used in email links) |
+| `NEXT_PUBLIC_TZ` | browser + server | optional business time zone for the schedule (default `America/Chicago`). Times are stored in UTC; Vercel runs in UTC, so this matters |
 | `NEXT_PUBLIC_RR_MOCK_MODE` | dev only | `1` = mock mode (no Supabase). Leave unset in production. |
 
 ## 6. Deploy to Vercel
@@ -144,8 +179,11 @@ email **and** use *Sign in with Google* with the same Gmail address; both reach 
 npm run dev        # dev server
 npm run build      # production build
 npm run lint       # ESLint
-npm run test:db    # runs the migration + ~35 RLS checks on an in-memory Postgres 17 (PGlite); no Docker needed
+npm run test:db    # runs the migrations + ~40 RLS/trigger checks on an in-memory Postgres 17 (PGlite); no Docker needed
 ```
+
+End-to-end click-through tests (Python Playwright, against `npm run dev` in mock mode on port 3417) live outside the repo
+in the build box (`app_test.py` for phase 1, `p2_test.py` for phase 2). They cover every flow listed above, including drag-and-drop.
 
 `npm run test:db` loads `supabase/tests/supabase_stubs.sql` (minimal stand-ins for the `auth` and `storage` schemas),
 then the real migration, then `supabase/tests/rls_test.sql`. That file signs in as a stranger, a tech, a manager and an
@@ -159,7 +197,10 @@ src/lib/auth.ts              getSessionUser / requireMember / requireRole (serve
 src/lib/data/                Repo interface with Supabase and dev-mock implementations
 src/lib/supabase/            @supabase/ssr clients (server, browser, proxy) + service-role admin client
 src/app/login, forgot-password, account/password, auth/{callback,confirm,signout}, not-invited
-src/app/(app)/               signed-in app: home, customers, team, account
+src/app/(app)/               signed-in app: home, customers, projects, jobs (visits), schedule, team, account
+src/lib/time.ts              business-time-zone helpers (UTC <-> local wall clock, DST-safe)
+src/lib/messaging.ts         outbound message hook (log-only; plug in Twilio/Resend here)
+src/components/photos.tsx    client-side resize + upload, photo grid/lightbox
 supabase/migrations/         schema, triggers, RLS, storage bucket + policies
 public/sw.js, app/manifest.ts  PWA
 ```
@@ -174,8 +215,10 @@ public/sw.js, app/manifest.ts  PWA
 * Photos live in a **private** bucket `photos` at `{project_id}/{before|completion}/…`. Storage policies follow the
   project visibility rules, and techs can only upload to `completion/` on their assigned jobs.
 
-## Roadmap (phase 2)
+## Roadmap (next)
 
-Projects (type, scope, value/rebate, proposed timeline → sent → approved), before-photo upload, jobs with multi-tech
-assignment, a week/day schedule board, tech "my jobs today" with start/complete and completion photos plus notes,
-manager review/approval, and a customer message log (call/text/email).
+* Real sending for texts and emails (Twilio/Resend) via `src/lib/messaging.ts`, plus a customer-facing "approve timeline" link
+* Recurring visits and maintenance plans; time tracking (clock in/out) per visit
+* Push notifications for techs (new assignment, sent back) using the existing service worker
+* Offline queue for completion photos and notes when the tech has no signal
+* Photo captions and annotation; PDF close-out report for the rebate paperwork
