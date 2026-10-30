@@ -20,6 +20,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
   const [pending, startT] = useTransition();
   const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false); // while dragging, chips let drops fall through to the cell under them
   const conflicted = new Set(props.conflicted);
   const dayList = Array.from({ length: days }, (_, i) => addDays(start, i));
   const q = (o: Partial<{ view: View; date: string; tech: string }>) => {
@@ -38,7 +39,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
   const draggable = (j: JobView) => staff && j.status !== "approved" && j.status !== "cancelled";
 
   async function drop(e: DragEvent, target: { day: string; row?: string; startMin?: number }) {
-    e.preventDefault(); setOver(null);
+    e.preventDefault(); setOver(null); setDragging(false);
     const raw = e.dataTransfer.getData("application/x-rr-job");
     if (!raw) return;
     const { jobId, from, grabMin } = JSON.parse(raw) as { jobId: string; from: string | null; grabMin: number };
@@ -63,7 +64,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
     "data-drop": key,
   } : {};
 
-  function Chip({ j, row, compact = false, style }: { j: JobView; row?: string; compact?: boolean; style?: React.CSSProperties }) {
+  function Chip({ j, row, compact = false, inline = false, style }: { j: JobView; row?: string; compact?: boolean; inline?: boolean; style?: React.CSSProperties }) {
     const c = conflicted.has(j.id);
     const lead = j.assignees[0];
     return (
@@ -74,11 +75,14 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
           const grabMin = track && view === "day" ? ((e.clientX - rect.left) / track.getBoundingClientRect().width) * (DAY_END - DAY_START) : 0;
           e.dataTransfer.setData("application/x-rr-job", JSON.stringify({ jobId: j.id, from: row ?? null, grabMin }));
           e.dataTransfer.effectAllowed = "move";
+          requestAnimationFrame(() => setDragging(true));
         }}
+        onDragEnd={() => { setDragging(false); setOver(null); }}
         className={`block overflow-hidden rounded-md border border-l-4 bg-white px-2 py-1 text-left text-[11.5px] leading-tight shadow-sm hover:shadow ${JOB_BAR[j.status]} ${c ? "border-red-400 ring-2 ring-red-300" : "border-line"} ${draggable(j) ? "cursor-grab active:cursor-grabbing" : ""} ${j.status === "approved" ? "opacity-70" : ""}`}>
+        {inline ? <div className="flex items-center gap-1 truncate">{c && <Icon name="alert" className="size-3 text-red-600" />}<span className="font-semibold text-muted">{fmtTime(j.starts_at)}</span><span className="truncate font-semibold text-ink">{j.title}</span></div> : <>
         <div className="flex items-center gap-1 font-semibold text-muted">{c && <Icon name="alert" className="size-3 text-red-600" />}{fmtTime(j.starts_at)}{!compact && `–${fmtTime(j.ends_at)}`}{view === "month" && lead && <span className="ml-auto size-2 rounded-full" style={{ background: lead.color }} />}</div>
         <div className="truncate font-semibold text-ink">{j.title}</div>
-        {!compact && <div className="truncate text-muted">{j.customer_name}</div>}
+        {!compact && <div className="truncate text-muted">{j.customer_name}</div>}</>}
       </Link>
     );
   }
@@ -112,7 +116,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
   const pct = (m: number) => `${((Math.min(Math.max(m, DAY_START), DAY_END) - DAY_START) / (DAY_END - DAY_START)) * 100}%`;
 
   return (
-    <>
+    <div className={dragging ? "[&_a[data-job]]:pointer-events-none" : ""}>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-[22px] font-semibold tracking-tight">{staff ? "Schedule" : "My schedule"}</h1>
         {staff && <Link href={`/jobs/new?date=${date}`} className="btn btn-primary"><Icon name="plus" />New visit</Link>}
@@ -182,10 +186,16 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
                     return { day: date, row: r.id, startMin: DAY_START + ((e.clientX - rect.left) / rect.width) * (DAY_END - DAY_START) };
                   })} className={`relative h-[74px] ${over === key ? "bg-brand-50" : ""}`}>
                     {hours.map((h) => <span key={h} className="absolute inset-y-0 border-l border-dashed border-line" style={{ left: pct(h) }} />)}
-                    {jobsFor(r.id, date).map((j) => {
-                      const s = minutesOfDay(j.starts_at), e2 = dayKey(j.ends_at) === date ? minutesOfDay(j.ends_at) : DAY_END;
-                      return <Chip key={j.id} j={j} row={r.id} style={{ position: "absolute", top: 6, bottom: 6, left: pct(s), width: `calc(${pct(e2)} - ${pct(s)} - 3px)` }} />;
-                    })}
+                    {(() => {
+                      // overlapping visits (double-bookings) stack in lanes instead of covering each other
+                      const list = jobsFor(r.id, date).map((j) => ({ j, s: minutesOfDay(j.starts_at), e: dayKey(j.ends_at) === date ? minutesOfDay(j.ends_at) : DAY_END }));
+                      const laneEnds: number[] = [];
+                      const placed = list.map((x) => { let lane = laneEnds.findIndex((end) => end <= x.s); if (lane < 0) lane = laneEnds.length; laneEnds[lane] = x.e; return { ...x, lane }; });
+                      const n = Math.max(1, laneEnds.length), h = 62 / n;
+                      return placed.map(({ j, s, e, lane }) => (
+                        <Chip key={j.id} j={j} row={r.id} inline={n > 1} style={{ position: "absolute", top: 6 + lane * h, height: h - 2, ...(n > 1 ? { paddingTop: 2, paddingBottom: 2 } : {}), left: pct(s), width: `calc(${pct(e)} - ${pct(s)} - 3px)` }} />
+                      ));
+                    })()}
                   </div>
                 </div>
               );
@@ -213,6 +223,6 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
         </div>
       )}
       {staff && !jobs.length && <p className="mt-3 hidden text-center text-sm text-muted md:block">No visits in this range{tech ? " for this tech" : ""}.</p>}
-    </>
+    </div>
   );
 }
