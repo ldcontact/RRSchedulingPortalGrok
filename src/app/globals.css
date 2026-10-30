@@ -1,26 +1,35 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-brand: #0f766e;
+  --color-brand-50: #e6f3f1;
+  --color-brand-700: #0c6760;
+  --color-brand-900: #0d3d38;
+  --color-brand-950: #082a27;
+  --color-accent: #f59e0b;
+  --color-accent-50: #fef3c7;
+  --color-ink: #1b2422;
+  --color-muted: #66706c;
+  --color-line: #e2e6e1;
+  --color-canvas: #f4f5f2;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@layer base {
+  html, body { background: var(--color-canvas); color: var(--color-ink); }
+  body { -webkit-font-smoothing: antialiased; }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .card { @apply rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(16,24,20,.05),0_1px_3px_rgba(16,24,20,.06)]; }
+  .card-hd { @apply flex items-center justify-between gap-3 border-b border-line px-5 py-3.5; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white px-3.5 py-2 text-sm font-semibold whitespace-nowrap text-ink transition hover:bg-[#fafbf9] disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply border-brand bg-brand text-white hover:bg-brand-700; }
+  .btn-accent { @apply border-accent bg-accent text-[#3b2600] hover:brightness-95; }
+  .btn-danger { @apply text-red-700; }
+  .btn-sm { @apply px-2.5 py-1.5 text-[13px]; }
+  .input { @apply w-full rounded-lg border border-[#d5dbd4] bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:ring-3 focus:ring-brand/15; }
+  .label { @apply flex flex-col gap-1.5 text-[12.5px] font-semibold text-[#3d4744]; }
+  .pill { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap; }
+  .tag { @apply inline-block rounded-md border border-line bg-canvas px-2 py-0.5 text-[11.5px] font-semibold text-muted; }
 }
