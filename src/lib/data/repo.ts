@@ -1,4 +1,7 @@
-import type { Contact, ContactInput, Customer, CustomerInput, CustomerListItem, InviteInput, Profile, TeamMember } from "@/lib/types";
+import type {
+  Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
+  Milestone, Note, Person, Photo, PhotoKind, Profile, Project, ProjectInput, ProjectListItem, ProjectStatus, TeamMember,
+} from "@/lib/types";
 
 /**
  * Data access used by pages and server actions. Two implementations:
@@ -21,7 +24,42 @@ export interface Repo {
   removeFromTeam(email: string): Promise<void>;
   setActive(profileId: string, active: boolean): Promise<void>;
 
-  counts(): Promise<{ customers: number; team: number; invited: number }>;
+  counts(): Promise<Counts>;
+
+  // ---- phase 2
+  listProjects(f?: { status?: ProjectStatus; customerId?: string; q?: string }): Promise<ProjectListItem[]>;
+  getProject(id: string): Promise<Project | null>;
+  createProject(input: ProjectInput): Promise<Project>;
+  updateProject(id: string, patch: Partial<Omit<Project, "id" | "created_at" | "updated_at">>): Promise<void>;
+  listMilestones(projectId: string): Promise<Milestone[]>;
+  addMilestone(projectId: string, m: { name: string; due_date: string | null }): Promise<void>;
+  updateMilestone(id: string, patch: Partial<Pick<Milestone, "name" | "due_date" | "done">>): Promise<void>;
+  deleteMilestone(id: string): Promise<void>;
+  /** Active team members who can be put on a job (techs first). */
+  listAssignable(): Promise<(Person & { role: string })[]>;
+  listJobs(f?: JobFilter): Promise<JobView[]>;
+  getJob(id: string): Promise<JobView | null>;
+  createJob(input: JobInput, assignees: string[]): Promise<string>;
+  updateJob(id: string, patch: Partial<Omit<Job, "id">>): Promise<void>;
+  setAssignees(jobId: string, profileIds: string[]): Promise<void>;
+  listPhotos(f: { projectId?: string; jobId?: string; kind?: PhotoKind }): Promise<Photo[]>;
+  addPhoto(meta: { project_id: string; job_id: string | null; kind: PhotoKind; caption: string | null }, file: File): Promise<void>;
+  deletePhoto(id: string): Promise<void>;
+  listNotes(f: { jobId?: string; projectId?: string }): Promise<Note[]>;
+  addNote(n: { job_id?: string; project_id?: string; customer_id?: string; body: string }): Promise<void>;
+  listMessages(f: { customerId?: string; projectId?: string }): Promise<Message[]>;
+  logMessage(m: MessageInput): Promise<void>;
+}
+
+/** Jobs in `jobs` (not cancelled) that overlap [starts, ends) for any of `people`, excluding `exceptJob`. */
+export function findConflicts(jobs: JobView[], people: string[], starts: string, ends: string, exceptJob?: string) {
+  const out: { person: Person; job: JobView }[] = [];
+  for (const j of jobs) {
+    if (j.id === exceptJob || j.status === "cancelled") continue;
+    if (!(j.starts_at < ends && starts < j.ends_at)) continue;
+    for (const a of j.assignees) if (people.includes(a.id)) out.push({ person: a, job: j });
+  }
+  return out;
 }
 
 export async function getRepo(): Promise<Repo> {

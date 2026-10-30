@@ -67,3 +67,47 @@ export type ContactInput = Omit<Contact, "id" | "customer_id">;
 export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string };
 
 export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean };
+
+// ---------------------------------------------------------------- phase 2
+export type ProjectType = "lighting" | "hvac" | "lighting_hvac" | "other";
+export const PROJECT_TYPE_LABEL: Record<ProjectType, string> = { lighting: "Lighting", hvac: "HVAC", lighting_hvac: "Lighting + HVAC", other: "Other" };
+export type ProjectStatus = "proposed" | "scheduled" | "in_progress" | "awaiting_review" | "complete" | "cancelled";
+export const PROJECT_STATUSES: ProjectStatus[] = ["proposed", "scheduled", "in_progress", "awaiting_review", "complete", "cancelled"];
+export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
+  proposed: "Proposed", scheduled: "Scheduled", in_progress: "In progress", awaiting_review: "Awaiting review", complete: "Complete", cancelled: "Cancelled",
+};
+export type JobStatus = "scheduled" | "in_progress" | "completed" | "approved" | "cancelled";
+export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
+  scheduled: "Scheduled", in_progress: "In progress", completed: "Awaiting review", approved: "Approved", cancelled: "Cancelled",
+};
+export type Channel = "call" | "text" | "email" | "timeline" | "note";
+export const CHANNEL_LABEL: Record<Channel, string> = { call: "Call", text: "Text", email: "Email", timeline: "Proposed timeline", note: "Note" };
+
+export type Project = {
+  id: string; customer_id: string; name: string; type: ProjectType; status: ProjectStatus; scope: string;
+  value: number; est_rebate: number; timeline_sent_at: string | null; timeline_sent_via: Channel | null; timeline_approved_at: string | null;
+  created_at: string; updated_at: string;
+};
+export type ProjectInput = Pick<Project, "customer_id" | "name" | "type" | "status" | "scope" | "value" | "est_rebate">;
+export type Person = { id: string; full_name: string; color: string };
+export type ProjectListItem = Project & { customer_name: string; next_visit: string | null; team: Person[]; done_milestones: number; total_milestones: number };
+
+export type Milestone = { id: string; project_id: string; name: string; due_date: string | null; done: boolean; sort_order: number };
+
+export type Job = {
+  id: string; project_id: string; title: string; starts_at: string; ends_at: string; status: JobStatus; instructions: string | null;
+  started_at: string | null; completed_at: string | null; completed_by: string | null; approved_at: string | null; approved_by: string | null; review_note: string | null;
+};
+export type JobInput = Pick<Job, "project_id" | "title" | "starts_at" | "ends_at" | "instructions">;
+export type JobView = Job & { project_name: string; project_type: ProjectType; customer_id: string; customer_name: string; address: string | null; assignees: Person[] };
+export type JobFilter = { from?: string; to?: string; projectId?: string; assignee?: string; status?: JobStatus[] };
+
+export type PhotoKind = "before" | "completion";
+export type Photo = { id: string; project_id: string; job_id: string | null; kind: PhotoKind; storage_path: string; caption: string | null; uploaded_by: string | null; created_at: string; url: string };
+export type Note = { id: string; customer_id: string | null; project_id: string | null; job_id: string | null; body: string; author_id: string | null; author_name: string; created_at: string };
+export type Message = {
+  id: string; customer_id: string; project_id: string | null; channel: Channel; direction: "outbound" | "inbound";
+  subject: string | null; body: string; sent_by: string | null; sender_name: string; created_at: string;
+};
+export type MessageInput = Pick<Message, "customer_id" | "project_id" | "channel" | "direction" | "subject" | "body">;
+export type Counts = { customers: number; team: number; invited: number; activeProjects: number; jobsToday: number; awaitingReview: number; proposed: number };
