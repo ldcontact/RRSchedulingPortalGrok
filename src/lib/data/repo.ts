@@ -1,6 +1,6 @@
 import type {
   Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
-  Milestone, Note, Person, Photo, PhotoKind, Profile, Project, ProjectInput, ProjectListItem, ProjectStatus, TeamMember,
+  Milestone, Note, Person, Photo, PhotoKind, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectStatus, TeamMember,
 } from "@/lib/types";
 
 /**
@@ -43,8 +43,13 @@ export interface Repo {
   updateJob(id: string, patch: Partial<Omit<Job, "id">>): Promise<void>;
   setAssignees(jobId: string, profileIds: string[]): Promise<void>;
   listPhotos(f: { projectId?: string; jobId?: string; kind?: PhotoKind }): Promise<Photo[]>;
-  addPhoto(meta: { project_id: string; job_id: string | null; kind: PhotoKind; caption: string | null }, file: File): Promise<void>;
+  addPhoto(meta: { project_id: string; job_id: string | null; kind: PhotoKind; caption: string | null; requirement_id?: string | null }, file: File): Promise<void>;
   deletePhoto(id: string): Promise<void>;
+  listPhotoRequirements(projectId: string): Promise<PhotoRequirement[]>;
+  addPhotoRequirement(projectId: string, input: { label: string; note: string | null }): Promise<void>;
+  updatePhotoRequirement(id: string, patch: Partial<Pick<PhotoRequirement, "label" | "note" | "sort_order">>): Promise<void>;
+  deletePhotoRequirement(id: string): Promise<void>;
+  reorderPhotoRequirements(projectId: string, orderedIds: string[]): Promise<void>;
   listNotes(f: { jobId?: string; projectId?: string }): Promise<Note[]>;
   addNote(n: { job_id?: string; project_id?: string; customer_id?: string; body: string }): Promise<void>;
   listMessages(f: { customerId?: string; projectId?: string }): Promise<Message[]>;

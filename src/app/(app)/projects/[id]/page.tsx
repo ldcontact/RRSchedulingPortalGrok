@@ -13,6 +13,7 @@ import { fmtDateTime, fmtRange, fmtDay, dayKey, money, todayKey } from "@/lib/ti
 import type { Person } from "@/lib/types";
 import { addMilestone, deleteMilestone, markTimelineApproved, sendTimeline, setProjectStatus, toggleMilestone, updateMilestone } from "../actions";
 import { MilestoneRow } from "./milestone-row";
+import { PhotoRequirementsEditor } from "@/components/photo-requirements-editor";
 
 export async function generateMetadata({ params }: PageProps<"/projects/[id]">): Promise<Metadata> {
   const p = await (await getRepo()).getProject((await params).id).catch(() => null);
@@ -26,9 +27,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const repo = await getRepo();
   const p = await repo.getProject(id);
   if (!p) notFound();
-  const [c, contacts, milestones, jobs, photos, messages, notes] = await Promise.all([
+  const [c, contacts, milestones, jobs, photos, messages, notes, requirements] = await Promise.all([
     repo.getCustomer(p.customer_id), repo.listContacts(p.customer_id), repo.listMilestones(id), repo.listJobs({ projectId: id }),
     repo.listPhotos({ projectId: id, kind: "before" }), repo.listMessages({ projectId: id }), repo.listNotes({ projectId: id }),
+    repo.listPhotoRequirements(id),
   ]);
   const team = new Map<string, Person & { visits: number }>();
   for (const j of jobs) if (j.status !== "cancelled") for (const a of j.assignees) team.set(a.id, { ...a, visits: (team.get(a.id)?.visits ?? 0) + 1 });
@@ -100,7 +102,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             </div>
           </div>
 
-          <div className="card">
+          <PhotoRequirementsEditor projectId={p.id} items={requirements} />
+
+                    <div className="card">
             <div className="card-hd"><h3 className="font-semibold">Before photos</h3><span className="text-xs text-muted">{photos.length} · techs on this project can see them</span></div>
             <div className="flex flex-col gap-3 p-4">
               <PhotoUploader projectId={p.id} kind="before" label="Add before photos" />

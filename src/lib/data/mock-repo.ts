@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
-import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, Profile, Project, ProjectStatus } from "@/lib/types";
+import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectStatus } from "@/lib/types";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 
 /*
@@ -15,7 +15,7 @@ import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 type PhotoRow = Omit<Photo, "url">;
 type NoteRow = Omit<Note, "author_name">;
 type MessageRow = Omit<Message, "sender_name">;
-type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[] };
+type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[] };
 type DB = { profiles: Profile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[] } & P2;
 export const MOCK_UPLOADS = join(process.cwd(), ".mock-uploads");
 const FILE = join(process.cwd(), ".mock-db.json");
@@ -120,15 +120,25 @@ function seedPhase2(): P2 {
   const as = (job_id: string, ...ids: string[]) => ids.map((profile_id) => ({ job_id, profile_id }));
   const assignments = [...as("j1", "u-tech1", "u-tech2"), ...as("j2", "u-tech1", "u-tech2"), ...as("j3", "u-tech4"), ...as("j8", "u-tech2"), ...as("j4", "u-tech4", "u-tech1"),
     ...as("j5", "u-tech3"), ...as("j6", "u-tech1", "u-tech2", "u-tech3"), ...as("j7", "u-tech1", "u-tech2")];
-  const ph = (project_id: string, job_id: string | null, kind: Photo["kind"], caption: string, days: number, by: string): PhotoRow =>
-    ({ id: randomUUID(), project_id, job_id, kind, storage_path: `seed/${kind}/${encodeURIComponent(caption)}.svg`, caption, uploaded_by: by, created_at: ago(days) });
+  const ph = (project_id: string, job_id: string | null, kind: Photo["kind"], caption: string, days: number, by: string, requirement_id: string | null = null): PhotoRow =>
+    ({ id: randomUUID(), project_id, job_id, kind, storage_path: `seed/${kind}/${encodeURIComponent(caption)}.svg`, caption, requirement_id, uploaded_by: by, created_at: ago(days) });
+  const req = (id: string, project_id: string, label: string, sort_order: number, note: string | null = null): PhotoRequirement =>
+    ({ id, project_id, label, note, sort_order, created_at: ago(14) });
+  const photo_requirements: PhotoRequirement[] = [
+    req("r1", "p2", "T12 4ft", 0),
+    req("r2", "p2", "400W MH", 1),
+    req("r3", "p2", "Wall pack", 2),
+    req("r4", "p1", "Lobby panel", 0),
+    req("r5", "p1", "Operatory troffer", 1),
+  ];
   const photos = [
     ph("p1", null, "before", "Lobby – T8 troffers", 20, "u-manager"), ph("p1", null, "before", "Operatory 3 ceiling", 20, "u-manager"), ph("p1", null, "before", "Hallway fixtures", 20, "u-manager"),
     ph("p2", null, "before", "Bay 2 metal halides", 14, "u-admin"), ph("p2", null, "before", "Exterior wall pack", 14, "u-admin"),
     ph("p3", null, "before", "RTU #1 filters", 7, "u-manager"), ph("p3", null, "before", "Old thermostat", 7, "u-manager"),
     ph("p4", null, "before", "Production floor", 5, "u-admin"), ph("p4", null, "before", "Make-up air unit", 5, "u-admin"),
     ph("p3", "j5", "completion", "RTU #1 new filters", 1, "u-tech3"), ph("p3", "j5", "completion", "Smart thermostat installed", 1, "u-tech3"),
-    ph("p1", "j1", "completion", "Lobby LED panels", 2, "u-tech1"),
+    ph("p1", "j1", "completion", "Lobby LED panels", 2, "u-tech1", "r4"),
+    ph("p2", "j3", "completion", "T12 bay 1 done", 0, "u-tech4", "r1"),
   ];
   const notes: NoteRow[] = [
     { id: randomUUID(), customer_id: null, project_id: null, job_id: "j5", body: "Replaced filters on both RTUs, cleaned condenser coils, new belt on RTU #2. Refrigerant OK. Thermostats installed and scheduled (6a–7p M–Sa).", author_id: "u-tech3", created_at: at(-1, 12, 35) },
@@ -145,7 +155,7 @@ function seedPhase2(): P2 {
     msg("c6", "p6", "timeline", "outbound", "Proposed timeline: HVAC tune-up + lighting assessment", "Sent via email", 1, "u-manager"),
     msg("c7", null, "call", "inbound", null, "Rosa called after a referral from Golf Road Auto Body. Interested in a lighting assessment.", 3, "u-admin"),
   ];
-  const db = { projects, milestones, jobs, assignments, photos, notes, messages };
+  const db = { projects, milestones, jobs, assignments, photos, notes, messages, photo_requirements };
   for (const p of projects) syncProject(db, p.id);
   return db;
 }
@@ -163,6 +173,8 @@ function load(): DB {
   if (!existsSync(FILE)) { const db = seed(); save(db); return db; }
   const db = JSON.parse(readFileSync(FILE, "utf8")) as DB;
   if (!db.projects) { Object.assign(db, seedPhase2()); save(db); } // upgrade a phase-1 mock DB
+  if (!db.photo_requirements) { db.photo_requirements = []; save(db); }
+  for (const p of db.photos) if (p.requirement_id === undefined) (p as PhotoRow).requirement_id = null;
   return db;
 }
 function save(db: DB) { writeFileSync(FILE, JSON.stringify(db, null, 2)); }
@@ -337,8 +349,15 @@ export const mockRepo: Repo = {
         const ok = (j.status === "scheduled" && patch.status === "in_progress") || (j.status === "in_progress" && patch.status === "completed");
         if (patch.status && patch.status !== j.status && !ok) throw new Error(`invalid status change for tech: ${j.status} -> ${patch.status}`);
         if (patch.status === "completed") {
-          if (!db.photos.some((p) => p.job_id === id && p.kind === "completion") || !db.notes.some((n) => n.job_id === id))
+          if (!db.notes.some((n) => n.job_id === id))
             throw new Error("add at least one completion photo and a note before submitting");
+          const reqs = db.photo_requirements.filter((r) => r.project_id === j.project_id).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+          if (reqs.length) {
+            const missing = reqs.filter((r) => !db.photos.some((p) => p.job_id === id && p.kind === "completion" && p.requirement_id === r.id)).map((r) => r.label);
+            if (missing.length) throw new Error(`missing required photos: ${missing.join(", ")}`);
+          } else if (!db.photos.some((p) => p.job_id === id && p.kind === "completion")) {
+            throw new Error("add at least one completion photo and a note before submitting");
+          }
           Object.assign(patch, { completed_at: now(), completed_by: w.uid });
         }
         if (patch.status === "in_progress") Object.assign(patch, { started_at: now() });
@@ -362,13 +381,69 @@ export const mockRepo: Repo = {
   async addPhoto(meta, file) {
     const w = await who();
     if (!w.staff && !(meta.kind === "completion" && meta.job_id && w.canJob(meta.job_id))) throw new Error("permission denied (mock RLS)");
+    if (meta.requirement_id) {
+      if (meta.kind !== "completion" || !meta.job_id) throw new Error("required photo items only apply to completion photos");
+      const db0 = load();
+      const req = db0.photo_requirements.find((r) => r.id === meta.requirement_id);
+      if (!req) throw new Error("unknown required photo item");
+      if (req.project_id !== meta.project_id) throw new Error("required photo item belongs to a different project");
+    }
     const path = `${meta.project_id}/${meta.kind}/${randomUUID()}.jpg`;
     const full = join(MOCK_UPLOADS, path);
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, Buffer.from(await file.arrayBuffer()));
-    mutate((db) => { db.photos.push({ id: randomUUID(), ...meta, storage_path: path, uploaded_by: w.uid, created_at: now() }); });
+    mutate((db) => {
+      db.photos.push({
+        id: randomUUID(), project_id: meta.project_id, job_id: meta.job_id, kind: meta.kind, caption: meta.caption,
+        requirement_id: meta.requirement_id ?? null, storage_path: path, uploaded_by: w.uid, created_at: now(),
+      });
+    });
   },
-  async deletePhoto(id) { requireStaffMock(await who()); mutate((db) => { db.photos = db.photos.filter((p) => p.id !== id); }); },
+  async deletePhoto(id) {
+    const w = await who();
+    mutate((db) => {
+      const p = db.photos.find((x) => x.id === id);
+      if (!p) return;
+      if (!w.staff) {
+        if (p.kind !== "completion" || p.uploaded_by !== w.uid) throw new Error("permission denied (mock RLS)");
+        const job = p.job_id ? db.jobs.find((j) => j.id === p.job_id) : null;
+        if (!job || job.status !== "in_progress") throw new Error("permission denied (mock RLS)");
+      }
+      db.photos = db.photos.filter((x) => x.id !== id);
+    });
+  },
+  async listPhotoRequirements(projectId) {
+    const w = await who(); const db = load();
+    if (!w.staff && !w.canProject(projectId)) return [];
+    return db.photo_requirements.filter((r) => r.project_id === projectId).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+  },
+  async addPhotoRequirement(projectId, input) {
+    requireStaffMock(await who());
+    mutate((db) => {
+      const max = db.photo_requirements.filter((r) => r.project_id === projectId).reduce((m, r) => Math.max(m, r.sort_order), -1);
+      db.photo_requirements.push({ id: randomUUID(), project_id: projectId, label: input.label.trim(), note: input.note, sort_order: max + 1, created_at: now() });
+    });
+  },
+  async updatePhotoRequirement(id, patch) {
+    requireStaffMock(await who());
+    mutate((db) => { const r = db.photo_requirements.find((x) => x.id === id); if (r) Object.assign(r, patch); });
+  },
+  async deletePhotoRequirement(id) {
+    requireStaffMock(await who());
+    mutate((db) => {
+      db.photo_requirements = db.photo_requirements.filter((r) => r.id !== id);
+      for (const p of db.photos) if (p.requirement_id === id) p.requirement_id = null;
+    });
+  },
+  async reorderPhotoRequirements(projectId, orderedIds) {
+    requireStaffMock(await who());
+    mutate((db) => {
+      orderedIds.forEach((id, i) => {
+        const r = db.photo_requirements.find((x) => x.id === id && x.project_id === projectId);
+        if (r) r.sort_order = i;
+      });
+    });
+  },
   async listNotes(f) {
     const w = await who(); const db = load();
     const jobIds = f.projectId ? new Set(db.jobs.filter((j) => j.project_id === f.projectId).map((j) => j.id)) : null;

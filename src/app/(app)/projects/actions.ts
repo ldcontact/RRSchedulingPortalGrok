@@ -101,3 +101,25 @@ export async function markTimelineApproved(projectId: string) {
   await repo.logMessage({ customer_id: p.customer_id, project_id: p.id, channel: "note", direction: "inbound", subject: null, body: "Customer approved the proposed timeline." });
   refresh(projectId);
 }
+
+// ---- required completion photos checklist
+export async function addPhotoRequirement(projectId: string, fd: FormData) {
+  await staff();
+  const label = s(fd, "label");
+  if (!label) return;
+  const note = s(fd, "note") || null;
+  await (await getRepo()).addPhotoRequirement(projectId, { label, note });
+  refresh(projectId);
+}
+export async function updatePhotoRequirement(projectId: string, id: string, fd: FormData) {
+  await staff();
+  const label = s(fd, "label");
+  if (!label) return;
+  await (await getRepo()).updatePhotoRequirement(id, { label, note: s(fd, "note") || null });
+  refresh(projectId);
+}
+export async function deletePhotoRequirement(projectId: string, id: string) {
+  await staff();
+  await (await getRepo()).deletePhotoRequirement(id);
+  refresh(projectId);
+}

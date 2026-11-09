@@ -61,7 +61,7 @@ export function PhotoUploader({ projectId, jobId, kind, label }: { projectId: st
   );
 }
 
-export function PhotoGrid({ photos, canDelete = false, empty }: { photos: Photo[]; canDelete?: boolean; empty?: string }) {
+export function PhotoGrid({ photos, canDelete = false, empty, jobId, projectId }: { photos: Photo[]; canDelete?: boolean; empty?: string; jobId?: string | null; projectId?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState<Photo | null>(null);
   if (!photos.length) return <div className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-muted">{empty ?? "No photos yet."}</div>;
@@ -83,7 +83,7 @@ export function PhotoGrid({ photos, canDelete = false, empty }: { photos: Photo[
             <img src={open.url} alt={open.caption ?? "Photo"} className="max-h-[78vh] w-full rounded-lg object-contain" />
             <div className="flex items-center gap-2 text-sm text-white">
               <span className="flex-1">{open.caption}</span>
-              {canDelete && <button className="btn btn-sm btn-danger" onClick={async () => { await deletePhoto(open.id); setOpen(null); router.refresh(); }}><Icon name="trash" />Delete</button>}
+              {canDelete && <button className="btn btn-sm btn-danger" onClick={async () => { await deletePhoto(open.id, { jobId: jobId ?? open.job_id, projectId: projectId ?? open.project_id }); setOpen(null); router.refresh(); }}><Icon name="trash" />Delete</button>}
               <button className="btn btn-sm" onClick={() => setOpen(null)}><Icon name="x" />Close</button>
             </div>
           </div>

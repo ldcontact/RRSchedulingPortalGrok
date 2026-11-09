@@ -103,12 +103,42 @@ delete from invites where email='emily@outlook.com';
 select pg_temp.check('removing from team list revokes role', (select role from profiles where email='emily@outlook.com') is null);
 reset role;
 
+
+-- ---- required photo checklist
+reset role;
+-- reopen Emily's job for checklist tests (Carlos already completed his)
+update jobs set status='in_progress', completed_at=null, completed_by=null where id='30000000-0000-0000-0000-000000000002';
+insert into project_photo_requirements (id, project_id, label, sort_order) values
+  ('40000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000002','400W MH',0),
+  ('40000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000002','Wall pack',1),
+  ('40000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000001','Lobby panel',0);
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d'); -- Emily
+select pg_temp.check('tech can read project photo requirements', (select count(*) from project_photo_requirements)=2);
+select pg_temp.fails('tech cannot add photo requirements', $$insert into project_photo_requirements(project_id, label) values ('20000000-0000-0000-0000-000000000002','Extra')$$);
+insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000002','Started high bays');
+select pg_temp.fails('tech cannot submit with checklist incomplete', $$update jobs set status='completed' where id='30000000-0000-0000-0000-000000000002'$$);
+insert into photos (project_id, job_id, kind, storage_path, uploaded_by, requirement_id) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','20000000-0000-0000-0000-000000000002/completion/mh.jpg', auth.uid(), '40000000-0000-0000-0000-000000000001');
+select pg_temp.fails('still blocked when one checklist item missing', $$update jobs set status='completed' where id='30000000-0000-0000-0000-000000000002'$$);
+select pg_temp.fails('cannot link requirement from other project', $$insert into photos (project_id, job_id, kind, storage_path, uploaded_by, requirement_id) values ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','20000000-0000-0000-0000-000000000002/completion/bad.jpg', auth.uid(), '40000000-0000-0000-0000-000000000003')$$);
+insert into photos (project_id, job_id, kind, storage_path, uploaded_by, requirement_id) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','20000000-0000-0000-0000-000000000002/completion/wp.jpg', auth.uid(), '40000000-0000-0000-0000-000000000002');
+update jobs set status='completed' where id='30000000-0000-0000-0000-000000000002';
+select pg_temp.check('checklist complete allows submit', (select status from jobs where id='30000000-0000-0000-0000-000000000002')='completed');
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager
+insert into project_photo_requirements (project_id, label, sort_order) values ('20000000-0000-0000-0000-000000000001','Operatory troffer',1);
+select pg_temp.check('manager can add photo requirements', (select count(*) from project_photo_requirements where project_id='20000000-0000-0000-0000-000000000001')=2);
+reset role;
+
 -- ---- privilege / schema hardening (private helpers)
 select pg_temp.check('private schema exists', exists (select 1 from pg_namespace where nspname='private'));
 select pg_temp.check('no public.is_admin helper', not exists (
   select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
    where n.nspname='public' and p.proname in
-     ('is_admin','is_staff','is_member','current_user_role','is_assigned_to_job','can_see_project','can_see_customer','handle_new_user','guard_job_update','storage_project_id')));
+     ('is_admin','is_staff','is_member','current_user_role','is_assigned_to_job','can_see_project','can_see_customer','handle_new_user','guard_job_update','guard_photo_requirement','storage_project_id')));
 select pg_temp.check('private.is_admin exists', exists (
   select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='is_admin'));
 
@@ -117,6 +147,7 @@ select pg_temp.check('authenticated can execute private.is_staff (RLS helpers)',
 select pg_temp.check('authenticated can execute private.is_assigned_to_job', has_function_privilege('authenticated', 'private.is_assigned_to_job(uuid)', 'execute'));
 select pg_temp.check('authenticated cannot execute private.handle_new_user', not has_function_privilege('authenticated', 'private.handle_new_user()', 'execute'));
 select pg_temp.check('authenticated cannot execute private.guard_job_update', not has_function_privilege('authenticated', 'private.guard_job_update()', 'execute'));
+select pg_temp.check('authenticated cannot execute private.guard_photo_requirement', not has_function_privilege('authenticated', 'private.guard_photo_requirement()', 'execute'));
 select pg_temp.check('authenticated cannot execute private.sync_invite_to_profile', not has_function_privilege('authenticated', 'private.sync_invite_to_profile()', 'execute'));
 select pg_temp.check('authenticated cannot execute private.set_updated_at', not has_function_privilege('authenticated', 'private.set_updated_at()', 'execute'));
 select pg_temp.fails('direct call to private.handle_new_user blocked', $$select private.handle_new_user()$$);

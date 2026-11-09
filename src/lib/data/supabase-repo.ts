@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
-import type { Contact, Customer, CustomerListItem, Job, JobView, Message, Milestone, Note, Person, Photo, Profile, Project, ProjectListItem } from "@/lib/types";
+import type { Contact, Customer, CustomerListItem, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 
 const iso = (t: string | null) => (t ? new Date(t).toISOString() : t); // normalise "+00:00" -> "Z" so string compares work
@@ -200,7 +200,8 @@ export function supabaseRepo(): Repo {
       const s = await db();
       const path = `${meta.project_id}/${meta.kind}/${crypto.randomUUID()}.jpg`;
       fail((await s.storage.from("photos").upload(path, file, { contentType: file.type || "image/jpeg", upsert: false })).error);
-      const { error } = await s.from("photos").insert({ ...meta, storage_path: path });
+      const row = { project_id: meta.project_id, job_id: meta.job_id, kind: meta.kind, caption: meta.caption, requirement_id: meta.requirement_id ?? null, storage_path: path };
+      const { error } = await s.from("photos").insert(row);
       if (error) { await s.storage.from("photos").remove([path]); fail(error); }
     },
     async deletePhoto(id) {
@@ -208,6 +209,29 @@ export function supabaseRepo(): Repo {
       const { data } = await s.from("photos").select("storage_path").eq("id", id).maybeSingle();
       fail((await s.from("photos").delete().eq("id", id)).error);
       if (data) await s.storage.from("photos").remove([data.storage_path]);
+    },
+    async listPhotoRequirements(projectId) {
+      const { data, error } = await (await db()).from("project_photo_requirements").select("*").eq("project_id", projectId).order("sort_order").order("created_at");
+      fail(error);
+      return (data ?? []) as PhotoRequirement[];
+    },
+    async addPhotoRequirement(projectId, input) {
+      const s = await db();
+      const { data: maxRow } = await s.from("project_photo_requirements").select("sort_order").eq("project_id", projectId).order("sort_order", { ascending: false }).limit(1).maybeSingle();
+      const sort_order = (maxRow?.sort_order ?? -1) + 1;
+      fail((await s.from("project_photo_requirements").insert({ project_id: projectId, label: input.label.trim(), note: input.note, sort_order })).error);
+    },
+    async updatePhotoRequirement(id, patch) {
+      fail((await (await db()).from("project_photo_requirements").update(patch).eq("id", id)).error);
+    },
+    async deletePhotoRequirement(id) {
+      fail((await (await db()).from("project_photo_requirements").delete().eq("id", id)).error);
+    },
+    async reorderPhotoRequirements(projectId, orderedIds) {
+      const s = await db();
+      for (let i = 0; i < orderedIds.length; i++) {
+        fail((await s.from("project_photo_requirements").update({ sort_order: i }).eq("id", orderedIds[i]).eq("project_id", projectId)).error);
+      }
     },
     async listNotes(f) {
       const s = await db();

@@ -11,7 +11,8 @@ const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const describe = (c: ReturnType<typeof findConflicts>) =>
   c.map(({ person, job }) => `${person.full_name} is already on “${job.title}” (${job.customer_name}) ${fmtDay(dayKey(job.starts_at))} ${fmtRange(job.starts_at, job.ends_at)}`);
 const refresh = (j: { id: string; project_id: string }) => {
-  revalidatePath(`/jobs/${j.id}`); revalidatePath(`/projects/${j.project_id}`); revalidatePath("/schedule"); revalidatePath("/");
+  revalidatePath(`/jobs/${j.id}`); revalidatePath(`/jobs/${j.id}/required-photos`);
+  revalidatePath(`/projects/${j.project_id}`); revalidatePath("/schedule"); revalidatePath("/");
 };
 
 async function conflictsFor(people: string[], starts: string, ends: string, exceptJob?: string) {
@@ -116,8 +117,18 @@ export async function submitJob(id: string) {
   const { repo, job, assigned, staff } = await load(id);
   if (!assigned && !staff) back(job, "You're not on this visit.", "error");
   if (job.status !== "in_progress") back(job, "Start the job first.", "error");
-  const [photos, notes] = await Promise.all([repo.listPhotos({ jobId: id, kind: "completion" }), repo.listNotes({ jobId: id })]);
-  if (!photos.length || !notes.length) back(job, "Add at least one completion photo and a note before submitting.", "error");
+  const [photos, notes, requirements] = await Promise.all([
+    repo.listPhotos({ jobId: id, kind: "completion" }),
+    repo.listNotes({ jobId: id }),
+    repo.listPhotoRequirements(job.project_id),
+  ]);
+  if (!notes.length) back(job, "Add a note before submitting.", "error");
+  if (requirements.length) {
+    const missing = requirements.filter((r) => !photos.some((p) => p.requirement_id === r.id)).map((r) => r.label);
+    if (missing.length) back(job, `Missing required photos: ${missing.join(", ")}.`, "error");
+  } else if (!photos.length) {
+    back(job, "Add at least one completion photo and a note before submitting.", "error");
+  }
   await attempt(job, () => repo.updateJob(id, { status: "completed", ...(staff ? { completed_at: new Date().toISOString() } : {}) }), "Submitted for review. Nice work!");
 }
 

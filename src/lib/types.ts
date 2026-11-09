@@ -103,7 +103,11 @@ export type JobView = Job & { project_name: string; project_type: ProjectType; c
 export type JobFilter = { from?: string; to?: string; projectId?: string; assignee?: string; status?: JobStatus[] };
 
 export type PhotoKind = "before" | "completion";
-export type Photo = { id: string; project_id: string; job_id: string | null; kind: PhotoKind; storage_path: string; caption: string | null; uploaded_by: string | null; created_at: string; url: string };
+export type PhotoRequirement = { id: string; project_id: string; label: string; note: string | null; sort_order: number; created_at: string };
+export type Photo = {
+  id: string; project_id: string; job_id: string | null; kind: PhotoKind; storage_path: string; caption: string | null;
+  requirement_id: string | null; uploaded_by: string | null; created_at: string; url: string;
+};
 export type Note = { id: string; customer_id: string | null; project_id: string | null; job_id: string | null; body: string; author_id: string | null; author_name: string; created_at: string };
 export type Message = {
   id: string; customer_id: string; project_id: string | null; channel: Channel; direction: "outbound" | "inbound";

@@ -25,13 +25,17 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   if (!job) notFound(); // RLS: techs only get jobs they're assigned to
   const staff = isStaff(user.role);
   const mine = job.assignees.some((a) => a.id === user.id);
-  const [project, contacts, before, done, notes] = await Promise.all([
+  const [project, contacts, before, done, notes, requirements] = await Promise.all([
     repo.getProject(job.project_id), repo.listContacts(job.customer_id),
     repo.listPhotos({ projectId: job.project_id, kind: "before" }), repo.listPhotos({ jobId: id, kind: "completion" }), repo.listNotes({ jobId: id }),
+    repo.listPhotoRequirements(job.project_id),
   ]);
   const contact = contacts.find((k) => k.is_primary) ?? contacts[0];
   const canWork = (mine || staff) && job.status === "in_progress";
-  const ready = done.length > 0 && notes.length > 0;
+  const reqDone = requirements.filter((r) => done.some((p) => p.requirement_id === r.id)).length;
+  const reqMissing = requirements.filter((r) => !done.some((p) => p.requirement_id === r.id));
+  const photosReady = requirements.length ? reqMissing.length === 0 : done.length > 0;
+  const ready = photosReady && notes.length > 0;
   const ok = typeof sp.ok === "string" ? sp.ok : null, error = typeof sp.error === "string" ? sp.error : null;
   const dirs = job.address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(job.address)}` : null;
 
@@ -75,7 +79,36 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
             <form action={startJob.bind(null, id)}><SubmitButton className="btn btn-accent w-full py-3 text-base" pendingText="Starting…"><Icon name="play" />Start job</SubmitButton></form>
           )}
 
-          {canWork && (
+          {canWork && requirements.length > 0 && (
+            <div className="card border-amber-300" data-testid="completion">
+              <div className="card-hd"><h3 className="font-semibold">Required photos</h3><span className="text-xs text-muted">{reqDone} of {requirements.length} done</span></div>
+              <div className="flex flex-col gap-3 p-4">
+                <div className="flex gap-1">
+                  {requirements.map((r) => {
+                    const ok = done.some((p) => p.requirement_id === r.id);
+                    return <div key={r.id} className={`h-2 flex-1 rounded-full ${ok ? "bg-green-500" : "bg-slate-200"}`} title={r.label} />;
+                  })}
+                </div>
+                {reqMissing.length > 0
+                  ? <p className="text-sm font-medium text-orange-700">{reqMissing.length === 1 ? `1 photo still needed: ${reqMissing[0].label}` : `${reqMissing.length} photos still needed: ${reqMissing.map((m) => m.label).join(", ")}`}</p>
+                  : <p className="text-sm font-medium text-green-700">All required photos captured</p>}
+                <ul className="flex flex-col gap-1 text-sm">
+                  <li className={notes.length ? "text-green-700" : "text-muted"}><Icon name={notes.length ? "check" : "note"} className="mr-1.5 inline size-4" />{notes.length ? `${notes.length} note${notes.length > 1 ? "s" : ""}` : "Add a note about the work done"}</li>
+                </ul>
+                <Link href={`/jobs/${id}/required-photos`} className="btn btn-primary w-full py-3 text-base"><Icon name="camera" />Open required photos</Link>
+                <form action={addJobNote.bind(null, id)} className="flex flex-col gap-2">
+                  <textarea name="body" required className="input min-h-20" placeholder="What did you do? Fixture counts, issues, anything the office should know…" aria-label="Note" />
+                  <SubmitButton className="btn self-start"><Icon name="note" />Add note</SubmitButton>
+                </form>
+                <form action={submitJob.bind(null, id)}>
+                  <SubmitButton className={`btn w-full py-3 text-base ${ready ? "btn-primary" : ""}`} pendingText="Submitting…"><Icon name="flag" />Mark complete &amp; submit for review</SubmitButton>
+                  {!ready && <p className="mt-1.5 text-center text-xs text-muted">{photosReady ? "Add a note before submitting." : "Capture every required photo and add a note."}</p>}
+                </form>
+              </div>
+            </div>
+          )}
+
+          {canWork && requirements.length === 0 && (
             <div className="card border-amber-300" data-testid="completion">
               <div className="card-hd"><h3 className="font-semibold">Finish this job</h3><span className="text-xs text-muted">photos + note required</span></div>
               <div className="flex flex-col gap-4 p-4">

@@ -42,3 +42,4 @@ next-env.d.ts
 .mock-db.json
 !.env.example
 .mock-uploads/
+supabase/.temp/
