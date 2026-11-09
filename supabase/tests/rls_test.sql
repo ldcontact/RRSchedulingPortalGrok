@@ -102,3 +102,22 @@ select pg_temp.check('admin role change syncs to profile', (select role from pro
 delete from invites where email='emily@outlook.com';
 select pg_temp.check('removing from team list revokes role', (select role from profiles where email='emily@outlook.com') is null);
 reset role;
+
+-- ---- privilege / schema hardening (private helpers)
+select pg_temp.check('private schema exists', exists (select 1 from pg_namespace where nspname='private'));
+select pg_temp.check('no public.is_admin helper', not exists (
+  select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where n.nspname='public' and p.proname in
+     ('is_admin','is_staff','is_member','current_user_role','is_assigned_to_job','can_see_project','can_see_customer','handle_new_user','guard_job_update','storage_project_id')));
+select pg_temp.check('private.is_admin exists', exists (
+  select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname='is_admin'));
+
+set role authenticated;
+select pg_temp.check('authenticated can execute private.is_staff (RLS helpers)', has_function_privilege('authenticated', 'private.is_staff()', 'execute'));
+select pg_temp.check('authenticated can execute private.is_assigned_to_job', has_function_privilege('authenticated', 'private.is_assigned_to_job(uuid)', 'execute'));
+select pg_temp.check('authenticated cannot execute private.handle_new_user', not has_function_privilege('authenticated', 'private.handle_new_user()', 'execute'));
+select pg_temp.check('authenticated cannot execute private.guard_job_update', not has_function_privilege('authenticated', 'private.guard_job_update()', 'execute'));
+select pg_temp.check('authenticated cannot execute private.sync_invite_to_profile', not has_function_privilege('authenticated', 'private.sync_invite_to_profile()', 'execute'));
+select pg_temp.check('authenticated cannot execute private.set_updated_at', not has_function_privilege('authenticated', 'private.set_updated_at()', 'execute'));
+select pg_temp.fails('direct call to private.handle_new_user blocked', $$select private.handle_new_user()$$);
+reset role;

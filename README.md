@@ -17,7 +17,7 @@ It is responsive and installs as a PWA on phones ("Add to Home Screen").
 | **Manager** | All business data (customers, projects, jobs, photos, notes). Cannot manage users or roles. |
 | **Field Tech** | Only jobs assigned to them, plus those projects' scope and *before* photos. Can upload *completion* photos and add notes on their own jobs, and move their job scheduled → in progress → completed. |
 
-These rules are enforced **in Postgres with RLS** (`supabase/migrations/…_init.sql`), not only in the UI.
+These rules are enforced **in Postgres with RLS** (`supabase/migrations/…_init.sql`), not only in the UI. Privileged helper and trigger functions live in a non-API `private` schema (not exposed by PostgREST); tables and enums stay in `public`.
 
 ## What's in the app
 

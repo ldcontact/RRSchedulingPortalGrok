@@ -1,11 +1,11 @@
 -- Phase 2: completion evidence rule + automatic project status.
 
 -- Techs must attach at least one completion photo and one note before submitting a job for review.
-create or replace function public.guard_job_update() returns trigger
+create or replace function private.guard_job_update() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if auth.uid() is null or public.is_staff() then return new; end if;
-  if not public.is_assigned_to_job(old.id) then raise exception 'not assigned to this job'; end if;
+  if auth.uid() is null or private.is_staff() then return new; end if;
+  if not private.is_assigned_to_job(old.id) then raise exception 'not assigned to this job'; end if;
   if new.project_id <> old.project_id or new.title <> old.title or new.starts_at <> old.starts_at
      or new.ends_at <> old.ends_at or new.instructions is distinct from old.instructions
      or new.approved_at is distinct from old.approved_at or new.approved_by is distinct from old.approved_by
@@ -31,7 +31,7 @@ end $$;
 -- Project status follows its visits (unless the project was cancelled):
 -- any submitted visit -> awaiting_review, any started -> in_progress, any scheduled -> scheduled,
 -- all approved -> complete.
-create or replace function public.sync_project_status() returns trigger
+create or replace function private.sync_project_status() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   pid uuid := coalesce(new.project_id, old.project_id);
@@ -53,8 +53,12 @@ begin
   return null;
 end $$;
 create trigger jobs_sync_project after insert or delete or update of status, project_id on public.jobs
-  for each row execute function public.sync_project_status();
+  for each row execute function private.sync_project_status();
 
 create index if not exists messages_customer_idx on public.messages (customer_id, created_at desc);
 create index if not exists notes_job_idx on public.notes (job_id);
-grant execute on all functions in schema public to authenticated;
+-- Keep private RLS helpers executable; do not blanket-grant public.
+revoke all on function private.guard_job_update() from public, anon, authenticated;
+revoke all on function private.sync_project_status() from public, anon, authenticated;
+grant execute on function private.is_staff() to authenticated, service_role;
+grant execute on function private.is_assigned_to_job(uuid) to authenticated, service_role;
