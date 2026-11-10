@@ -7,6 +7,7 @@ import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
+import { applySearch, parseSearch } from "@/lib/search";
 
 /** Search term safe inside a PostgREST or=() filter: quoted, without wildcard/grouping chars. */
 const searchTerm = (q: string | undefined) => {
@@ -19,7 +20,7 @@ const pageBounds = (page: number, size: number) => {
 };
 /** Only what a Projects-tab row shows (typed as string to skip deep select-type inference). */
 const PROJECT_PAGE_SELECT: string = "id, name, type, status, value, est_rebate, updated_at, customers(name, address, city, state, zip), milestones(done), jobs(starts_at, ends_at, status, completed_at, kind, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url)))";
-/** Most customer ids a project search will include by customer name (keeps the URL short). */
+/** Most customer ids the project picker search will include by customer name (keeps the URL short). */
 const MAX_CUSTOMER_MATCHES = 200;
 type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "address" | "city" | "state" | "zip" | "tags"> & { contacts: { name: string; is_primary: boolean }[] };
 const mapCustomers = (data: unknown[] | null): CustomerRow[] =>
@@ -116,11 +117,12 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     async pageCustomers(f) {
       const s = await db();
       const { p, n, from, to } = pageBounds(f.page, f.size ?? PAGE_SIZE);
-      const term = searchTerm(f.q);
-      const search = term ? `name.ilike.${term},city.ilike.${term},email.ilike.${term},phone.ilike.${term}` : null;
+      // name, company, contact names, email, address, phone (digits-only too): see src/lib/search.ts
+      const search = parseSearch(f.q);
+      const embed = search ? ", customer_search!inner()" : "";
       const run = (a: number, b: number) => {
-        let q = s.from("customers").select("id, name, phone, email, address, city, state, zip, tags, contacts(name, is_primary)", { count: "exact" });
-        if (search) q = q.or(search);
+        let q = s.from("customers").select(`id, name, phone, email, address, city, state, zip, tags, contacts(name, is_primary)${embed}`, { count: "exact" });
+        if (search) q = applySearch(q, "customer_search", search);
         q = f.sort === "newest" ? q.order("created_at", { ascending: false }) : q.order("name", { ascending: f.sort !== "name_desc" });
         return q.order("id").range(a, b);
       };
@@ -129,8 +131,8 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const { status } = first;
       if (status === 416 || error?.code === "PGRST103") { // page past the end (e.g. after a search): show the last page
         // A 416 response carries no count, so ask for it with a cheap head query.
-        let cq = s.from("customers").select("id", { count: "exact", head: true });
-        if (search) cq = cq.or(search);
+        let cq = s.from("customers").select(`id${embed}`, { count: "exact", head: true });
+        if (search) cq = applySearch(cq, "customer_search", search);
         const c = await cq;
         fail(c.error);
         count = c.count;
@@ -313,33 +315,22 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     async pageProjects(f) {
       const s = await db();
       const { p, n, from, to } = pageBounds(f.page, f.size ?? PAGE_SIZE);
-      const term = searchTerm(f.q);
-      let note: string | undefined;
-      let customerIds: string[] = [];
-      if (term) {
-        // PostgREST can't OR a parent column with an embedded one, so match customer names first.
-        const { data, error } = await s.from("customers").select("id").ilike("name", term.slice(1, -1)).order("name").limit(MAX_CUSTOMER_MATCHES + 1);
-        fail(error);
-        customerIds = (data ?? []).map((c) => c.id as string);
-        if (customerIds.length > MAX_CUSTOMER_MATCHES) {
-          customerIds = customerIds.slice(0, MAX_CUSTOMER_MATCHES);
-          note = `More than ${MAX_CUSTOMER_MATCHES} customers match “${f.q}”; customer-name matches are limited to the first ${MAX_CUSTOMER_MATCHES}. Refine the search to narrow it down.`;
-        }
-      }
-      const orFilter = term ? [`name.ilike.${term}`, `scope.ilike.${term}`, ...(customerIds.length ? [`customer_id.in.(${customerIds.join(",")})`] : [])].join(",") : null;
+      // project name/number/scope/site address + its customer's name, contacts, address, phone: see src/lib/search.ts
+      const search = parseSearch(f.q);
+      const embed = search ? ", project_search!inner()" : "";
       const head = { count: "exact", head: true } as const;
       const countsP = Promise.all((["active", ...PROJECT_STATUSES] as const).map(async (st) => {
-        let q = s.from("projects").select("id", head);
+        let q = s.from("projects").select(`id${embed}`, head);
         q = st === "active" ? q.neq("status", "cancelled") : q.eq("status", st);
-        if (orFilter) q = q.or(orFilter);
+        if (search) q = applySearch(q, "project_search", search);
         const { count, error } = await q;
         fail(error);
         return [st, count ?? 0] as const;
       }));
       const run = (a: number, b: number) => {
-        let q = s.from("projects").select(PROJECT_PAGE_SELECT, { count: "exact" });
+        let q = s.from("projects").select(PROJECT_PAGE_SELECT + embed, { count: "exact" });
         q = f.status ? q.eq("status", f.status) : q.neq("status", "cancelled");
-        if (orFilter) q = q.or(orFilter);
+        if (search) q = applySearch(q, "project_search", search);
         q = f.sort === "name" ? q.order("name") : f.sort === "value" ? q.order("value", { ascending: false }) : q.order(f.sort === "newest" ? "created_at" : "updated_at", { ascending: false });
         return q.order("id").range(a, b);
       };
@@ -371,7 +362,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const items: ProjectRow[] = rows.map((r) => ({
         ...r, team: r.team.map((x) => ({ id: x.id, full_name: x.full_name, color: x.color, avatar_url: resolveAvatarUrl(x, x.avatar_path ? signed.get(x.avatar_path) : null) })),
       }));
-      return { items, total: count ?? 0, page, size: n, counts: Object.fromEntries(await countsP), note };
+      return { items, total: count ?? 0, page, size: n, counts: Object.fromEntries(await countsP) };
     },
     async getProject(id) {
       const { data, error } = await (await db()).from("projects").select("*").eq("id", id).maybeSingle(); fail(error);

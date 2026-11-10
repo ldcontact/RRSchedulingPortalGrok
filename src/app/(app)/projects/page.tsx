@@ -7,6 +7,7 @@ import { Pager, pageParam } from "@/components/pager";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDay, fmtWhen, money } from "@/lib/time";
+import { PROJECT_SEARCH_HINT } from "@/lib/search";
 import { PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, type ProjectSort, type ProjectStatus } from "@/lib/types";
 
 const fmtDate = (iso: string | null) => (iso ? fmtDay(dayKey(iso), { month: "short", day: "numeric", year: "numeric" }) : "—");
@@ -40,7 +41,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
         {status && <input type="hidden" name="status" value={status} />}
         <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border border-line bg-white px-3 sm:basis-auto sm:max-w-md">
           <Icon name="search" className="size-4 text-muted" />
-          <input name="q" defaultValue={q} placeholder="Search project, customer, scope…" className="w-full bg-transparent py-2 text-sm outline-none" type="search" aria-label="Search projects" />
+          <input name="q" defaultValue={q} placeholder={PROJECT_SEARCH_HINT} className="w-full bg-transparent py-2 text-sm outline-none" type="search" aria-label="Search projects" />
         </div>
         <select name="sort" defaultValue={sort} className="input w-auto" aria-label="Sort projects">
           {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

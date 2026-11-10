@@ -6,6 +6,7 @@ import { Pager, pageParam } from "@/components/pager";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { formatAddress } from "@/lib/project-row";
+import { CUSTOMER_SEARCH_HINT } from "@/lib/search";
 import { PAGE_SIZE, type CustomerSort } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Customers" };
@@ -27,7 +28,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/custom
       <form className="mb-4 flex flex-wrap gap-2" role="search">
         <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border border-line bg-white px-3 sm:basis-auto sm:max-w-md">
           <Icon name="search" className="size-4 text-muted" />
-          <input name="q" defaultValue={query} placeholder="Search name, city, phone, email…" className="w-full bg-transparent py-2 text-sm outline-none" type="search" aria-label="Search customers" />
+          <input name="q" defaultValue={query} placeholder={CUSTOMER_SEARCH_HINT} className="w-full bg-transparent py-2 text-sm outline-none" type="search" aria-label="Search customers" />
         </div>
         <select name="sort" defaultValue={sort} className="input w-auto" aria-label="Sort customers">
           {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

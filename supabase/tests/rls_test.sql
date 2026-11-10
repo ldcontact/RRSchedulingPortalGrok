@@ -352,3 +352,46 @@ set role authenticated;
 select pg_temp.check('authenticated cannot execute private.sync_service_request', not has_function_privilege('authenticated', 'private.sync_service_request()', 'execute'));
 reset role;
 select pg_temp.check('anon has no access to tickets', not has_table_privilege('anon', 'public.service_requests', 'select') and not has_table_privilege('anon', 'public.service_request_list', 'select'));
+
+-- ---- search side tables (customer_search / project_search)
+select pg_temp.as_user(null);
+insert into contacts (customer_id, name, phone, email) values ('10000000-0000-0000-0000-000000000001','Priya Nair','+1 (847) 555-0174','priya@lakeview.example');
+update customers set address='1420 W Algonquin Rd', city='Arlington Heights', state='IL', zip='60005', phone='630.555.0127' where id='10000000-0000-0000-0000-000000000001';
+select pg_temp.check('every customer has a search row', (select count(*) from customers) = (select count(*) from customer_search));
+select pg_temp.check('every project has a search row', (select count(*) from projects) = (select count(*) from project_search));
+select pg_temp.check('customer doc has name, contact and address', (select doc like '%lakeview dental%' and doc like '%priya nair%' and doc like '%1420 w algonquin rd%' and doc like '%60005%' from customer_search where customer_id='10000000-0000-0000-0000-000000000001'));
+select pg_temp.check('phones stored digits-only, US 1 dropped', (select digits like '%8475550174%' and digits like '%6305550127%' and digits not like '%18475550174%' from customer_search where customer_id='10000000-0000-0000-0000-000000000001'));
+select pg_temp.check('project search carries its customer contact + phone', (select doc like '%priya nair%' and doc like '%led troffers%' and digits like '%8475550174%' from project_search where project_id='20000000-0000-0000-0000-000000000001'));
+select pg_temp.check('dashed / spaced / bare phone queries all match', (select count(*) from customer_search where digits ilike '%' || private.phone_digits('847-555-0174') || '%') = 1
+  and (select count(*) from customer_search where digits ilike '%' || private.phone_digits('(847) 555 0174') || '%') = 1
+  and (select count(*) from customer_search where digits ilike '%5550174%') = 1);
+create temp table _upd as select id, updated_at from projects;
+update contacts set name='Priya Nair-Shah' where name='Priya Nair';
+select pg_temp.check('contact rename refreshes customer + project search', (select doc like '%nair-shah%' from customer_search where customer_id='10000000-0000-0000-0000-000000000001')
+  and (select doc like '%nair-shah%' from project_search where project_id='20000000-0000-0000-0000-000000000001'));
+select pg_temp.check('search refresh never bumps projects.updated_at', not exists (select 1 from projects p join _upd u using (id) where p.updated_at <> u.updated_at));
+update projects set name='LED Troffers Phase 2' where id='20000000-0000-0000-0000-000000000001';
+select pg_temp.check('project rename refreshes project search', (select doc like '%phase 2%' from project_search where project_id='20000000-0000-0000-0000-000000000001'));
+delete from contacts where name='Priya Nair-Shah';
+select pg_temp.check('contact delete refreshes search', (select doc not like '%nair-shah%' and digits not like '%8475550174%' from customer_search where customer_id='10000000-0000-0000-0000-000000000001'));
+insert into customers (id, name, phone) values ('10000000-0000-0000-0000-0000000000f1','Search Test Co','(224) 555-0101');
+update profiles set role='tech', active=true where id='00000000-0000-0000-0000-00000000000d'; -- Emily: make sure she is a tech here
+select pg_temp.check('new customer gets a search row', (select digits='2245550101' from customer_search where customer_id='10000000-0000-0000-0000-0000000000f1'));
+-- techs see exactly the search rows of what they can already see; nobody can write the tables
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d'); -- Emily tech
+select pg_temp.check('tech is not staff', not private.is_staff() and (select count(*) from customers) < 4);
+select pg_temp.check('tech customer_search = visible customers', (select coalesce(array_agg(customer_id order by customer_id), '{}') from customer_search) = (select coalesce(array_agg(id order by id), '{}') from customers));
+select pg_temp.check('tech project_search = visible projects', (select coalesce(array_agg(project_id order by project_id), '{}') from project_search) = (select coalesce(array_agg(id order by id), '{}') from projects));
+select pg_temp.check('tech cannot see unassigned customer search rows', not exists (select 1 from customer_search where customer_id='10000000-0000-0000-0000-0000000000f1'));
+select pg_temp.fails('tech cannot write customer_search', $$update customer_search set doc='x'$$);
+select pg_temp.fails('tech cannot insert project_search', $$insert into project_search (project_id, customer_id) values ('20000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000002')$$);
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager
+select pg_temp.check('staff see all search rows', (select count(*) from customer_search) = (select count(*) from customers) and (select count(*) from project_search) = (select count(*) from projects));
+select pg_temp.fails('staff cannot write project_search directly', $$delete from project_search$$);
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-000000000099'); -- signed-in id with no profile/role
+select pg_temp.check('stranger sees no search rows', (select count(*) from customer_search) = 0 and (select count(*) from project_search) = 0);
+reset role;
+select pg_temp.check('anon has no access to search tables', not has_table_privilege('anon', 'public.customer_search', 'select') and not has_table_privilege('anon', 'public.project_search', 'select'));
+select pg_temp.check('authenticated cannot run search refresh', not has_function_privilege('authenticated', 'private.refresh_customer_search(uuid[])', 'execute'));

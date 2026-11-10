@@ -161,7 +161,7 @@ export const TOOLS = {
 
   search_customers: tool({
     title: "Search customers",
-    description: "One page (50) of the Customers list. Search matches name, city, phone, or email. Admin and manager only.",
+    description: "One page (50) of the Customers list. Search matches customer name or company, contact first/last name, email, address (street, city, state, zip) and phone (any format, digits-only; 4+ digits match partially). Words are matched separately. Admin and manager only.",
     input: z.object({
       query: z.string().max(100).optional().describe("Search text"),
       sort: z.enum(["newest", "name_asc", "name_desc"]).optional().describe("newest first (default), name A–Z, or name Z–A"),
@@ -207,7 +207,7 @@ export const TOOLS = {
 
   search_projects: tool({
     title: "Search projects",
-    description: "One page (50) of the Projects list with per-status counts. Search matches project name, scope, or customer name. Default status is all active (everything but cancelled). Admin and manager only.",
+    description: "One page (50) of the Projects list with per-status counts. Search matches project name, HCP job number, scope, job-site address, plus the customer name, contact names, address and phone (any format). Default status is all active (everything but cancelled). Admin and manager only.",
     input: z.object({
       query: z.string().max(100).optional().describe("Search text"),
       status: z.enum(["active", ...PROJECT_STATUSES]).optional().describe("active (default) or one status"),

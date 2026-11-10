@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
+import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
 import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
 import { PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
@@ -333,13 +334,17 @@ const colorOf = (db: DB, id: string | null) => authorColor(profileOf(db, id));
 export const mockRepo: Repo = {
   async listCustomers(q) {
     const db = load();
-    const term = q?.toLowerCase().trim();
+    const search = parseSearch(q); // same rules as the customer_search table: src/lib/search.ts
     return db.customers
+      .filter((c) => {
+        if (!search) return true;
+        const { doc, digits } = customerSearchFields(c, db.contacts.filter((x) => x.customer_id === c.id));
+        return matchesSearch(doc, digits, search);
+      })
       .map((c) => {
         const cs = db.contacts.filter((x) => x.customer_id === c.id);
         return { ...c, primary_contact: cs.find((x) => x.is_primary)?.name ?? cs[0]?.name ?? null, project_count: db.projects.filter((p) => p.customer_id === c.id).length };
       })
-      .filter((c) => !term || [c.name, c.city, c.email, c.phone, c.primary_contact, ...c.tags].join(" ").toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name));
   },
   async pageCustomers(f) {
@@ -490,10 +495,19 @@ export const mockRepo: Repo = {
   // ---------------------------------------------------------------- phase 2
   async listProjects(f = {}) {
     const w = await who(); const db = load();
-    const term = f.q?.toLowerCase().trim();
+    const search = parseSearch(f.q); // same rules as the project_search table: src/lib/search.ts
+    const custFields = new Map<string, { doc: string; digits: string }>();
+    const fieldsOf = (cid: string) => {
+      if (!custFields.has(cid)) {
+        const c = db.customers.find((x) => x.id === cid);
+        custFields.set(cid, c ? customerSearchFields(c, db.contacts.filter((x) => x.customer_id === cid)) : { doc: "", digits: "" });
+      }
+      return custFields.get(cid)!;
+    };
     const nowIso = now();
     return db.projects
       .filter((p) => w.canProject(p.id) && (!f.status || p.status === f.status) && (!f.customerId || p.customer_id === f.customerId))
+      .filter((p) => { if (!search) return true; const s = projectSearchFields(p, fieldsOf(p.customer_id)); return matchesSearch(s.doc, s.digits, search); })
       .map((p) => {
         const jobs = db.jobs.filter((j) => j.project_id === p.id && j.status !== "cancelled");
         const team = new Map<string, { id: string; full_name: string; color: string; avatar_url?: string | null }>();
@@ -505,7 +519,6 @@ export const mockRepo: Repo = {
           team: [...team.values()], done_milestones: ms.filter((m) => m.done).length, total_milestones: ms.length,
         };
       })
-      .filter((p) => !term || `${p.name} ${p.customer_name} ${p.scope}`.toLowerCase().includes(term))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   },
   async pageProjects(f) {
