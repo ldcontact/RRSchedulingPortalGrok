@@ -5,7 +5,9 @@ import { updateSession } from "@/lib/supabase/proxy";
 // Optimistic check only: sends signed-out visitors to /login and keeps the
 // Supabase session fresh. Real authorization happens in requireRole() on every
 // page/action and in Postgres row-level security.
-const PUBLIC = ["/login", "/forgot-password", "/auth/", "/not-invited", "/account/password", "/offline"];
+// /api/mcp checks its own bearer token; /.well-known is OAuth metadata; /oauth/consent sends
+// signed-out visitors to /login?next=… itself so they come back to the consent screen.
+const PUBLIC = ["/login", "/forgot-password", "/auth/", "/not-invited", "/account/password", "/offline", "/api/mcp", "/.well-known/", "/oauth/"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

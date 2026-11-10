@@ -64,8 +64,11 @@ async function attachPersonAvatars(s: Awaited<ReturnType<typeof createClient>>, 
 }
 
 
-export function supabaseRepo(): Repo {
-  const db = createClient;
+/** Supabase client acting as one user (cookie session on the website, bearer token on /api/mcp). */
+export type UserDb = Awaited<ReturnType<typeof createClient>>;
+
+/** Default: the signed-in user's cookie session. Pass another factory (e.g. a bearer-token client) to reuse the same logic. */
+export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
   return {
     async listCustomers(q) {
       const s = await db();

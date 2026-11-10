@@ -5,7 +5,7 @@ import { signInWithPassword } from "@/app/auth-actions";
 import { GoogleLogo, Icon } from "@/components/icons";
 import { createClient } from "@/lib/supabase/client";
 
-export function LoginForm({ mock, error }: { mock: boolean; error?: string }) {
+export function LoginForm({ mock, error, next = "/" }: { mock: boolean; error?: string; next?: string }) {
   const [state, action, pending] = useActionState(signInWithPassword, undefined);
   const [gErr, setGErr] = useState<string | null>(null);
   const [gPending, setGPending] = useState(false);
@@ -16,7 +16,7 @@ export function LoginForm({ mock, error }: { mock: boolean; error?: string }) {
     const { error } = await createClient().auth.signInWithOAuth({
       provider: "google",
       // Standard consumer Google sign-in: any Google account, no hosted-domain (hd) restriction.
-      options: { redirectTo: `${location.origin}/auth/callback?next=/`, queryParams: { prompt: "select_account" } },
+      options: { redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}`, queryParams: { prompt: "select_account" } },
     });
     if (error) { setGErr(error.message); setGPending(false); }
   }
@@ -29,6 +29,7 @@ export function LoginForm({ mock, error }: { mock: boolean; error?: string }) {
       </button>
       <div className="flex items-center gap-3 text-xs text-muted"><div className="h-px flex-1 bg-line" />or use email<div className="h-px flex-1 bg-line" /></div>
       <form action={action} className="flex flex-col gap-3">
+        {next !== "/" && <input type="hidden" name="next" value={next} />}
         <label className="label">Email<input className="input" name="email" type="email" autoComplete="email" required placeholder="you@example.com" /></label>
         <label className="label">
           <span className="flex justify-between">Password<Link href="/forgot-password" className="font-semibold text-brand">Forgot password?</Link></span>

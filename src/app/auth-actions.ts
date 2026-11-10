@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { MOCK_MODE, assertMockAllowed } from "@/lib/env";
 import { MOCK_COOKIE } from "@/lib/auth";
-import { siteUrl } from "@/lib/site";
+import { safeNext, siteUrl } from "@/lib/site";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
@@ -16,7 +16,7 @@ export async function signInWithPassword(_: FormState, fd: FormData): Promise<Fo
   const { createClient } = await import("@/lib/supabase/server");
   const { error } = await (await createClient()).auth.signInWithPassword({ email, password });
   if (error) return { error: error.message === "Email not confirmed" ? "Please confirm your email first (check your inbox)." : "That email and password don't match. Try again, or use “Forgot password”." };
-  redirect("/");
+  redirect(safeNext(String(fd.get("next") ?? ""), "/"));
 }
 
 /** "Forgot password" and "set my password" both send a reset link. */

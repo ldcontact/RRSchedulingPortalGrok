@@ -3,6 +3,8 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { MOCK_MODE, assertMockAllowed } from "@/lib/env";
+import type { User } from "@supabase/supabase-js";
+import type { UserDb } from "@/lib/data/supabase-repo";
 import type { Role, SessionUser } from "@/lib/types";
 
 export const MOCK_COOKIE = "rr_mock_uid";
@@ -24,10 +26,15 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     };
   }
   const { createClient } = await import("@/lib/supabase/server");
-  const { resolveAvatarUrl } = await import("@/lib/avatar");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
+  return sessionFromClient(supabase, user);
+});
+
+/** Profile + role for an already-verified auth user, read through that user's own (RLS) client. */
+async function sessionFromClient(supabase: UserDb, user: User): Promise<SessionUser | null> {
+  const { resolveAvatarUrl } = await import("@/lib/avatar");
   const { data: p } = await supabase.from("profiles").select("full_name, role, color, active, deleted_at, avatar_source, avatar_path, google_avatar_url").eq("id", user.id).maybeSingle();
   if (p?.deleted_at) return null;
   let avatar_url: string | null = null;
@@ -49,7 +56,20 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     google_avatar_url: p?.google_avatar_url,
     avatar_url,
   };
-});
+}
+
+/**
+ * The user behind a Supabase access token (MCP bearer token). The token is verified
+ * by Supabase Auth (getUser), then the profile is read as that user. Null if invalid.
+ */
+export async function getSessionUserForToken(accessToken: string): Promise<SessionUser | null> {
+  if (MOCK_MODE) return null; // MCP needs real Supabase auth
+  const { createTokenClient } = await import("@/lib/supabase/token");
+  const supabase = createTokenClient(accessToken);
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+  if (error || !user) return null;
+  return sessionFromClient(supabase, user);
+}
 
 /** Require a signed-in team member; otherwise send to login or the "not invited" screen. */
 export async function requireMember(): Promise<SessionUser & { role: Role }> {

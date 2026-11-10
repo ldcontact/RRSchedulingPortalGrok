@@ -128,3 +128,13 @@ export function mergeTeam(
   const order = { admin: 0, manager: 1, tech: 2 } as const;
   return [...byEmail.values()].sort((a, b) => (order[a.role ?? "tech"] - order[b.role ?? "tech"]) || a.full_name.localeCompare(b.full_name));
 }
+
+/**
+ * Same Supabase repo as getRepo(), but acting as the owner of a Supabase access token
+ * (used by /api/mcp, which has no cookies). RLS stays in force; never the service role.
+ */
+export async function getRepoForToken(accessToken: string): Promise<Repo> {
+  const [{ supabaseRepo }, { createTokenClient }] = await Promise.all([import("./supabase-repo"), import("@/lib/supabase/token")]);
+  const client = createTokenClient(accessToken);
+  return supabaseRepo(async () => client);
+}
