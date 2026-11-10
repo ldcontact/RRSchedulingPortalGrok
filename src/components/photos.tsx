@@ -82,7 +82,10 @@ export function PhotoGrid({ photos, canDelete = false, empty, jobId, projectId }
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={open.url} alt={open.caption ?? "Photo"} className="max-h-[78vh] w-full rounded-lg object-contain" />
             <div className="flex items-center gap-2 text-sm text-white">
-              <span className="flex-1">{open.caption}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{open.caption}</span>
+                <span className="block text-xs text-white/70">Uploaded by {open.uploader_name}</span>
+              </span>
               {canDelete && <button className="btn btn-sm btn-danger" onClick={async () => { await deletePhoto(open.id, { jobId: jobId ?? open.job_id, projectId: projectId ?? open.project_id }); setOpen(null); router.refresh(); }}><Icon name="trash" />Delete</button>}
               <button className="btn btn-sm" onClick={() => setOpen(null)}><Icon name="x" />Close</button>
             </div>

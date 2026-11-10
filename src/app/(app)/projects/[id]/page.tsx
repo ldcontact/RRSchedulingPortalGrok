@@ -147,7 +147,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <div className="card">
               <div className="card-hd"><h3 className="font-semibold">Field notes</h3><span className="text-xs text-muted">{notes.length}</span></div>
               <ol className="divide-y divide-line">
-                {notes.map((n) => <li key={n.id} className="px-4 py-3 text-sm"><div className="text-xs text-muted">{n.author_name} · {fmtDateTime(n.created_at)}</div><div className="whitespace-pre-wrap">{n.body}</div></li>)}
+                {notes.map((n) => <li key={n.id} className="flex gap-2.5 px-4 py-3 text-sm"><Avatar name={n.author_name} color={n.author_color} size="sm" /><div className="min-w-0 flex-1"><div className="text-xs text-muted">{n.author_name} · {fmtDateTime(n.created_at)}</div><div className="whitespace-pre-wrap">{n.body}</div></div></li>)}
               </ol>
             </div>
           )}

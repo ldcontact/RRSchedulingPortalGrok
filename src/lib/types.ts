@@ -121,12 +121,15 @@ export type PhotoKind = "before" | "completion";
 export type PhotoRequirement = { id: string; project_id: string; label: string; note: string | null; sort_order: number; created_at: string };
 export type Photo = {
   id: string; project_id: string; job_id: string | null; kind: PhotoKind; storage_path: string; caption: string | null;
-  requirement_id: string | null; uploaded_by: string | null; created_at: string; url: string;
+  requirement_id: string | null; uploaded_by: string | null; uploader_name: string; uploader_color: string; created_at: string; url: string;
 };
-export type Note = { id: string; customer_id: string | null; project_id: string | null; job_id: string | null; body: string; author_id: string | null; author_name: string; created_at: string };
+export type Note = {
+  id: string; customer_id: string | null; project_id: string | null; job_id: string | null; body: string;
+  author_id: string | null; author_name: string; author_color: string; created_at: string;
+};
 export type Message = {
   id: string; customer_id: string; project_id: string | null; channel: Channel; direction: "outbound" | "inbound";
-  subject: string | null; body: string; sent_by: string | null; sender_name: string; created_at: string;
+  subject: string | null; body: string; sent_by: string | null; sender_name: string; sender_color: string; created_at: string;
 };
 export type MessageInput = Pick<Message, "customer_id" | "project_id" | "channel" | "direction" | "subject" | "body">;
 export type Counts = { customers: number; team: number; invited: number; activeProjects: number; jobsToday: number; awaitingReview: number; proposed: number };

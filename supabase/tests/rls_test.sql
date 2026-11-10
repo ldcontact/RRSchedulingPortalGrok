@@ -226,6 +226,35 @@ update profiles set active=false where id='00000000-0000-0000-0000-00000000000a'
 select pg_temp.check('manager cannot suspend admin via RLS', (select active from profiles where id='00000000-0000-0000-0000-00000000000a')=true);
 reset role;
 
+
+-- ---- author attribution (force actor on insert; no spoofing)
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager
+insert into messages (customer_id, channel, direction, body, sent_by)
+  values ('10000000-0000-0000-0000-000000000001','call','inbound','Customer called about access', '00000000-0000-0000-0000-00000000000a');
+select pg_temp.check('message sent_by forced to auth.uid (spoof blocked)',
+  (select sent_by = auth.uid() from messages where body='Customer called about access' order by created_at desc limit 1));
+insert into notes (project_id, body, author_id)
+  values ('20000000-0000-0000-0000-000000000001','Office follow-up note', '00000000-0000-0000-0000-00000000000a');
+select pg_temp.check('note author_id forced to auth.uid (spoof blocked)',
+  (select author_id = auth.uid() from notes where body='Office follow-up note' order by created_at desc limit 1));
+insert into photos (project_id, kind, storage_path, uploaded_by)
+  values ('20000000-0000-0000-0000-000000000001','before','20000000-0000-0000-0000-000000000001/before/spoof.jpg','00000000-0000-0000-0000-00000000000a');
+select pg_temp.check('photo uploaded_by forced to auth.uid (spoof blocked)',
+  (select uploaded_by = auth.uid() from photos where storage_path like '%/spoof.jpg'));
+-- default path (omit actor column) also stamps auth.uid()
+insert into messages (customer_id, channel, direction, body)
+  values ('10000000-0000-0000-0000-000000000001','note','outbound','Logged without sent_by');
+select pg_temp.check('message sent_by defaults via trigger',
+  (select sent_by = auth.uid() from messages where body='Logged without sent_by'));
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c'); -- Carlos tech on job 1
+insert into notes (job_id, body, author_id)
+  values ('30000000-0000-0000-0000-000000000001','Tech note with spoofed author', '00000000-0000-0000-0000-00000000000a');
+select pg_temp.check('tech note author_id forced to self',
+  (select author_id = auth.uid() from notes where body='Tech note with spoofed author'));
+reset role;
+
 -- ---- privilege / schema hardening (private helpers)
 select pg_temp.check('private schema exists', exists (select 1 from pg_namespace where nspname='private'));
 select pg_temp.check('no public.is_admin helper', not exists (
@@ -243,5 +272,6 @@ select pg_temp.check('authenticated cannot execute private.guard_job_update', no
 select pg_temp.check('authenticated cannot execute private.guard_photo_requirement', not has_function_privilege('authenticated', 'private.guard_photo_requirement()', 'execute'));
 select pg_temp.check('authenticated cannot execute private.sync_invite_to_profile', not has_function_privilege('authenticated', 'private.sync_invite_to_profile()', 'execute'));
 select pg_temp.check('authenticated cannot execute private.set_updated_at', not has_function_privilege('authenticated', 'private.set_updated_at()', 'execute'));
+select pg_temp.check('authenticated cannot execute private.force_row_actor', not has_function_privilege('authenticated', 'private.force_row_actor()', 'execute'));
 select pg_temp.fails('direct call to private.handle_new_user blocked', $$select private.handle_new_user()$$);
 reset role;

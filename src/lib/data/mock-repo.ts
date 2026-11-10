@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectStatus } from "@/lib/types";
 import { resolveAvatarUrl } from "@/lib/avatar";
+import { authorColor, authorLabel } from "@/lib/author";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 
 /*
@@ -13,9 +14,9 @@ import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
  * (git-ignored). Delete that file to reset the sample data. Never used when
  * NEXT_PUBLIC_RR_MOCK_MODE is unset.
  */
-type PhotoRow = Omit<Photo, "url">;
-type NoteRow = Omit<Note, "author_name">;
-type MessageRow = Omit<Message, "sender_name">;
+type PhotoRow = Omit<Photo, "url" | "uploader_name" | "uploader_color">;
+type NoteRow = Omit<Note, "author_name" | "author_color">;
+type MessageRow = Omit<Message, "sender_name" | "sender_color">;
 type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[] };
 type MockProfile = Profile & { deleted_at?: string | null };
 type AuditRow = { id: string; actor_id: string; action: string; target_email: string | null; target_profile_id: string | null; detail: Record<string, unknown>; created_at: string };
@@ -210,7 +211,9 @@ function viewJob(db: DB, j: Job): JobView {
     }));
   return { ...j, project_name: p.name, project_type: p.type, customer_id: p.customer_id, customer_name: c?.name ?? "", address: addr || null, assignees };
 }
-const nameOf = (db: DB, id: string | null) => db.profiles.find((p) => p.id === id)?.full_name ?? "Someone";
+const profileOf = (db: DB, id: string | null) => (id ? db.profiles.find((p) => p.id === id) ?? null : null);
+const labelOf = (db: DB, id: string | null) => authorLabel(id, profileOf(db, id));
+const colorOf = (db: DB, id: string | null) => authorColor(profileOf(db, id));
 
 export const mockRepo: Repo = {
   async listCustomers(q) {
@@ -472,7 +475,12 @@ export const mockRepo: Repo = {
       .filter((p) => (!f.projectId || p.project_id === f.projectId) && (!f.jobId || p.job_id === f.jobId) && (!f.kind || p.kind === f.kind))
       .filter((p) => w.staff || (p.kind === "before" && w.canProject(p.project_id)) || (p.job_id && w.canJob(p.job_id)))
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((p) => ({ ...p, url: `/api/mock-photo/${p.storage_path}` }));
+      .map((p) => ({
+        ...p,
+        url: `/api/mock-photo/${p.storage_path}`,
+        uploader_name: labelOf(db, p.uploaded_by),
+        uploader_color: colorOf(db, p.uploaded_by),
+      }));
   },
   async addPhoto(meta, file) {
     const w = await who();
@@ -547,7 +555,7 @@ export const mockRepo: Repo = {
       .filter((n) => (f.jobId ? n.job_id === f.jobId : (n.project_id === f.projectId || (n.job_id && jobIds?.has(n.job_id)))))
       .filter((n) => w.staff || (n.job_id && w.canJob(n.job_id)))
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((n) => ({ ...n, author_name: nameOf(db, n.author_id) }));
+      .map((n) => ({ ...n, author_name: labelOf(db, n.author_id), author_color: colorOf(db, n.author_id) }));
   },
   async addNote(n) {
     const w = await who();
@@ -558,7 +566,7 @@ export const mockRepo: Repo = {
     const w = await who(); if (!w.staff) return [];
     const db = load();
     return db.messages.filter((m) => (!f.customerId || m.customer_id === f.customerId) && (!f.projectId || m.project_id === f.projectId))
-      .sort((a, b) => b.created_at.localeCompare(a.created_at)).map((m) => ({ ...m, sender_name: nameOf(db, m.sent_by) }));
+      .sort((a, b) => b.created_at.localeCompare(a.created_at)).map((m) => ({ ...m, sender_name: labelOf(db, m.sent_by), sender_color: colorOf(db, m.sent_by) }));
   },
   async logMessage(m) {
     const w = await who(); requireStaffMock(w);

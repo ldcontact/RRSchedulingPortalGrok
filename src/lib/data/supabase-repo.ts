@@ -4,6 +4,7 @@ import { mergeTeam, type Repo } from "./repo";
 import type { AvatarSource, Contact, Customer, CustomerListItem, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
+import { authorColor, authorLabel } from "@/lib/author";
 
 const iso = (t: string | null) => (t ? new Date(t).toISOString() : t); // normalise "+00:00" -> "Z" so string compares work
 const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip)), job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))";
@@ -310,16 +311,22 @@ export function supabaseRepo(): Repo {
     },
     async listPhotos(f) {
       const s = await db();
-      let q = s.from("photos").select("*").order("created_at");
+      let q = s.from("photos").select("*, profiles:uploaded_by(full_name, color, deleted_at)").order("created_at");
       if (f.projectId) q = q.eq("project_id", f.projectId);
       if (f.jobId) q = q.eq("job_id", f.jobId);
       if (f.kind) q = q.eq("kind", f.kind);
       const { data, error } = await q; fail(error);
-      const rows = (data ?? []) as Omit<Photo, "url">[];
+      type PhotoJoin = Omit<Photo, "url" | "uploader_name" | "uploader_color"> & { profiles: { full_name: string; color: string; deleted_at: string | null } | null };
+      const rows = (data ?? []) as PhotoJoin[];
       if (!rows.length) return [];
       const { data: signed } = await s.storage.from("photos").createSignedUrls(rows.map((r) => r.storage_path), 3600);
       const urls = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
-      return rows.map((r) => ({ ...r, url: urls.get(r.storage_path) ?? "" }));
+      return rows.map(({ profiles, ...r }) => ({
+        ...r,
+        url: urls.get(r.storage_path) ?? "",
+        uploader_name: authorLabel(r.uploaded_by, profiles),
+        uploader_color: authorColor(profiles),
+      }));
     },
     async addPhoto(meta, file) {
       const s = await db();
@@ -360,7 +367,7 @@ export function supabaseRepo(): Repo {
     },
     async listNotes(f) {
       const s = await db();
-      let q = s.from("notes").select("*, profiles:author_id(full_name)").order("created_at");
+      let q = s.from("notes").select("*, profiles:author_id(full_name, color, deleted_at)").order("created_at");
       if (f.jobId) q = q.eq("job_id", f.jobId);
       else if (f.projectId) {
         const { data: js } = await s.from("jobs").select("id").eq("project_id", f.projectId);
@@ -368,15 +375,25 @@ export function supabaseRepo(): Repo {
         q = q.or(`project_id.eq.${f.projectId}${ids.length ? `,job_id.in.(${ids.join(",")})` : ""}`);
       }
       const { data, error } = await q; fail(error);
-      return ((data ?? []) as (Omit<Note, "author_name"> & { profiles: { full_name: string } | null })[]).map(({ profiles, ...n }) => ({ ...n, author_name: profiles?.full_name ?? "Someone" }));
+      type NoteJoin = Omit<Note, "author_name" | "author_color"> & { profiles: { full_name: string; color: string; deleted_at: string | null } | null };
+      return ((data ?? []) as NoteJoin[]).map(({ profiles, ...n }) => ({
+        ...n,
+        author_name: authorLabel(n.author_id, profiles),
+        author_color: authorColor(profiles),
+      }));
     },
     async addNote(n) { fail((await (await db()).from("notes").insert({ job_id: n.job_id ?? null, project_id: n.project_id ?? null, customer_id: n.customer_id ?? null, body: n.body })).error); },
     async listMessages(f) {
-      let q = (await db()).from("messages").select("*, profiles:sent_by(full_name)").order("created_at", { ascending: false });
+      let q = (await db()).from("messages").select("*, profiles:sent_by(full_name, color, deleted_at)").order("created_at", { ascending: false });
       if (f.customerId) q = q.eq("customer_id", f.customerId);
       if (f.projectId) q = q.eq("project_id", f.projectId);
       const { data, error } = await q; fail(error);
-      return ((data ?? []) as (Omit<Message, "sender_name"> & { profiles: { full_name: string } | null })[]).map(({ profiles, ...m }) => ({ ...m, sender_name: profiles?.full_name ?? "Someone" }));
+      type MsgJoin = Omit<Message, "sender_name" | "sender_color"> & { profiles: { full_name: string; color: string; deleted_at: string | null } | null };
+      return ((data ?? []) as MsgJoin[]).map(({ profiles, ...m }) => ({
+        ...m,
+        sender_name: authorLabel(m.sent_by, profiles),
+        sender_color: authorColor(profiles),
+      }));
     },
     async softDeleteMember(profileId, actorId) {
       const s = await db();

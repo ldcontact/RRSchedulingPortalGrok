@@ -1,10 +1,18 @@
 import { Icon } from "./icons";
+import { Avatar } from "./ui";
 import { SubmitButton } from "./submit-button";
 import { fmtDateTime } from "@/lib/time";
 import { CHANNEL_LABEL, type Channel, type Message } from "@/lib/types";
 import { logCustomerMessage } from "@/app/(app)/customers/actions";
 
 const CH_ICON: Record<Channel, string> = { call: "phone", text: "text", email: "mail", timeline: "calendar", note: "note" };
+
+function messageAttribution(m: Message) {
+  if (m.direction === "inbound") {
+    return `from customer · logged by ${m.sender_name}`;
+  }
+  return `by ${m.sender_name}`;
+}
 
 export function MessageLog({ messages, customerId, projectId = null }: { messages: Message[]; customerId: string; projectId?: string | null }) {
   return (
@@ -28,7 +36,13 @@ export function MessageLog({ messages, customerId, projectId = null }: { message
           <li key={m.id} className="flex gap-3 px-4 py-3">
             <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${m.direction === "inbound" ? "bg-sky-100 text-sky-700" : "bg-brand-50 text-brand"}`}><Icon name={CH_ICON[m.channel]} className="size-3.5" /></span>
             <div className="min-w-0 flex-1 text-sm">
-              <div className="flex flex-wrap items-baseline gap-x-2"><span className="font-semibold">{CHANNEL_LABEL[m.channel]}</span><span className="text-xs text-muted">{m.direction === "inbound" ? "from customer" : `by ${m.sender_name}`} · {fmtDateTime(m.created_at)}</span></div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-semibold">{CHANNEL_LABEL[m.channel]}</span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+                  <Avatar name={m.sender_name} color={m.sender_color} size="sm" />
+                  {messageAttribution(m)} · {fmtDateTime(m.created_at)}
+                </span>
+              </div>
               {m.subject && <div className="font-medium">{m.subject}</div>}
               <div className="whitespace-pre-wrap text-muted">{m.body}</div>
             </div>

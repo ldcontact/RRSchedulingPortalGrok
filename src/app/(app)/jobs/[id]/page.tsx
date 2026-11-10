@@ -166,7 +166,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
             <div className="card-hd"><h3 className="font-semibold">Notes</h3><span className="text-xs text-muted">{notes.length}</span></div>
             <ol className="divide-y divide-line">
               {notes.length === 0 && <li className="p-4 text-center text-sm text-muted">No notes yet.</li>}
-              {notes.map((n) => <li key={n.id} className="px-4 py-3 text-sm"><div className="text-xs text-muted">{n.author_name} · {fmtDateTime(n.created_at)}</div><div className="whitespace-pre-wrap">{n.body}</div></li>)}
+              {notes.map((n) => <li key={n.id} className="flex gap-2.5 px-4 py-3 text-sm"><Avatar name={n.author_name} color={n.author_color} size="sm" /><div className="min-w-0 flex-1"><div className="text-xs text-muted">{n.author_name} · {fmtDateTime(n.created_at)}</div><div className="whitespace-pre-wrap">{n.body}</div></div></li>)}
             </ol>
             {!canWork && (mine || staff) && job.status !== "cancelled" && (
               <form action={addJobNote.bind(null, id)} className="flex gap-2 border-t border-line p-3">
