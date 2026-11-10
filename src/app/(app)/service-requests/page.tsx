@@ -78,26 +78,33 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
         {items.length === 0 && <div className="p-8 text-center text-muted">{filtered ? "No service requests match these filters." : status === "open" ? "No open service requests. Log a call with New request." : "Nothing here."}</div>}
         {items.map((t) => (
           <Link key={t.id} href={`/service-requests/${t.id}`} data-testid="ticket-row"
-            className="grid grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-[#fafbf9] sm:px-5 xl:grid-cols-[70px_minmax(0,1.6fr)_minmax(0,1.3fr)_150px_130px_96px_32px_16px]">
-            <div className="font-bold text-[13px]">{ticketNo(t.number)}</div>
-            <div className="min-w-0">
-              <div className="truncate font-semibold">{t.customer_name}</div>
-              <div className="truncate text-[12.5px] text-muted">{formatAddress({ address: t.site_address, city: t.site_city }) || "No site address"}</div>
-              <div className="line-clamp-2 text-[12.5px] text-ink/80">{t.summary}</div>
+            className="block px-4 py-3 hover:bg-[#fafbf9] sm:px-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 truncate font-semibold">{t.customer_name}</div>
+              <div className="shrink-0 text-[13px] font-bold tabular-nums tracking-tight" data-testid="ticket-number">{ticketNo(t.number)}</div>
             </div>
-            <div className="justify-self-end xl:hidden"><SRStatusPill status={t.status} /></div>
-            <div className="col-span-3 min-w-0 text-[12.5px] xl:col-span-1">
-              {t.project_id ? <>
-                <div className="truncate font-semibold">{t.project_name}</div>
-                <div className="truncate text-muted">{t.project_completed_at ? `Completed ${fmtMonthYear(t.project_completed_at)} · ${ageText(t.project_completed_at)} ago` : "Original project not finished"}</div>
-              </> : <><div className="text-muted">No project linked</div><div className="text-muted">Match a past job, or convert if it is new work</div></>}
+            <div className="mt-0.5 grid gap-x-4 gap-y-1.5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,150px)_auto] xl:items-start">
+              <div className="min-w-0">
+                <div className="truncate text-[12.5px] text-muted">{formatAddress({ address: t.site_address, city: t.site_city }) || "No site address"}</div>
+                <div className="line-clamp-2 text-[12.5px] text-ink/80">{t.summary}</div>
+              </div>
+              <div className="min-w-0 text-[12.5px]">
+                {t.project_id ? <>
+                  <div className="truncate font-semibold">{t.project_name}</div>
+                  <div className="truncate text-muted">{t.project_completed_at ? `Completed ${fmtMonthYear(t.project_completed_at)} · ${ageText(t.project_completed_at)} ago` : "Original project not finished"}</div>
+                </> : <><div className="text-muted">No project linked</div><div className="text-muted">Match a past job, or convert if it is new work</div></>}
+              </div>
+              <div className="flex items-center gap-2 text-[12.5px] text-muted xl:contents">
+                <div className="flex items-center gap-2 text-[12.5px] text-muted">
+                  <ChannelIcon channel={t.channel} />{fmtReceived(t.received_at)}
+                </div>
+                <div className="ml-auto flex items-center gap-2 xl:ml-0 xl:justify-end">
+                  <WarrantyPill state={t.warranty_state} />
+                  <SRStatusPill status={t.status} />
+                  <span className="hidden xl:inline-flex">{t.assignee_id ? <Avatar name={t.assignee_name ?? "?"} color={t.assignee_color ?? "#64748b"} size="sm" /> : <span className="text-muted">—</span>}</span>
+                </div>
+              </div>
             </div>
-            <div className="col-span-3 flex items-center gap-2 text-[12.5px] text-muted xl:col-span-1"><ChannelIcon channel={t.channel} />{fmtReceived(t.received_at)}
-              <span className="ml-auto xl:hidden"><WarrantyPill state={t.warranty_state} /></span></div>
-            <div className="hidden xl:block"><WarrantyPill state={t.warranty_state} /></div>
-            <div className="hidden xl:block"><SRStatusPill status={t.status} /></div>
-            <div className="hidden xl:block">{t.assignee_id ? <Avatar name={t.assignee_name ?? "?"} color={t.assignee_color ?? "#64748b"} size="sm" /> : <span className="text-muted">—</span>}</div>
-            <Icon name="right" className="hidden size-4 text-muted xl:block" />
           </Link>
         ))}
       </div>

@@ -65,9 +65,8 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
   return (
     <>
       <PageHeader back={{ href: "/service-requests", label: "Service requests" }}
-        title={<span className="flex flex-wrap items-center gap-2">{sr.summary}<SRStatusPill status={sr.status} /><PriorityPill priority={sr.priority} />{sr.billable && <span className="pill bg-orange-50 text-orange-800">Billable</span>}</span>}
-        sub={<><Link href={`/customers/${sr.customer_id}`} className="font-semibold text-brand">{sr.customer_name}</Link> · Received {fmtReceived(sr.received_at).replace(/^Today/, "today at")} via {SR_CHANNEL_LABEL[sr.channel].toLowerCase()}</>}
-        actions={<span className="text-[22px] font-semibold tracking-tight tabular-nums" data-testid="ticket-number">{ticketNo(sr.number)}</span>} />
+        title={<span className="flex flex-wrap items-center gap-2"><span data-testid="ticket-number">{ticketNo(sr.number)}</span><SRStatusPill status={sr.status} /><PriorityPill priority={sr.priority} />{sr.billable && <span className="pill bg-orange-50 text-orange-800">Billable</span>}</span>}
+        sub={<>{sr.summary} · <Link href={`/customers/${sr.customer_id}`} className="font-semibold text-brand">{sr.customer_name}</Link> · Received {fmtReceived(sr.received_at).replace(/^Today/, "today at")} via {SR_CHANNEL_LABEL[sr.channel].toLowerCase()}</>} />
       <div className="mb-4 flex flex-col gap-2 empty:hidden">
         {ok && <Banner tone="ok"><Icon name="check" />{ok}</Banner>}
         {error && <Banner tone="error"><Icon name="alert" />{error}</Banner>}

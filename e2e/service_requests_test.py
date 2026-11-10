@@ -21,6 +21,11 @@ async def settle(pg):
 async def shot(pg, name, full=False):
     await pg.screenshot(path=OUT+name, full_page=full, caret='initial')
 rows=lambda pg: pg.locator('[data-testid=ticket-row]')
+async def sr_at_top_right(pg, label):
+    row = rows(pg).first
+    sr = row.locator('[data-testid=ticket-number]')
+    rb, sb = await row.bounding_box(), await sr.bounding_box()
+    ok(label, bool(rb and sb) and (sb['x'] + sb['width']) >= (rb['x'] + rb['width'] - 48) and sb['y'] <= rb['y'] + 12)
 
 async def main():
     os.makedirs(OUT, exist_ok=True)
@@ -32,9 +37,20 @@ async def main():
         ok('sidebar shows Service requests with open badge 4', await pg.locator('[data-testid=nav-badge-service-requests]').inner_text()=='4')
         await go(pg,'/service-requests')
         ok('inbox lists 4 open tickets', await rows(pg).count()==4)
+        ok('every list row shows an SR number', await rows(pg).locator('[data-testid=ticket-number]').count()==4)
+        await sr_at_top_right(pg, 'desktop list: SR number at top-right of row')
         ok('tabs show per-status counts', await pg.locator('[role=tab]:has-text("New")').inner_text()=='New\n2' or '2' in await pg.locator('[role=tab]:has-text("New")').inner_text())
         ok('warranty pills: in / out / unknown', await pg.locator('[data-testid=ticket-list] [data-testid=warranty-pill]:visible:has-text("In warranty")').count()==2 and await pg.locator('[data-testid=ticket-list] [data-testid=warranty-pill]:visible:has-text("Out of warranty")').count()==1 and await pg.locator('[data-testid=ticket-list] [data-testid=warranty-pill]:visible:has-text("Unknown")').count()==1)
         await shot(pg,'01-inbox.png')
+        await shot(pg,'list-desktop.png')
+        phone=await b.new_context(viewport={'width':412,'height':844},device_scale_factor=2,is_mobile=True,has_touch=True); pp=await phone.new_page(); hook(pp,'phone-412')
+        await as_user(phone,'u-manager'); await go(pp,'/service-requests'); await settle(pp)
+        await sr_at_top_right(pp, '412px list: SR number at top-right of row')
+        await shot(pp,'list-mobile.png')
+        await go(pp,'/service-requests/sr1'); await settle(pp)
+        ok('412px ticket header shows SR number on the left', await pp.locator('h1 [data-testid=ticket-number]').inner_text()=='SR-1001')
+        await shot(pp,'detail-mobile.png')
+        await phone.close()
         await go(pg,'/service-requests?warranty=out'); ok('warranty filter: out -> SR-1002', await rows(pg).count()==1 and await pg.locator('text=SR-1002').count()==1)
         await go(pg,'/service-requests?q=SR-1003'); ok('search by ticket number', await rows(pg).count()==1 and await pg.locator('text=Parking lot pole light out').count()==1)
         await go(pg,'/service-requests?channel=email'); ok('channel filter: email', await rows(pg).count()==1)
@@ -44,10 +60,11 @@ async def main():
 
         # ticket detail
         await go(pg,'/service-requests/sr1')
-        ok('ticket header + in-warranty box', await pg.locator('[data-testid=ticket-number]').inner_text()=='SR-1001' and await pg.locator('h1 >> text=Conference room troffer flickering').count()==1 and await pg.locator('[data-testid=warranty-box] >> text=In warranty').count()==1)
+        ok('ticket header + in-warranty box', await pg.locator('h1 [data-testid=ticket-number]').inner_text()=='SR-1001' and await pg.locator('h1 >> text=SR-1001').count()==1 and await pg.locator('text=Conference room troffer flickering').count()>=1 and await pg.locator('[data-testid=warranty-box] >> text=In warranty').count()==1)
         ok('warranty box shows 1-year coverage + expiry', await pg.locator('[data-testid=warranty-box] >> text=1-year lighting warranty').count()==1)
         ok('linked original project card', await pg.locator('[data-testid=original-project] >> text=Office & breakroom LED troffer retrofit').count()==1)
         await shot(pg,'ticket-header-desktop.png')
+        await shot(pg,'detail-desktop.png')
         await shot(pg,'ticket-warranty-box.png', True)
         await pg.fill('[data-testid=ticket-notes] input[name=body]','Dave says it is the panel nearest the window.'); await pg.click('[data-testid=ticket-notes] button:has-text("Add note")'); await pg.wait_for_url('**ok=*'); await settle(pg)
         ok('internal note added', await pg.locator('[data-testid=ticket-notes] >> text=nearest the window').count()==1)
@@ -107,7 +124,7 @@ async def main():
         await pg.click('[data-testid=suggested-projects] label:has-text("Shop high-bay upgrade")')
         await shot(pg,'08-log-a-call.png')
         await pg.click('[data-testid=create-request]'); await pg.wait_for_url('**/service-requests/*?ok=*'); await settle(pg)
-        ok('ticket SR-1007 created from the call', await pg.locator('[data-testid=ticket-number]').inner_text()=='SR-1007' and await pg.locator('text=Nothing was sent to the customer').count()==1)
+        ok('ticket SR-1007 created from the call', await pg.locator('h1 [data-testid=ticket-number]').inner_text()=='SR-1007' and await pg.locator('h1 >> text=SR-1007').count()==1 and await pg.locator('text=Nothing was sent to the customer').count()==1)
         ok('new ticket linked to chosen project', await pg.locator('[data-testid=original-project] >> text=Shop high-bay upgrade').count()==1)
         ok('unfinished project -> warranty unknown', await pg.locator('[data-testid=warranty-box] >> text=Warranty unknown').count()==1)
 
@@ -139,9 +156,12 @@ async def main():
         await go(pg,'/service-requests/sr4'); ok('shorter warranty flips SR-1004 to out of warranty', await pg.locator('[data-testid=warranty-box] >> text=Out of warranty').count()==1)
         await go(pg,'/service-requests'); await shot(pg,'09-inbox-after.png')
         # mobile inbox
-        await as_user(mob,'u-manager'); await go(mp,'/service-requests'); await shot(mp,'10-inbox-mobile.png')
+        await as_user(mob,'u-manager'); await go(mp,'/service-requests')
+        ok('mobile list rows show SR numbers', await rows(mp).locator('[data-testid=ticket-number]').count()==await rows(mp).count())
+        await sr_at_top_right(mp, 'mobile list: SR number at top-right of row')
+        await shot(mp,'10-inbox-mobile.png')
         await go(mp,'/service-requests/sr1'); await settle(mp)
-        ok('mobile ticket header keeps SR number', await mp.locator('[data-testid=ticket-number]').inner_text()=='SR-1001' and await mp.locator('h1 >> text=Conference room troffer flickering').count()==1)
+        ok('mobile ticket header shows SR number on the left', await mp.locator('h1 [data-testid=ticket-number]').inner_text()=='SR-1001' and await mp.locator('h1 >> text=SR-1001').count()==1)
         await shot(mp,'ticket-header-mobile.png')
         await b.close()
     real=[e for e in errors if 'favicon' not in e[1] and 'Download the React DevTools' not in e[1]]
