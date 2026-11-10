@@ -105,10 +105,13 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
 export type Channel = "call" | "text" | "email" | "timeline" | "note";
 export const CHANNEL_LABEL: Record<Channel, string> = { call: "Call", text: "Text", email: "Email", timeline: "Proposed timeline", note: "Note" };
 
+/** Default warranty window, in months from the project's completion. */
+export const DEFAULT_WARRANTY_MONTHS = 12;
+
 export type Project = {
   id: string; customer_id: string; name: string; type: ProjectType; status: ProjectStatus; scope: string;
   value: number; est_rebate: number; timeline_sent_at: string | null; timeline_sent_via: Channel | null; timeline_approved_at: string | null;
-  /** Warranty window in months from the project's completion (default 24). */
+  /** Warranty window in months from the project's completion (DEFAULT_WARRANTY_MONTHS). */
   warranty_months: number;
   created_at: string; updated_at: string;
 };

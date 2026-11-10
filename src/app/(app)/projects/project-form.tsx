@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { saveProject } from "./actions";
-import { PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, type Project, type ProjectType } from "@/lib/types";
+import { DEFAULT_WARRANTY_MONTHS, PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, type Project, type ProjectType } from "@/lib/types";
 
 export function ProjectForm({ project, customers, customerId }: { project?: Project; customers: { id: string; name: string }[]; customerId?: string }) {
   const [state, action, pending] = useActionState(saveProject, undefined);
@@ -30,8 +30,8 @@ export function ProjectForm({ project, customers, customerId }: { project?: Proj
       </label>
       <label className="label">Project value ($)<input className="input" name="value" inputMode="decimal" defaultValue={v("value", "0")} /></label>
       <label className="label">Estimated rebate ($)<input className="input" name="est_rebate" inputMode="decimal" defaultValue={v("est_rebate", "0")} /></label>
-      <label className="label">Warranty (months)<input className="input" name="warranty_months" type="number" min={0} max={600} step={1} inputMode="numeric" defaultValue={v("warranty_months", "24")} />
-        <span className="font-normal text-muted">Counted from completion. Used to check service requests (default 24 = 2 years).</span>
+      <label className="label">Warranty (months)<input className="input" name="warranty_months" type="number" min={0} max={600} step={1} inputMode="numeric" defaultValue={v("warranty_months", String(DEFAULT_WARRANTY_MONTHS))} />
+        <span className="font-normal text-muted">Counted from completion. Used to check service requests (default {DEFAULT_WARRANTY_MONTHS} = 1 year).</span>
       </label>
       <label className="label sm:col-span-2">Scope of work
         <textarea className="input min-h-40 font-normal" name="scope" defaultValue={v("scope")} placeholder={"Fixture counts, wattages, rooms, access notes…\nTechs on this project will see this."} />

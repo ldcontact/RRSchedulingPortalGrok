@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
-import { PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
+import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import type { AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
@@ -91,7 +91,7 @@ const MAX_PICKS = 25;
 type PickRaw = Pick<Project, "id" | "name" | "type" | "status" | "customer_id" | "updated_at"> & { warranty_months: number | null; customers: { name: string } | null; jobs: { starts_at: string; ends_at: string; status: Job["status"]; completed_at: string | null; kind: Job["kind"] }[] };
 const toPick = (r: PickRaw): ProjectPick => ({
   id: r.id, name: r.name, type: r.type, status: r.status, customer_id: r.customer_id, customer_name: r.customers?.name ?? "",
-  completed_at: projectDates(r.jobs).completed_date, warranty_months: r.warranty_months ?? 24,
+  completed_at: projectDates(r.jobs).completed_date, warranty_months: r.warranty_months ?? DEFAULT_WARRANTY_MONTHS,
 });
 
 /** Supabase client acting as one user (cookie session on the website, bearer token on /api/mcp). */

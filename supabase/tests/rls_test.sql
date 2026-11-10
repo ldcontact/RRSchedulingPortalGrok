@@ -282,7 +282,7 @@ reset role;
 reset role;
 select pg_temp.check('project 1 complete before warranty work', (select status from projects where id='20000000-0000-0000-0000-000000000001')='complete');
 select pg_temp.check('existing visits default to install', not exists (select 1 from jobs where kind <> 'install'));
-select pg_temp.check('projects default to a 24-month warranty', (select bool_and(warranty_months = 24) from projects));
+select pg_temp.check('projects default to a 12-month warranty', (select bool_and(warranty_months = 12) from projects));
 
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria (manager)
 insert into service_requests (id, customer_id, project_id, channel, summary, description, priority)
@@ -296,7 +296,7 @@ select pg_temp.check('event actor forced to auth.uid', (select actor_id = auth.u
 select pg_temp.fails('empty ticket note rejected', $$insert into service_request_events (request_id, kind, body) values ('50000000-0000-0000-0000-000000000001','note','  ')$$);
 select pg_temp.check('view: linked complete project is in warranty', (select warranty_state from service_request_list where number=1001)='in');
 select pg_temp.check('view: unlinked ticket is unknown', (select warranty_state from service_request_list where number=1002)='unknown');
-select pg_temp.check('view: expiry is completion + 24 months', (select warranty_expires_at = project_completed_at + interval '24 months' from service_request_list where number=1001));
+select pg_temp.check('view: expiry is completion + 12 months', (select warranty_expires_at = project_completed_at + interval '12 months' from service_request_list where number=1001));
 select pg_temp.fails('install visit cannot carry a ticket', $$insert into jobs (project_id, title, starts_at, ends_at, service_request_id) values ('20000000-0000-0000-0000-000000000001','x','2027-01-05 15:00Z','2027-01-05 17:00Z','50000000-0000-0000-0000-000000000001')$$);
 insert into jobs (id, project_id, title, starts_at, ends_at, kind, service_request_id) values
   ('30000000-0000-0000-0000-000000000009','20000000-0000-0000-0000-000000000001','Warranty — lobby panel','2027-01-05 15:00Z','2027-01-05 17:00Z','warranty','50000000-0000-0000-0000-000000000001');

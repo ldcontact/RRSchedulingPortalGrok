@@ -10,7 +10,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { fmtDateTime, fmtRange, fmtDay, dayKey, money, todayKey } from "@/lib/time";
-import type { Person } from "@/lib/types";
+import { DEFAULT_WARRANTY_MONTHS, type Person } from "@/lib/types";
 import { addMilestone, deleteMilestone, markTimelineApproved, sendTimeline, setProjectStatus, toggleMilestone, updateMilestone } from "../actions";
 import { MilestoneRow } from "./milestone-row";
 import { PhotoRequirementsEditor } from "@/components/photo-requirements-editor";
@@ -42,7 +42,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
     <>
       <PageHeader back={{ href: "/projects", label: "Projects" }}
         title={<span className="flex flex-wrap items-center gap-2">{p.name}<ProjectStatusPill status={p.status} /></span>}
-        sub={<><Link href={`/customers/${p.customer_id}`} className="font-semibold text-brand">{c?.name}</Link> · <TypeTag type={p.type} /> · <span className="text-xs">{p.warranty_months ?? 24}-month warranty</span></>}
+        sub={<><Link href={`/customers/${p.customer_id}`} className="font-semibold text-brand">{c?.name}</Link> · <TypeTag type={p.type} /> · <span className="text-xs">{p.warranty_months ?? DEFAULT_WARRANTY_MONTHS}-month warranty</span></>}
         actions={<>
           <Link href={`/jobs/new?project=${p.id}`} className="btn btn-primary"><Icon name="plus" />Schedule visit</Link>
           <Link href={`/projects/${p.id}/edit`} className="btn"><Icon name="edit" />Edit</Link>

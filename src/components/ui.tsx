@@ -54,9 +54,9 @@ export function PageHeader({ title, sub, back, actions }: { title: ReactNode; su
   return (
     <div className="mb-5">
       {back && <Link href={back.href} className="mb-2.5 inline-flex items-center gap-1 font-medium text-muted hover:text-ink"><Icon name="left" />{back.label}</Link>}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="text-[22px] font-semibold tracking-tight">{title}</h1>{sub && <div className="mt-0.5 text-muted">{sub}</div>}</div>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1"><h1 className="text-[22px] font-semibold tracking-tight">{title}</h1>{sub && <div className="mt-0.5 text-muted">{sub}</div>}</div>
+        {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ const job = (over: Partial<JobView> = {}): JobView => ({
 });
 const project: Project = {
   id: PROJECT, customer_id: CUSTOMER, name: "Lakeview LEDs", type: "lighting", status: "scheduled", scope: "Swap 40 troffers", value: 12000, est_rebate: 6000,
-  timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, warranty_months: 24, created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-02T00:00:00Z",
+  timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, warranty_months: 12, created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-02T00:00:00Z",
 };
 const req: PhotoRequirement = { id: U(40), project_id: PROJECT, label: "Panel", note: null, sort_order: 0, created_at: "2026-10-01T00:00:00Z" };
 const photo = (over: Partial<Photo>): Photo => ({

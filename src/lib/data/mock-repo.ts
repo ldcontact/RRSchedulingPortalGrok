@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
 import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
-import { PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
+import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
@@ -85,7 +85,7 @@ function seedPhase2(): P2 {
   const at = (dayOffset: number, h: number, m = 0) => zonedToUtc(addDays(T, dayOffset), h * 60 + m);
   const pr = (id: string, customer_id: string, name: string, type: Project["type"], scope: string, value: number, est_rebate: number, extra: Partial<Project> = {}): Project => ({
     id, customer_id, name, type, status: "proposed", scope, value, est_rebate, timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null,
-    warranty_months: 24, created_at: ago(20), updated_at: ago(1), ...extra,
+    warranty_months: DEFAULT_WARRANTY_MONTHS, created_at: ago(20), updated_at: ago(1), ...extra,
   });
   const projects = [
     pr("p1", "c1", "LED retrofit – full office", "lighting",
@@ -229,7 +229,7 @@ function seedServiceRequests(db: DB) {
   const at = (dayOffset: number, h: number, m = 0) => zonedToUtc(addDays(T, dayOffset), h * 60 + m);
   const pr = (id: string, customer_id: string, name: string, type: Project["type"], scope: string, value: number, est_rebate: number, days: number): Project => ({
     id, customer_id, name, type, status: "complete", scope, value, est_rebate, timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: ago(days + 20),
-    warranty_months: 24, created_at: ago(days + 30), updated_at: ago(days),
+    warranty_months: DEFAULT_WARRANTY_MONTHS, created_at: ago(days + 30), updated_at: ago(days),
   });
   const done = (id: string, project_id: string, title: string, d: number, by: string, extra: Partial<Job> = {}): Job => ({
     id, project_id, title, starts_at: at(d, 7), ends_at: at(d, 15), status: "approved", instructions: null, started_at: at(d, 7), completed_at: at(d, 14, 30), completed_by: by,
@@ -237,10 +237,10 @@ function seedServiceRequests(db: DB) {
   });
   if (!db.projects.some((p) => p.id === "p7")) {
     db.projects.push(
-      pr("p7", "c4", "Office & breakroom LED troffer retrofit", "lighting", "Replace 38 (2x4) troffers in the front office and breakroom with 40W LED panels. 2 emergency fixtures with battery backup at the exits.", 12800, 6100, 545),
+      pr("p7", "c4", "Office & breakroom LED troffer retrofit", "lighting", "Replace 38 (2x4) troffers in the front office and breakroom with 40W LED panels. 2 emergency fixtures with battery backup at the exits.", 12800, 6100, 250),
       pr("p8", "c2", "Paint booth RTU replacement", "hvac", "Replace the 15-ton paint booth RTU with a high-efficiency unit and new curb adapter.", 24500, 4800, 800),
     );
-    db.jobs.push(done("j9", "p7", "Office troffers (day 1)", -546, "u-tech1"), done("j10", "p7", "Breakroom + exits (day 2)", -545, "u-tech2"), done("j11", "p8", "RTU swap + startup", -800, "u-tech3"));
+    db.jobs.push(done("j9", "p7", "Office troffers (day 1)", -251, "u-tech1"), done("j10", "p7", "Breakroom + exits (day 2)", -250, "u-tech2"), done("j11", "p8", "RTU swap + startup", -800, "u-tech3"));
     db.assignments.push({ job_id: "j9", profile_id: "u-tech1" }, { job_id: "j9", profile_id: "u-tech2" }, { job_id: "j10", profile_id: "u-tech2" }, { job_id: "j11", profile_id: "u-tech3" });
   }
   const sr = (id: string, number: number, customer_id: string, project_id: string | null, channel: ServiceRequest["channel"], received_at: string, summary: string, description: string, extra: Partial<ServiceRequest> = {}): ServiceRequest => {
@@ -254,7 +254,7 @@ function seedServiceRequests(db: DB) {
     };
   };
   const tickets = [
-    sr("sr1", 1001, "c4", "p7", "email", at(0, 9, 14), "Conference room troffer flickering", "Dave emailed: one of the LED panels in the front conference room started flickering last week and now cuts out every few minutes. Installed in the office retrofit last year.", { priority: "high", contact_name: "Dave Kowalski" }),
+    sr("sr1", 1001, "c4", "p7", "email", at(0, 9, 14), "Conference room troffer flickering", "Dave emailed: one of the LED panels in the front conference room started flickering last week and now cuts out every few minutes. Installed in the office retrofit earlier this year.", { priority: "high", contact_name: "Dave Kowalski" }),
     sr("sr2", 1002, "c2", "p8", "call", at(-1, 16, 22), "Paint booth RTU short-cycling", "Tony called: the paint booth unit turns on and off every few minutes since the cold snap. Booth is still usable but temps swing.", { status: "triaged", assignee_id: "u-manager" }),
     sr("sr3", 1003, "c8", null, "call", at(0, 8, 2), "Parking lot pole light out", "Ken says the pole light by the drive-thru lane is out. Not sure if we installed it. Match a past job or convert if it's new work.", { priority: "low" }),
     sr("sr4", 1004, "c4", "p7", "call", at(-2, 11, 6), "Exit fixtures not holding battery", "Fire inspection flagged the two emergency fixtures by the rear exits: battery test fails after about 30 seconds.", { status: "scheduled", assignee_id: "u-admin" }),
@@ -264,7 +264,7 @@ function seedServiceRequests(db: DB) {
   for (const t of tickets) if (!db.service_requests.some((x) => x.id === t.id)) db.service_requests.push(t);
   if (!db.jobs.some((j) => j.id === "j12")) {
     db.jobs.push({ id: "j12", project_id: "p7", title: "Warranty — exit fixture batteries", starts_at: at(1, 9), ends_at: at(1, 11), status: "scheduled",
-      instructions: "Swap the battery packs in the 2 emergency fixtures at the rear exits (same model as the 2025 install). Photo each fixture after a 90-minute test.",
+      instructions: "Swap the battery packs in the 2 emergency fixtures at the rear exits (same model as the original install). Photo each fixture after a 90-minute test.",
       started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null, kind: "warranty", service_request_id: "sr4" });
     db.assignments.push({ job_id: "j12", profile_id: "u-tech1" });
   }
@@ -272,10 +272,10 @@ function seedServiceRequests(db: DB) {
   if (!db.sr_events.length) db.sr_events.push(
     ev("sr1", "created", "Logged from an email.", "u-manager", at(0, 9, 14)),
     ev("sr1", "linked", "Matched to original project “Office & breakroom LED troffer retrofit”.", "u-manager", at(0, 9, 15)),
-    ev("sr1", "note", "Panel is inside the 2-year lighting warranty, so this is a warranty swap, not a new project.", "u-admin", at(0, 9, 21)),
+    ev("sr1", "note", "Panel is inside the 1-year lighting warranty, so this is a warranty swap, not a new project.", "u-admin", at(0, 9, 21)),
     ev("sr2", "created", "Logged from a phone call.", "u-manager", at(-1, 16, 22)),
     ev("sr2", "assigned", "Assigned to Maria Santos.", "u-manager", at(-1, 16, 25)),
-    ev("sr2", "note", "Unit is past its 2-year warranty. Quote a service call if it's not a quick fix.", "u-manager", at(-1, 16, 30)),
+    ev("sr2", "note", "Unit is past its 1-year warranty. Quote a service call if it's not a quick fix.", "u-manager", at(-1, 16, 30)),
     ev("sr3", "created", "Logged from a phone call.", "u-admin", at(0, 8, 2)),
     ev("sr4", "created", "Logged from a phone call.", "u-admin", at(-2, 11, 6)),
     ev("sr4", "scheduled", `Warranty visit “Warranty — exit fixture batteries” scheduled for ${fmtShort(at(1, 9))} with Carlos Mendez.`, "u-admin", at(-2, 11, 20)),
@@ -294,7 +294,7 @@ function load(): DB {
   if (!db.photo_requirements) { db.photo_requirements = []; save(db); }
   for (const p of db.photos) if (p.requirement_id === undefined) (p as PhotoRow).requirement_id = null;
   for (const j of db.jobs) { j.kind ??= "install"; if (j.service_request_id === undefined) j.service_request_id = null; }
-  for (const p of db.projects) p.warranty_months ??= 24;
+  for (const p of db.projects) p.warranty_months ??= DEFAULT_WARRANTY_MONTHS;
   if (!db.service_requests) { db.service_requests = []; db.sr_events = []; seedServiceRequests(db); save(db); } // upgrade an older mock DB
   return db;
 }
@@ -537,7 +537,7 @@ export const mockRepo: Repo = {
   async createProject(input) {
     requireStaffMock(await who());
     return mutate((db) => {
-      const p: Project = { ...input, warranty_months: input.warranty_months ?? 24, id: randomUUID(), timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, created_at: now(), updated_at: now() };
+      const p: Project = { ...input, warranty_months: input.warranty_months ?? DEFAULT_WARRANTY_MONTHS, id: randomUUID(), timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, created_at: now(), updated_at: now() };
       db.projects.push(p); return p;
     });
   },
@@ -785,7 +785,7 @@ export const mockRepo: Repo = {
       .filter((p) => p.status !== "cancelled" && (!f.customerId || p.customer_id === f.customerId) && (!term || `${p.name} ${cname(p.customer_id)}`.toLowerCase().includes(term)))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, limit)
       .map((p): ProjectPick => ({ id: p.id, name: p.name, type: p.type, status: p.status, customer_id: p.customer_id, customer_name: cname(p.customer_id),
-        completed_at: projectDates(db.jobs.filter((j) => j.project_id === p.id)).completed_date, warranty_months: p.warranty_months ?? 24 }));
+        completed_at: projectDates(db.jobs.filter((j) => j.project_id === p.id)).completed_date, warranty_months: p.warranty_months ?? DEFAULT_WARRANTY_MONTHS }));
   },
 };
 

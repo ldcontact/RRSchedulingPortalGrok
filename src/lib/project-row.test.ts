@@ -18,13 +18,14 @@ describe("projectDates", () => {
 
 describe("warranty", () => {
   it("adds calendar months like Postgres (end-of-month clamped)", () => {
+    expect(addMonths("2025-04-15T20:00:00.000Z", 12)).toBe("2026-04-15T20:00:00.000Z");
     expect(addMonths("2025-04-15T20:00:00.000Z", 24)).toBe("2027-04-15T20:00:00.000Z");
     expect(addMonths("2024-01-31T12:00:00.000Z", 1)).toBe("2024-02-29T12:00:00.000Z");
   });
   it("judges in/out on the day the customer reported it", () => {
-    expect(warrantyFor("2025-04-15T20:00:00Z", 24, "2026-11-10T16:00:00Z")).toEqual({ state: "in", expires: "2027-04-15T20:00:00.000Z" });
-    expect(warrantyFor("2024-01-10T20:00:00Z", 24, "2026-11-10T16:00:00Z").state).toBe("out");
-    expect(warrantyFor(null, 24, "2026-11-10T16:00:00Z")).toEqual({ state: "unknown", expires: null });
+    expect(warrantyFor("2025-11-15T20:00:00Z", 12, "2026-11-10T16:00:00Z")).toEqual({ state: "in", expires: "2026-11-15T20:00:00.000Z" });
+    expect(warrantyFor("2025-04-15T20:00:00Z", 12, "2026-11-10T16:00:00Z").state).toBe("out");
+    expect(warrantyFor(null, 12, "2026-11-10T16:00:00Z")).toEqual({ state: "unknown", expires: null });
   });
   it("formats time since completion", () => {
     expect(ageText("2025-04-15T20:00:00Z", "2026-11-10T16:00:00Z")).toBe("1 yr 6 mo");

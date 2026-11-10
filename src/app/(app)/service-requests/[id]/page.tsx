@@ -11,7 +11,7 @@ import { getRepo } from "@/lib/data/repo";
 import { ageText, formatAddress } from "@/lib/project-row";
 import { fmtDate, fmtReceived, visitDefaults } from "@/lib/tickets";
 import { dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, addDays } from "@/lib/time";
-import { PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_OPEN, ticketNo, type SREvent } from "@/lib/types";
+import { DEFAULT_WARRANTY_MONTHS, PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_OPEN, ticketNo, type SREvent } from "@/lib/types";
 import {
   addTicketNote, assignTicket, convertTicket, finishTicket, linkProject, markTriaged, reopenTicket, setBillable, unlinkProject,
 } from "../actions";
@@ -53,7 +53,7 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
   const tel = (p: string) => `tel:${p.replace(/[^\d+]/g, "")}`;
 
   // warranty box
-  const months = sr.warranty_months ?? 24;
+  const months = sr.warranty_months ?? DEFAULT_WARRANTY_MONTHS;
   const used = sr.project_completed_at ? Math.max(0, Math.min(months, monthsBetween(sr.project_completed_at, new Date().toISOString()))) : 0;
   const expired = sr.warranty_expires_at ? new Date(sr.warranty_expires_at) < new Date() : false;
   const coverage = `${months % 12 === 0 ? `${months / 12}-year` : `${months}-month`} ${sr.project_type ? PROJECT_TYPE_LABEL[sr.project_type].toLowerCase() : ""} warranty`.replace("  ", " ");
@@ -65,8 +65,9 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
   return (
     <>
       <PageHeader back={{ href: "/service-requests", label: "Service requests" }}
-        title={<span className="flex flex-wrap items-center gap-2">{ticketNo(sr.number)}<SRStatusPill status={sr.status} /><PriorityPill priority={sr.priority} />{sr.billable && <span className="pill bg-orange-50 text-orange-800">Billable</span>}</span>}
-        sub={<>{sr.summary} · <Link href={`/customers/${sr.customer_id}`} className="font-semibold text-brand">{sr.customer_name}</Link> · Received {fmtReceived(sr.received_at).replace(/^Today/, "today at")} via {SR_CHANNEL_LABEL[sr.channel].toLowerCase()}</>} />
+        title={<span className="flex flex-wrap items-center gap-2">{sr.summary}<SRStatusPill status={sr.status} /><PriorityPill priority={sr.priority} />{sr.billable && <span className="pill bg-orange-50 text-orange-800">Billable</span>}</span>}
+        sub={<><Link href={`/customers/${sr.customer_id}`} className="font-semibold text-brand">{sr.customer_name}</Link> · Received {fmtReceived(sr.received_at).replace(/^Today/, "today at")} via {SR_CHANNEL_LABEL[sr.channel].toLowerCase()}</>}
+        actions={<span className="text-[22px] font-semibold tracking-tight tabular-nums" data-testid="ticket-number">{ticketNo(sr.number)}</span>} />
       <div className="mb-4 flex flex-col gap-2 empty:hidden">
         {ok && <Banner tone="ok"><Icon name="check" />{ok}</Banner>}
         {error && <Banner tone="error"><Icon name="alert" />{error}</Banner>}
@@ -210,7 +211,7 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
                   {sr.warranty_state === "in"
                     ? <>Reported inside the window ({fmtDate(sr.received_at)}){expired ? "" : `, ${Math.max(0, months - used)} months remaining`}. Covered, not billable by default.</>
                     : <>Reported {ageText(sr.warranty_expires_at, sr.received_at)} after the warranty ended. Usually billable; schedule a Service visit.</>}
-                  {" "}Warranty length is set on the project ({months} months{months === 24 ? ", the default" : ""}).
+                  {" "}Warranty length is set on the project ({months} months{months === DEFAULT_WARRANTY_MONTHS ? ", the default" : ""}).
                 </div>
               </div>
             ) : (

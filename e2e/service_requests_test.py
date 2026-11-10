@@ -44,9 +44,11 @@ async def main():
 
         # ticket detail
         await go(pg,'/service-requests/sr1')
-        ok('ticket header + in-warranty box', await pg.locator('h1 >> text=SR-1001').count()==1 and await pg.locator('[data-testid=warranty-box] >> text=In warranty').count()==1)
-        ok('warranty box shows 2-year coverage + expiry', await pg.locator('[data-testid=warranty-box] >> text=2-year lighting warranty').count()==1)
+        ok('ticket header + in-warranty box', await pg.locator('[data-testid=ticket-number]').inner_text()=='SR-1001' and await pg.locator('h1 >> text=Conference room troffer flickering').count()==1 and await pg.locator('[data-testid=warranty-box] >> text=In warranty').count()==1)
+        ok('warranty box shows 1-year coverage + expiry', await pg.locator('[data-testid=warranty-box] >> text=1-year lighting warranty').count()==1)
         ok('linked original project card', await pg.locator('[data-testid=original-project] >> text=Office & breakroom LED troffer retrofit').count()==1)
+        await shot(pg,'ticket-header-desktop.png')
+        await shot(pg,'ticket-warranty-box.png', True)
         await pg.fill('[data-testid=ticket-notes] input[name=body]','Dave says it is the panel nearest the window.'); await pg.click('[data-testid=ticket-notes] button:has-text("Add note")'); await pg.wait_for_url('**ok=*'); await settle(pg)
         ok('internal note added', await pg.locator('[data-testid=ticket-notes] >> text=nearest the window').count()==1)
         await go(pg,'/service-requests/sr1'); await shot(pg,'02-ticket-detail.png', True)
@@ -105,7 +107,7 @@ async def main():
         await pg.click('[data-testid=suggested-projects] label:has-text("Shop high-bay upgrade")')
         await shot(pg,'08-log-a-call.png')
         await pg.click('[data-testid=create-request]'); await pg.wait_for_url('**/service-requests/*?ok=*'); await settle(pg)
-        ok('ticket SR-1007 created from the call', await pg.locator('h1 >> text=SR-1007').count()==1 and await pg.locator('text=Nothing was sent to the customer').count()==1)
+        ok('ticket SR-1007 created from the call', await pg.locator('[data-testid=ticket-number]').inner_text()=='SR-1007' and await pg.locator('text=Nothing was sent to the customer').count()==1)
         ok('new ticket linked to chosen project', await pg.locator('[data-testid=original-project] >> text=Shop high-bay upgrade').count()==1)
         ok('unfinished project -> warranty unknown', await pg.locator('[data-testid=warranty-box] >> text=Warranty unknown').count()==1)
 
@@ -131,12 +133,16 @@ async def main():
         await pg.click('button:has-text("Reopen")'); await pg.wait_for_url('**ok=*'); await settle(pg)
         ok('reopened -> Triaged', await pg.locator('h1 >> text=Triaged').count()==1)
         # project form has warranty months
-        await go(pg,'/projects/p7/edit'); ok('project form has warranty months (24)', await pg.input_value('input[name=warranty_months]')=='24')
-        await pg.fill('input[name=warranty_months]','12'); await pg.click('button:has-text("Save changes")'); await pg.wait_for_url('**saved=1'); await settle(pg)
+        await go(pg,'/projects/p7/edit'); ok('project form has warranty months (12)', await pg.input_value('input[name=warranty_months]')=='12')
+        await shot(pg,'project-form-warranty.png', True)
+        await pg.fill('input[name=warranty_months]','3'); await pg.click('button:has-text("Save changes")'); await pg.wait_for_url('**saved=1'); await settle(pg)
         await go(pg,'/service-requests/sr4'); ok('shorter warranty flips SR-1004 to out of warranty', await pg.locator('[data-testid=warranty-box] >> text=Out of warranty').count()==1)
         await go(pg,'/service-requests'); await shot(pg,'09-inbox-after.png')
         # mobile inbox
         await as_user(mob,'u-manager'); await go(mp,'/service-requests'); await shot(mp,'10-inbox-mobile.png')
+        await go(mp,'/service-requests/sr1'); await settle(mp)
+        ok('mobile ticket header keeps SR number', await mp.locator('[data-testid=ticket-number]').inner_text()=='SR-1001' and await mp.locator('h1 >> text=Conference room troffer flickering').count()==1)
+        await shot(mp,'ticket-header-mobile.png')
         await b.close()
     real=[e for e in errors if 'favicon' not in e[1] and 'Download the React DevTools' not in e[1]]
     print('\nconsole errors:', len(real)); [print(' ', e) for e in real[:10]]
