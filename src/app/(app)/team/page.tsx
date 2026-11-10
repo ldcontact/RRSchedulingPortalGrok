@@ -1,29 +1,16 @@
 import type { Metadata } from "next";
 import { Icon } from "@/components/icons";
-import { Avatar, Banner, PageHeader, RolePill } from "@/components/ui";
-import { AvatarEditor } from "@/components/avatar-editor";
+import { Banner, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { TeamDirectory } from "@/components/team-directory";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
-import { ROLE_LABEL, ROLES, type TeamMember } from "@/lib/types";
-import { adminSetPassword, deleteMember, inviteMember, manageMemberAvatar, removeMember, resendInvite, sendPasswordResetNoted, setMemberActive, updateMember } from "./actions";
+import { ROLE_LABEL, ROLES } from "@/lib/types";
+import { inviteMember } from "./actions";
 
 export const metadata: Metadata = { title: "Team" };
 
-const STATUS = { active: "bg-green-100 text-green-800", invited: "bg-accent-50 text-amber-700", inactive: "bg-red-50 text-red-800" };
 const ROLE_HELP = { admin: "Everything, including team and roles", manager: "Customers, scheduling, approvals", tech: "Only their assigned jobs" };
-
-function MemberFields({ m }: { m?: TeamMember }) {
-  return (
-    <>
-      <label className="label">Full name<input className="input" name="full_name" defaultValue={m?.full_name} required /></label>
-      <label className="label">Role<select className="input" name="role" defaultValue={m?.role ?? "tech"}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}: {ROLE_HELP[r]}</option>)}</select></label>
-      <label className="label">Job title<input className="input" name="title" defaultValue={m?.title ?? ""} placeholder="e.g. Electrician" /></label>
-      <label className="label">Phone<input className="input" name="phone" type="tel" defaultValue={m?.phone ?? ""} /></label>
-      <label className="label">Calendar color<input className="input h-10 p-1" name="color" type="color" defaultValue={m?.color ?? "#0891b2"} /></label>
-    </>
-  );
-}
 
 export default async function TeamPage({ searchParams }: PageProps<"/team">) {
   const me = await requireRole("admin", "manager");
@@ -45,7 +32,11 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
           <div className="card-hd"><h3 className="font-semibold">Invite a team member</h3><span className="text-xs text-muted">Any email works: Gmail, Outlook, company…</span></div>
           <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
             <label className="label sm:col-span-2 lg:col-span-1">Email (Google account or any email)<input className="input" name="email" type="email" required placeholder="name@gmail.com" /></label>
-            <MemberFields />
+            <label className="label">Full name<input className="input" name="full_name" required /></label>
+            <label className="label">Role<select className="input" name="role" defaultValue="tech">{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}: {ROLE_HELP[r]}</option>)}</select></label>
+            <label className="label">Job title<input className="input" name="title" placeholder="e.g. Electrician" /></label>
+            <label className="label">Phone<input className="input" name="phone" type="tel" /></label>
+            <label className="label">Calendar color<input className="input h-10 p-1" name="color" type="color" defaultValue="#0891b2" /></label>
             <label className="flex items-center gap-2 text-sm sm:col-span-2 lg:col-span-3"><input type="checkbox" name="send_email" defaultChecked className="accent-brand" />Email them an invite link (to set a password). They can also just use Sign in with Google.</label>
             <div className="sm:col-span-2 lg:col-span-3 text-xs text-muted">After they appear on the list, open Manage to add a profile photo (or use their Google photo once they sign in).</div>
             <div className="sm:col-span-2 lg:col-span-3"><SubmitButton pendingText="Inviting…"><Icon name="send" className="size-4" />Add to team</SubmitButton></div>
@@ -53,81 +44,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
         </form>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {team.map((m) => (
-          <div key={m.email} className="card flex flex-col gap-3 p-4">
-            <div className="flex items-center gap-3">
-              <Avatar name={m.full_name || m.email} color={m.color} size="lg" src={m.avatar_url} />
-              <div className="min-w-0 flex-1"><div className="truncate font-semibold">{m.full_name || m.email}{m.email === me.email && <span className="ml-1 text-xs font-normal text-muted">(you)</span>}</div><div className="truncate text-[12.5px] text-muted">{m.title ?? ""}</div></div>
-              <RolePill role={m.role} />
-            </div>
-            <div className="grid gap-1 text-[13px]">
-              <div className="flex items-center gap-2 truncate"><Icon name="mail" className="size-4 text-muted" />{m.email}</div>
-              <div className="flex items-center gap-2"><Icon name="phone" className="size-4 text-muted" />{m.phone ?? "—"}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className={`pill ${STATUS[m.status]}`}>{m.status === "invited" ? "Invited, not signed in yet" : m.status === "active" ? "Active" : "Suspended"}</span>
-              <span className="text-xs text-muted">Jobs: phase 2</span>
-            </div>
-            {admin && (
-              <details className="rounded-lg border border-line bg-canvas/60 [&_summary::-webkit-details-marker]:hidden">
-                <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-semibold"><Icon name="edit" className="size-4" />Manage</summary>
-                <div className="flex flex-col gap-3 border-t border-line p-3">
-                  <div className="rounded-lg border border-line bg-white p-3">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Profile photo</div>
-                    <AvatarEditor
-                      name={m.full_name || m.email}
-                      color={m.color}
-                      src={m.avatar_url}
-                      source={m.avatar_source}
-                      hasGoogle={!!m.google_avatar_url}
-                      action={manageMemberAvatar}
-                      hidden={{ email: m.email, ...(m.profile_id ? { profile_id: m.profile_id } : {}) }}
-                      compact
-                    />
-                  </div>
-                  <form action={updateMember.bind(null, m.email)} className="grid gap-2.5"><MemberFields m={m} /><SubmitButton className="btn btn-sm btn-primary">Save</SubmitButton></form>
-                  <div className="flex flex-col gap-3 border-t border-line pt-3">
-                    {m.profile_id && (
-                      <form action={adminSetPassword} className="grid gap-2 rounded-lg border border-line bg-white p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-muted">Set password</div>
-                        <input type="hidden" name="profile_id" value={m.profile_id} />
-                        <label className="label">New password (min 8 characters)
-                          <input className="input" name="password" type="password" autoComplete="new-password" minLength={8} required />
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          <SubmitButton className="btn btn-sm btn-primary" pendingText="Saving…"><Icon name="lock" className="size-4" />Set password</SubmitButton>
-                          <SubmitButton formAction={sendPasswordResetNoted.bind(null, m.email)} className="btn btn-sm" pendingText="…">Email reset link (needs SMTP)</SubmitButton>
-                        </div>
-                      </form>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <form action={resendInvite.bind(null, m.email)}><SubmitButton className="btn btn-sm" pendingText="Sending…"><Icon name="send" className="size-4" />{m.status === "invited" ? "Resend invite" : "Send password link"}</SubmitButton></form>
-                      {m.profile_id && m.email !== me.email && (
-                        <form action={setMemberActive.bind(null, m.profile_id, m.status !== "active")}>
-                          <SubmitButton className="btn btn-sm">{m.status === "active" ? "Suspend" : "Restore"}</SubmitButton>
-                        </form>
-                      )}
-                      {m.status === "invited" && m.email !== me.email && (
-                        <form action={removeMember.bind(null, m.email)}><SubmitButton className="btn btn-sm btn-danger" pendingText="Removing…"><Icon name="trash" className="size-4" />Remove invite</SubmitButton></form>
-                      )}
-                    </div>
-                    {m.profile_id && m.email !== me.email && (
-                      <form action={deleteMember} className="grid gap-2 rounded-lg border border-red-200 bg-red-50/50 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Delete user</div>
-                        <p className="text-[12px] text-red-900/80">Soft-deletes access and anonymizes their profile. Job/photo history stays. Type <b>{m.full_name}</b> to confirm.</p>
-                        <input type="hidden" name="profile_id" value={m.profile_id} />
-                        <input className="input" name="confirm_name" placeholder="Type full name" required autoComplete="off" />
-                        <SubmitButton className="btn btn-sm btn-danger" pendingText="Deleting…"><Icon name="trash" className="size-4" />Delete permanently</SubmitButton>
-                      </form>
-                    )}
-                  </div>
-                </div>
-              </details>
-            )}
-          </div>
-        ))}
-      </div>
+      <TeamDirectory team={team} meEmail={me.email} admin={admin} />
     </>
   );
 }
