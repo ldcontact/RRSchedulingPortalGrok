@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectStatus } from "@/lib/types";
 import { PAGE_SIZE, PROJECT_STATUSES } from "@/lib/types";
+import { formatAddress, projectDates } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
@@ -402,7 +403,9 @@ export const mockRepo: Repo = {
     if (f.sort === "name") list.sort((a, b) => a.name.localeCompare(b.name));
     else if (f.sort === "value") list.sort((a, b) => b.value - a.value);
     else if (f.sort === "newest") list.sort((a, b) => b.created_at.localeCompare(a.created_at));
-    return { ...mockPage(list, f.page, f.size), counts };
+    const pg = mockPage(list, f.page, f.size), db = load();
+    const items = pg.items.map((p) => ({ ...p, address: formatAddress(db.customers.find((c) => c.id === p.customer_id)), ...projectDates(db.jobs.filter((j) => j.project_id === p.id)) }));
+    return { ...pg, items, counts };
   },
   async getProject(id) { const w = await who(); return w.canProject(id) ? load().projects.find((p) => p.id === id) ?? null : null; },
   async createProject(input) {

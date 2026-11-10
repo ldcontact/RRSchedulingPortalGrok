@@ -6,8 +6,10 @@ import { AvatarStack, ProjectStatusPill, TypeTag } from "@/components/status";
 import { Pager, pageParam } from "@/components/pager";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
-import { fmtWhen, money } from "@/lib/time";
+import { dayKey, fmtDay, fmtWhen, money } from "@/lib/time";
 import { PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, type ProjectSort, type ProjectStatus } from "@/lib/types";
+
+const fmtDate = (iso: string | null) => (iso ? fmtDay(dayKey(iso), { month: "short", day: "numeric", year: "numeric" }) : "—");
 
 export const metadata: Metadata = { title: "Projects" };
 
@@ -50,19 +52,24 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
       <div className="card divide-y divide-line">
         {list.length === 0 && <div className="p-8 text-center text-muted">{q ? "No projects match your search." : "No projects here yet."}</div>}
         {list.map((p) => (
-          <Link key={p.id} href={`/projects/${p.id}`} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-[#fafbf9] sm:px-5 lg:grid-cols-[minmax(0,2fr)_150px_120px_110px_120px_16px]">
+          <Link key={p.id} href={`/projects/${p.id}`} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-[#fafbf9] sm:px-5 xl:grid-cols-[minmax(0,2fr)_130px_115px_100px_150px_120px_16px]">
             <div className="min-w-0">
               <div className="truncate font-semibold">{p.name}</div>
               <div className="truncate text-[12.5px] text-muted">{p.customer_name}</div>
+              <div className="flex min-w-0 items-center gap-1 text-[12.5px] text-muted"><Icon name="pin" className="size-3.5 shrink-0" /><span className="truncate" title={p.address || undefined}>{p.address || "No address on file"}</span></div>
             </div>
-            <div className="justify-self-end lg:justify-self-start"><ProjectStatusPill status={p.status} /></div>
-            <div className="flex items-center gap-2 text-[12.5px] text-muted lg:block"><TypeTag type={p.type} /><span className="lg:mt-1 lg:block">{p.done_milestones}/{p.total_milestones} milestones</span></div>
+            <div className="justify-self-end xl:justify-self-start"><ProjectStatusPill status={p.status} /></div>
+            <div className="flex items-center gap-2 text-[12.5px] text-muted xl:block"><TypeTag type={p.type} /><span className="xl:mt-1 xl:block">{p.done_milestones}/{p.total_milestones} milestones</span></div>
             <div className="text-[12.5px]"><div className="font-semibold">{money(p.value)}</div><div className="text-muted">{money(p.est_rebate)} rebate</div></div>
+            <div className="text-[12.5px] text-muted">
+              <div><span className="font-semibold text-ink">Start</span> {fmtDate(p.start_date)}</div>
+              <div><span className="font-semibold text-ink">Completed</span> {fmtDate(p.completed_date)}</div>
+            </div>
             <div className="text-[12.5px] text-muted">
               <AvatarStack people={p.team} />
               <div className="mt-1">{p.next_visit ? `Next: ${fmtWhen(p.next_visit)}` : "No visit scheduled"}</div>
             </div>
-            <Icon name="right" className="hidden size-4 text-muted lg:block" />
+            <Icon name="right" className="hidden size-4 text-muted xl:block" />
           </Link>
         ))}
       </div>

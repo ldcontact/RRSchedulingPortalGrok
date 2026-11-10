@@ -115,7 +115,7 @@ export type Person = { id: string; full_name: string; color: string; avatar_url?
 export type ProjectListItem = Project & { customer_name: string; next_visit: string | null; team: Person[]; done_milestones: number; total_milestones: number };
 export type ProjectSort = "updated" | "newest" | "name" | "value";
 export type ProjectRow = Pick<Project, "id" | "name" | "type" | "status" | "value" | "est_rebate" | "updated_at"> & {
-  customer_name: string; next_visit: string | null; team: Person[]; done_milestones: number; total_milestones: number;
+  customer_name: string; address: string; start_date: string | null; completed_date: string | null; next_visit: string | null; team: Person[]; done_milestones: number; total_milestones: number;
 };
 /** status: a single status, or undefined = all except cancelled ("All active"). */
 export type ProjectPageFilter = { q?: string; status?: ProjectStatus; page: number; size?: number; sort?: ProjectSort };

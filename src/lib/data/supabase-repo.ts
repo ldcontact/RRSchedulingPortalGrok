@@ -4,6 +4,7 @@ import { mergeTeam, type Repo } from "./repo";
 import { PAGE_SIZE, PROJECT_STATUSES } from "@/lib/types";
 import type { AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectRow } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
+import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 
@@ -17,7 +18,7 @@ const pageBounds = (page: number, size: number) => {
   return { p, n, from: (p - 1) * n, to: p * n - 1 };
 };
 /** Only what a Projects-tab row shows (typed as string to skip deep select-type inference). */
-const PROJECT_PAGE_SELECT: string = "id, name, type, status, value, est_rebate, updated_at, customers(name), milestones(done), jobs(starts_at, ends_at, status, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url)))";
+const PROJECT_PAGE_SELECT: string = "id, name, type, status, value, est_rebate, updated_at, customers(name, address, city, state, zip), milestones(done), jobs(starts_at, ends_at, status, completed_at, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url)))";
 /** Most customer ids a project search will include by customer name (keeps the URL short). */
 const MAX_CUSTOMER_MATCHES = 200;
 type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "city" | "tags"> & { contacts: { name: string; is_primary: boolean }[] };
@@ -322,13 +323,14 @@ export function supabaseRepo(): Repo {
       }
       fail(error);
       const nowIso = new Date().toISOString();
-      type Row = Pick<Project, "id" | "name" | "type" | "status" | "value" | "est_rebate" | "updated_at"> & { customers: { name: string } | null; milestones: { done: boolean }[]; jobs: { starts_at: string; ends_at: string; status: Job["status"]; job_assignments: { profiles: Person | null }[] }[] };
+      type Row = Pick<Project, "id" | "name" | "type" | "status" | "value" | "est_rebate" | "updated_at"> & { customers: { name: string; address: string | null; city: string | null; state: string | null; zip: string | null } | null; milestones: { done: boolean }[]; jobs: { starts_at: string; ends_at: string; status: Job["status"]; completed_at: string | null; job_assignments: { profiles: Person | null }[] }[] };
       const rows = ((data ?? []) as unknown as Row[]).map(({ customers, milestones, jobs, ...r }) => {
         const live = jobs.filter((j) => j.status !== "cancelled");
         const team = new Map<string, Person & AvatarFields>();
         for (const j of live) for (const a of j.job_assignments) if (a.profiles) team.set(a.profiles.id, a.profiles as Person & AvatarFields);
         return {
           ...r, value: Number(r.value), est_rebate: Number(r.est_rebate), customer_name: customers?.name ?? "",
+          address: formatAddress(customers), ...projectDates(jobs),
           next_visit: live.filter((j) => iso(j.ends_at)! > nowIso && (j.status === "scheduled" || j.status === "in_progress")).map((j) => iso(j.starts_at)!).sort()[0] ?? null,
           team: [...team.values()], done_milestones: milestones.filter((m) => m.done).length, total_milestones: milestones.length,
         };
