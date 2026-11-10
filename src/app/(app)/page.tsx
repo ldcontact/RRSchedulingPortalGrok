@@ -5,6 +5,7 @@ import { AvatarStack, JobStatusPill } from "@/components/status";
 import { isStaff, requireMember } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
+import { ComingUpList } from "@/components/coming-up-list";
 import type { JobView } from "@/lib/types";
 
 function JobRow({ j, showCrew = true }: { j: JobView; showCrew?: boolean }) {
@@ -29,10 +30,14 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const repo = await getRepo();
 
   if (!isStaff(user.role)) {
-    const jobs = (await repo.listJobs({ from: zonedToUtc(addDays(T, -7), 0), to: zonedToUtc(addDays(T, 15), 0), assignee: user.id })).filter((j) => j.status !== "cancelled");
+    // No upper date bound: Coming up lists every future assigned visit (jobs.starts_at index).
+    // Look back 7 days so in-progress / recently submitted still appear in Today / Recently submitted.
+    const jobs = (await repo.listJobs({ from: zonedToUtc(addDays(T, -7), 0), assignee: user.id })).filter((j) => j.status !== "cancelled");
     const sentBack = jobs.filter((j) => j.status === "in_progress" && j.review_note);
     const today = jobs.filter((j) => dayKey(j.starts_at) === T || (j.status === "in_progress" && dayKey(j.starts_at) < T));
-    const upcoming = jobs.filter((j) => dayKey(j.starts_at) > T && j.status === "scheduled");
+    const upcoming = jobs
+      .filter((j) => dayKey(j.starts_at) > T && j.status === "scheduled")
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
     const submitted = jobs.filter((j) => (j.status === "completed" || j.status === "approved") && dayKey(j.starts_at) < T);
     return (
       <>
@@ -58,15 +63,8 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           ))}
         </div>
         <h2 className="mb-2 text-sm font-bold text-muted">Coming up</h2>
-        <div className="card mb-5 divide-y divide-line">
-          {!upcoming.length && <div className="p-4 text-center text-sm text-muted">Nothing else scheduled in the next two weeks.</div>}
-          {upcoming.map((j) => (
-            <Link key={j.id} href={`/jobs/${j.id}`} className="flex items-center gap-3 px-4 py-3">
-              <div className="w-20 text-[12px]"><div className="font-semibold">{fmtDay(dayKey(j.starts_at))}</div><div className="text-muted">{fmtRange(j.starts_at, j.ends_at)}</div></div>
-              <div className="min-w-0 flex-1"><div className="truncate font-semibold">{j.title}</div><div className="truncate text-[12.5px] text-muted">{j.customer_name}</div></div>
-              <Icon name="right" className="size-4 text-muted" />
-            </Link>
-          ))}
+        <div className="card mb-5 overflow-hidden" data-testid="my-jobs-upcoming">
+          <ComingUpList jobs={upcoming} />
         </div>
         {submitted.length > 0 && (<>
           <h2 className="mb-2 text-sm font-bold text-muted">Recently submitted</h2>
