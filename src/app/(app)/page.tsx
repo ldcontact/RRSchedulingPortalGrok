@@ -67,11 +67,12 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
     );
   }
 
-  const [c, review, today] = await Promise.all([
+  const [c, review, today, openSr] = await Promise.all([
     repo.counts(), repo.listJobs({ status: ["completed"] }), repo.listJobs({ from: zonedToUtc(T, 0), to: zonedToUtc(addDays(T, 1), 0) }),
+    repo.countOpenServiceRequests().catch(() => 0),
   ]);
-  const stat = (n: number | string, label: string, icon: string, href: string, tone: string) => (
-    <Link href={href} className="card p-4 hover:border-[#bcc6bb]">
+  const stat = (n: number | string, label: string, icon: string, href: string, tone: string, className = "", testId?: string) => (
+    <Link href={href} className={`card p-4 hover:border-[#bcc6bb] ${className}`} {...(testId ? { "data-testid": testId } : {})}>
       <div className={`mb-2 grid size-8 place-items-center rounded-lg ${tone}`}><Icon name={icon} /></div>
       <div className="text-[26px] font-bold tracking-tight">{n}</div><div className="text-[12.5px] font-medium text-muted">{label}</div>
     </Link>
@@ -80,15 +81,21 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   return (
     <>
       {deniedBanner}
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div><h1 className="text-[22px] font-semibold tracking-tight">Good {greet}, {user.name.split(" ")[0]}</h1><div className="text-muted">{dateLine}</div></div>
-        <div className="flex flex-wrap gap-2"><Link href="/jobs/new" className="btn btn-primary"><Icon name="plus" />New visit</Link><Link href="/projects/new" className="btn"><Icon name="plus" />New project</Link><Link href="/customers/new" className="btn"><Icon name="plus" />Customer</Link></div>
+        <div className="grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:flex-nowrap">
+          <Link href="/jobs/new" className="btn btn-primary w-full lg:w-auto"><Icon name="plus" />New visit</Link>
+          <Link href="/projects/new" className="btn w-full lg:w-auto"><Icon name="plus" />New project</Link>
+          <Link href="/customers/new" className="btn w-full lg:w-auto"><Icon name="plus" />Customer</Link>
+          <Link href="/service-requests?new=1" className="btn w-full lg:w-auto" data-testid="home-new-service-request"><Icon name="wrench" />Service request</Link>
+        </div>
       </div>
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="dashboard-counts">
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5" data-testid="dashboard-counts">
         {stat(c.jobsToday, "Visits today", "calendar", `/schedule?view=day&date=${T}`, "bg-sky-100 text-sky-700")}
         {stat(c.awaitingReview, "Awaiting review", "flag", "#review", "bg-violet-100 text-violet-700")}
         {stat(c.activeProjects, "Active projects", "briefcase", "/projects", "bg-brand-50 text-brand")}
         {stat(c.proposed, "Proposals out", "send", "/projects?status=proposed", "bg-accent-50 text-amber-700")}
+        {stat(openSr, "Open service requests", "wrench", "/service-requests", "bg-orange-50 text-orange-800", "col-span-2 lg:col-span-1", "home-open-service-requests")}
       </div>
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="card" id="review" data-testid="awaiting-review">

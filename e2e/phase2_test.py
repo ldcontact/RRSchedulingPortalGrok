@@ -28,6 +28,8 @@ async def main():
         await go(pg,'/')
         ok('dashboard shows awaiting-review list with RTU job', await pg.locator('[data-testid=awaiting-review] >> text=RTU tune-up + thermostats').count()==1)
         ok('dashboard counts render', await pg.locator('[data-testid=dashboard-counts] >> text=Visits today').count()==1)
+        ok('home Service request button present', await pg.locator('[data-testid=home-new-service-request]').get_attribute('href')=='/service-requests?new=1')
+        ok('home Open service requests card present', await pg.locator('[data-testid=home-open-service-requests]').get_attribute('href')=='/service-requests' and 'Open service requests' in await pg.locator('[data-testid=home-open-service-requests]').inner_text())
         await shot(pg,'17-dashboard-desktop.png')
         # projects list + filters
         await go(pg,'/projects')
