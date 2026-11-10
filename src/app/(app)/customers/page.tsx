@@ -2,29 +2,37 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { PageHeader } from "@/components/ui";
+import { Pager, pageParam } from "@/components/pager";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
+import { PAGE_SIZE, type CustomerSort } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Customers" };
 
+const SORTS: Record<CustomerSort, string> = { name: "Name A–Z", name_desc: "Name Z–A", newest: "Newest first" };
+
 export default async function CustomersPage({ searchParams }: PageProps<"/customers">) {
   await requireRole("admin", "manager");
-  const { q } = await searchParams;
-  const query = typeof q === "string" ? q : "";
-  const repo = await getRepo();
-  const [list, all] = await Promise.all([repo.listCustomers(query), query ? repo.counts() : null]);
-  const total = all?.customers ?? list.length;
+  const sp = await searchParams;
+  const query = typeof sp.q === "string" ? sp.q.trim() : "";
+  const sort: CustomerSort = typeof sp.sort === "string" && sp.sort in SORTS ? (sp.sort as CustomerSort) : "name";
+  // One database page (range + exact count); search and sort run in Postgres across all customers.
+  const { items: list, total, page, size } = await (await getRepo()).pageCustomers({ q: query, page: pageParam(sp.page), size: PAGE_SIZE, sort });
+  const href = (p: number) => `/customers?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(sort !== "name" ? { sort } : {}), ...(p > 1 ? { page: String(p) } : {}) })}`;
   return (
     <>
-      <PageHeader title="Customers" sub={query ? `${list.length} of ${total} match “${query}”` : `${total} customers and leads`}
+      <PageHeader title="Customers" sub={query ? `${total.toLocaleString("en-US")} match “${query}”` : `${total.toLocaleString("en-US")} customers and leads`}
         actions={<Link href="/customers/new" className="btn btn-primary"><Icon name="plus" />Add customer</Link>} />
-      <form className="mb-4 flex gap-2" role="search">
-        <div className="flex flex-1 items-center gap-2 rounded-lg border border-line bg-white px-3 sm:max-w-md">
+      <form className="mb-4 flex flex-wrap gap-2" role="search">
+        <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border border-line bg-white px-3 sm:basis-auto sm:max-w-md">
           <Icon name="search" className="size-4 text-muted" />
           <input name="q" defaultValue={query} placeholder="Search name, city, phone, email…" className="w-full bg-transparent py-2 text-sm outline-none" type="search" aria-label="Search customers" />
         </div>
+        <select name="sort" defaultValue={sort} className="input w-auto" aria-label="Sort customers">
+          {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
         <button className="btn">Search</button>
-        {query && <Link href="/customers" className="btn">Clear</Link>}
+        {(query || sort !== "name") && <Link href="/customers" className="btn">Clear</Link>}
       </form>
       <div className="card divide-y divide-line">
         {list.length === 0 && <div className="p-8 text-center text-muted">{query ? "No customers match your search." : "No customers yet. Add your first one."}</div>}
@@ -38,6 +46,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/custom
           </Link>
         ))}
       </div>
+      <Pager page={page} size={size} total={total} href={href} label="Customers" />
     </>
   );
 }

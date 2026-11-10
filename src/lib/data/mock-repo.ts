@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectStatus } from "@/lib/types";
+import { PAGE_SIZE, PROJECT_STATUSES } from "@/lib/types";
 import { resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
@@ -227,6 +228,13 @@ export const mockRepo: Repo = {
       .filter((c) => !term || [c.name, c.city, c.email, c.phone, c.primary_contact, ...c.tags].join(" ").toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name));
   },
+  async pageCustomers(f) {
+    const all = await mockRepo.listCustomers(f.q);
+    if (f.sort === "name_desc") all.reverse();
+    else if (f.sort === "newest") all.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const r = mockPage(all, f.page, f.size);
+    return { ...r, items: r.items.map((c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, city: c.city, tags: c.tags, primary_contact: c.primary_contact })) };
+  },
   async getCustomer(id) { return load().customers.find((c) => c.id === id) ?? null; },
   async createCustomer(input) {
     return mutate((db) => { const c: Customer = { ...input, id: randomUUID(), created_at: now(), updated_at: now() }; db.customers.push(c); return c; });
@@ -385,6 +393,16 @@ export const mockRepo: Repo = {
       })
       .filter((p) => !term || `${p.name} ${p.customer_name} ${p.scope}`.toLowerCase().includes(term))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  },
+  async pageProjects(f) {
+    const all = await mockRepo.listProjects({ q: f.q });
+    const counts: Record<string, number> = { active: all.filter((p) => p.status !== "cancelled").length };
+    for (const st of PROJECT_STATUSES) counts[st] = all.filter((p) => p.status === st).length;
+    const list = all.filter((p) => (f.status ? p.status === f.status : p.status !== "cancelled"));
+    if (f.sort === "name") list.sort((a, b) => a.name.localeCompare(b.name));
+    else if (f.sort === "value") list.sort((a, b) => b.value - a.value);
+    else if (f.sort === "newest") list.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    return { ...mockPage(list, f.page, f.size), counts };
   },
   async getProject(id) { const w = await who(); return w.canProject(id) ? load().projects.find((p) => p.id === id) ?? null : null; },
   async createProject(input) {
@@ -573,3 +591,10 @@ export const mockRepo: Repo = {
     mutate((db) => { db.messages.push({ ...m, id: randomUUID(), sent_by: w.uid, created_at: now() }); });
   },
 };
+
+function mockPage<T>(all: T[], page: number, size = PAGE_SIZE) {
+  const n = Math.min(Math.max(1, size), 200);
+  const last = Math.max(1, Math.ceil(all.length / n));
+  const p = Math.min(Math.max(1, Math.floor(page) || 1), last);
+  return { items: all.slice((p - 1) * n, p * n), total: all.length, page: p, size: n };
+}

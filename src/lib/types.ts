@@ -68,6 +68,13 @@ export type Customer = {
 export type CustomerInput = Omit<Customer, "id" | "created_at" | "updated_at">;
 export type CustomerListItem = Customer & { primary_contact: string | null; project_count: number };
 
+// ---- paged list views (one database page at a time; only the columns the row shows)
+export const PAGE_SIZE = 50;
+export type Paged<T> = { items: T[]; total: number; page: number; size: number };
+export type CustomerSort = "name" | "name_desc" | "newest";
+export type CustomerRow = Pick<Customer, "id" | "name" | "phone" | "email" | "city" | "tags"> & { primary_contact: string | null };
+export type CustomerPageFilter = { q?: string; page: number; size?: number; sort?: CustomerSort };
+
 export type Contact = {
   id: string;
   customer_id: string;
@@ -106,6 +113,14 @@ export type Project = {
 export type ProjectInput = Pick<Project, "customer_id" | "name" | "type" | "status" | "scope" | "value" | "est_rebate">;
 export type Person = { id: string; full_name: string; color: string; avatar_url?: string | null };
 export type ProjectListItem = Project & { customer_name: string; next_visit: string | null; team: Person[]; done_milestones: number; total_milestones: number };
+export type ProjectSort = "updated" | "newest" | "name" | "value";
+export type ProjectRow = Pick<Project, "id" | "name" | "type" | "status" | "value" | "est_rebate" | "updated_at"> & {
+  customer_name: string; next_visit: string | null; team: Person[]; done_milestones: number; total_milestones: number;
+};
+/** status: a single status, or undefined = all except cancelled ("All active"). */
+export type ProjectPageFilter = { q?: string; status?: ProjectStatus; page: number; size?: number; sort?: ProjectSort };
+/** counts: matching projects per status tab (same search), key "active" = all but cancelled. */
+export type ProjectPage = Paged<ProjectRow> & { counts: Record<string, number>; note?: string };
 
 export type Milestone = { id: string; project_id: string; name: string; due_date: string | null; done: boolean; sort_order: number };
 

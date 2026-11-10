@@ -1,11 +1,28 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
-import type { AvatarSource, Contact, Customer, CustomerListItem, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem } from "@/lib/types";
+import { PAGE_SIZE, PROJECT_STATUSES } from "@/lib/types";
+import type { AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectRow } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 
+/** Search term safe inside a PostgREST or=() filter: quoted, without wildcard/grouping chars. */
+const searchTerm = (q: string | undefined) => {
+  const t = (q ?? "").replace(/[%_,()"\\*]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+  return t ? `"%${t}%"` : null;
+};
+const pageBounds = (page: number, size: number) => {
+  const p = Math.max(1, Math.floor(page) || 1), n = Math.min(Math.max(1, Math.floor(size) || PAGE_SIZE), 200);
+  return { p, n, from: (p - 1) * n, to: p * n - 1 };
+};
+/** Only what a Projects-tab row shows (typed as string to skip deep select-type inference). */
+const PROJECT_PAGE_SELECT: string = "id, name, type, status, value, est_rebate, updated_at, customers(name), milestones(done), jobs(starts_at, ends_at, status, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url)))";
+/** Most customer ids a project search will include by customer name (keeps the URL short). */
+const MAX_CUSTOMER_MATCHES = 200;
+type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "city" | "tags"> & { contacts: { name: string; is_primary: boolean }[] };
+const mapCustomers = (data: unknown[] | null): CustomerRow[] =>
+  ((data ?? []) as CustomerRowRaw[]).map(({ contacts, ...c }) => ({ ...c, primary_contact: contacts.find((x) => x.is_primary)?.name ?? contacts[0]?.name ?? null }));
 const iso = (t: string | null) => (t ? new Date(t).toISOString() : t); // normalise "+00:00" -> "Z" so string compares work
 const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip)), job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))";
 type JobRow = Job & {
@@ -62,6 +79,35 @@ export function supabaseRepo(): Repo {
         const { contacts, projects, ...c } = r as Customer & { contacts: { name: string; is_primary: boolean }[]; projects: { count: number }[] };
         return { ...c, primary_contact: contacts.find((x) => x.is_primary)?.name ?? contacts[0]?.name ?? null, project_count: projects[0]?.count ?? 0 } satisfies CustomerListItem;
       });
+    },
+    async pageCustomers(f) {
+      const s = await db();
+      const { p, n, from, to } = pageBounds(f.page, f.size ?? PAGE_SIZE);
+      const term = searchTerm(f.q);
+      const search = term ? `name.ilike.${term},city.ilike.${term},email.ilike.${term},phone.ilike.${term}` : null;
+      const run = (a: number, b: number) => {
+        let q = s.from("customers").select("id, name, phone, email, city, tags, contacts(name, is_primary)", { count: "exact" });
+        if (search) q = q.or(search);
+        q = f.sort === "newest" ? q.order("created_at", { ascending: false }) : q.order("name", { ascending: f.sort !== "name_desc" });
+        return q.order("id").range(a, b);
+      };
+      const first = await run(from, to);
+      let { data, count, error } = first;
+      const { status } = first;
+      if (status === 416 || error?.code === "PGRST103") { // page past the end (e.g. after a search): show the last page
+        // A 416 response carries no count, so ask for it with a cheap head query.
+        let cq = s.from("customers").select("id", { count: "exact", head: true });
+        if (search) cq = cq.or(search);
+        const c = await cq;
+        fail(c.error);
+        count = c.count;
+        const last = Math.max(0, Math.ceil((count ?? 0) / n) - 1);
+        ({ data, error } = await run(last * n, last * n + n - 1));
+        fail(error);
+        return { items: mapCustomers(data), total: count ?? 0, page: last + 1, size: n };
+      }
+      fail(error);
+      return { items: mapCustomers(data), total: count ?? 0, page: p, size: n };
     },
     async getCustomer(id) {
       const { data, error } = await (await db()).from("customers").select("*").eq("id", id).maybeSingle();
@@ -230,6 +276,68 @@ export function supabaseRepo(): Repo {
           avatar_url: resolveAvatarUrl(p, p.avatar_path ? signed.get(p.avatar_path) : null),
         })),
       })) satisfies ProjectListItem[];
+    },
+    async pageProjects(f) {
+      const s = await db();
+      const { p, n, from, to } = pageBounds(f.page, f.size ?? PAGE_SIZE);
+      const term = searchTerm(f.q);
+      let note: string | undefined;
+      let customerIds: string[] = [];
+      if (term) {
+        // PostgREST can't OR a parent column with an embedded one, so match customer names first.
+        const { data, error } = await s.from("customers").select("id").ilike("name", term.slice(1, -1)).order("name").limit(MAX_CUSTOMER_MATCHES + 1);
+        fail(error);
+        customerIds = (data ?? []).map((c) => c.id as string);
+        if (customerIds.length > MAX_CUSTOMER_MATCHES) {
+          customerIds = customerIds.slice(0, MAX_CUSTOMER_MATCHES);
+          note = `More than ${MAX_CUSTOMER_MATCHES} customers match “${f.q}”; customer-name matches are limited to the first ${MAX_CUSTOMER_MATCHES}. Refine the search to narrow it down.`;
+        }
+      }
+      const orFilter = term ? [`name.ilike.${term}`, `scope.ilike.${term}`, ...(customerIds.length ? [`customer_id.in.(${customerIds.join(",")})`] : [])].join(",") : null;
+      const head = { count: "exact", head: true } as const;
+      const countsP = Promise.all((["active", ...PROJECT_STATUSES] as const).map(async (st) => {
+        let q = s.from("projects").select("id", head);
+        q = st === "active" ? q.neq("status", "cancelled") : q.eq("status", st);
+        if (orFilter) q = q.or(orFilter);
+        const { count, error } = await q;
+        fail(error);
+        return [st, count ?? 0] as const;
+      }));
+      const run = (a: number, b: number) => {
+        let q = s.from("projects").select(PROJECT_PAGE_SELECT, { count: "exact" });
+        q = f.status ? q.eq("status", f.status) : q.neq("status", "cancelled");
+        if (orFilter) q = q.or(orFilter);
+        q = f.sort === "name" ? q.order("name") : f.sort === "value" ? q.order("value", { ascending: false }) : q.order(f.sort === "newest" ? "created_at" : "updated_at", { ascending: false });
+        return q.order("id").range(a, b);
+      };
+      let page = p;
+      const first = await run(from, to);
+      let { data, count, error } = first;
+      const { status } = first;
+      if (status === 416 || error?.code === "PGRST103") { // page past the end: show the last page (416 carries no count)
+        count = Object.fromEntries(await countsP)[f.status ?? "active"] ?? 0;
+        const last = Math.max(0, Math.ceil(count / n) - 1);
+        ({ data, error } = await run(last * n, last * n + n - 1));
+        page = last + 1;
+      }
+      fail(error);
+      const nowIso = new Date().toISOString();
+      type Row = Pick<Project, "id" | "name" | "type" | "status" | "value" | "est_rebate" | "updated_at"> & { customers: { name: string } | null; milestones: { done: boolean }[]; jobs: { starts_at: string; ends_at: string; status: Job["status"]; job_assignments: { profiles: Person | null }[] }[] };
+      const rows = ((data ?? []) as unknown as Row[]).map(({ customers, milestones, jobs, ...r }) => {
+        const live = jobs.filter((j) => j.status !== "cancelled");
+        const team = new Map<string, Person & AvatarFields>();
+        for (const j of live) for (const a of j.job_assignments) if (a.profiles) team.set(a.profiles.id, a.profiles as Person & AvatarFields);
+        return {
+          ...r, value: Number(r.value), est_rebate: Number(r.est_rebate), customer_name: customers?.name ?? "",
+          next_visit: live.filter((j) => iso(j.ends_at)! > nowIso && (j.status === "scheduled" || j.status === "in_progress")).map((j) => iso(j.starts_at)!).sort()[0] ?? null,
+          team: [...team.values()], done_milestones: milestones.filter((m) => m.done).length, total_milestones: milestones.length,
+        };
+      });
+      const signed = await signAvatarPaths(s, rows.flatMap((r) => r.team).map((x) => (x.avatar_source === "upload" ? x.avatar_path : null)));
+      const items: ProjectRow[] = rows.map((r) => ({
+        ...r, team: r.team.map((x) => ({ id: x.id, full_name: x.full_name, color: x.color, avatar_url: resolveAvatarUrl(x, x.avatar_path ? signed.get(x.avatar_path) : null) })),
+      }));
+      return { items, total: count ?? 0, page, size: n, counts: Object.fromEntries(await countsP), note };
     },
     async getProject(id) {
       const { data, error } = await (await db()).from("projects").select("*").eq("id", id).maybeSingle(); fail(error);

@@ -1,5 +1,5 @@
 import type {
-  Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
+  Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, CustomerPageFilter, CustomerRow, Paged, ProjectPage, ProjectPageFilter, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
   Milestone, Note, Person, Photo, PhotoKind, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectStatus, TeamMember,
 } from "@/lib/types";
 
@@ -11,6 +11,8 @@ import type {
  */
 export interface Repo {
   listCustomers(q?: string): Promise<CustomerListItem[]>;
+  /** Customers tab: one page from the database (range + exact count), search/sort server-side. */
+  pageCustomers(f: CustomerPageFilter): Promise<Paged<CustomerRow>>;
   getCustomer(id: string): Promise<Customer | null>;
   createCustomer(input: CustomerInput): Promise<Customer>;
   updateCustomer(id: string, input: CustomerInput): Promise<void>;
@@ -40,6 +42,8 @@ export interface Repo {
 
   // ---- phase 2
   listProjects(f?: { status?: ProjectStatus; customerId?: string; q?: string }): Promise<ProjectListItem[]>;
+  /** Projects tab: one page from the database (range + exact count) plus per-status counts for the same search. */
+  pageProjects(f: ProjectPageFilter): Promise<ProjectPage>;
   getProject(id: string): Promise<Project | null>;
   createProject(input: ProjectInput): Promise<Project>;
   updateProject(id: string, patch: Partial<Omit<Project, "id" | "created_at" | "updated_at">>): Promise<void>;

@@ -1,47 +1,54 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
-import { PageHeader } from "@/components/ui";
+import { Banner, PageHeader } from "@/components/ui";
 import { AvatarStack, ProjectStatusPill, TypeTag } from "@/components/status";
+import { Pager, pageParam } from "@/components/pager";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { fmtWhen, money } from "@/lib/time";
-import { PROJECT_STATUSES, PROJECT_STATUS_LABEL, type ProjectStatus } from "@/lib/types";
+import { PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, type ProjectSort, type ProjectStatus } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Projects" };
+
+const SORTS: Record<ProjectSort, string> = { updated: "Recently updated", newest: "Newest first", name: "Name A–Z", value: "Highest value" };
 
 export default async function ProjectsPage({ searchParams }: PageProps<"/projects">) {
   await requireRole("admin", "manager");
   const sp = await searchParams;
   const status = PROJECT_STATUSES.includes(sp.status as ProjectStatus) ? (sp.status as ProjectStatus) : undefined;
-  const q = typeof sp.q === "string" ? sp.q : "";
-  const all = await (await getRepo()).listProjects({ q });
-  const list = status ? all.filter((p) => p.status === status) : all.filter((p) => p.status !== "cancelled");
-  const count = (st?: ProjectStatus) => (st ? all.filter((p) => p.status === st).length : all.filter((p) => p.status !== "cancelled").length);
-  const href = (st?: ProjectStatus) => `/projects?${new URLSearchParams({ ...(st ? { status: st } : {}), ...(q ? { q } : {}) })}`;
-  const pipeline = list.reduce((a, p) => a + p.value, 0), rebates = list.reduce((a, p) => a + p.est_rebate, 0);
+  const q = typeof sp.q === "string" ? sp.q.trim() : "";
+  const sort: ProjectSort = typeof sp.sort === "string" && sp.sort in SORTS ? (sp.sort as ProjectSort) : "updated";
+  // One database page (range + exact count) plus per-tab counts; search/filter/sort run in Postgres.
+  const { items: list, total, page, size, counts, note } = await (await getRepo()).pageProjects({ q, status, page: pageParam(sp.page), size: PAGE_SIZE, sort });
+  const href = (st?: ProjectStatus, p = 1) => `/projects?${new URLSearchParams({ ...(st ? { status: st } : {}), ...(q ? { q } : {}), ...(sort !== "updated" ? { sort } : {}), ...(p > 1 ? { page: String(p) } : {}) })}`;
   return (
     <>
-      <PageHeader title="Projects" sub={`${list.length} project${list.length === 1 ? "" : "s"} · ${money(pipeline)} value · ${money(rebates)} est. rebates`}
+      <PageHeader title="Projects" sub={`${total.toLocaleString("en-US")} project${total === 1 ? "" : "s"}${q ? ` match “${q}”` : ""}`}
         actions={<Link href="/projects/new" className="btn btn-primary"><Icon name="plus" />New project</Link>} />
       <div className="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Filter by status">
         {[undefined, ...PROJECT_STATUSES].map((st) => (
           <Link key={st ?? "all"} href={href(st)} role="tab" aria-selected={status === st}
             className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-semibold ${status === st ? "border-brand bg-brand text-white" : "border-line bg-white text-muted hover:text-ink"}`}>
-            {st ? PROJECT_STATUS_LABEL[st] : "All active"}<span className={`rounded-full px-1.5 text-[11px] ${status === st ? "bg-white/20" : "bg-canvas"}`}>{count(st)}</span>
+            {st ? PROJECT_STATUS_LABEL[st] : "All active"}<span className={`rounded-full px-1.5 text-[11px] ${status === st ? "bg-white/20" : "bg-canvas"}`}>{(counts[st ?? "active"] ?? 0).toLocaleString("en-US")}</span>
           </Link>
         ))}
       </div>
-      <form className="mb-4 flex gap-2" role="search">
+      <form className="mb-4 flex flex-wrap gap-2" role="search">
         {status && <input type="hidden" name="status" value={status} />}
-        <div className="flex flex-1 items-center gap-2 rounded-lg border border-line bg-white px-3 sm:max-w-md">
+        <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border border-line bg-white px-3 sm:basis-auto sm:max-w-md">
           <Icon name="search" className="size-4 text-muted" />
           <input name="q" defaultValue={q} placeholder="Search project, customer, scope…" className="w-full bg-transparent py-2 text-sm outline-none" type="search" aria-label="Search projects" />
         </div>
+        <select name="sort" defaultValue={sort} className="input w-auto" aria-label="Sort projects">
+          {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
         <button className="btn">Search</button>
+        {(q || sort !== "updated") && <Link href={href(status)} className="btn">Clear</Link>}
       </form>
+      {note && <div className="mb-3"><Banner tone="warn"><Icon name="alert" />{note}</Banner></div>}
       <div className="card divide-y divide-line">
-        {list.length === 0 && <div className="p-8 text-center text-muted">No projects here yet.</div>}
+        {list.length === 0 && <div className="p-8 text-center text-muted">{q ? "No projects match your search." : "No projects here yet."}</div>}
         {list.map((p) => (
           <Link key={p.id} href={`/projects/${p.id}`} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-[#fafbf9] sm:px-5 lg:grid-cols-[minmax(0,2fr)_150px_120px_110px_120px_16px]">
             <div className="min-w-0">
@@ -59,6 +66,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
           </Link>
         ))}
       </div>
+      <Pager page={page} size={size} total={total} href={(p) => href(status, p)} label="Projects" />
     </>
   );
 }
