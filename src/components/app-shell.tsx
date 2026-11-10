@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Icon } from "./icons";
-import { Avatar, BrandMark, Logo, MockBadge } from "./ui";
+import { Avatar, Logo, MockBadge } from "./ui";
 import { ROLE_LABEL, type Role, type SessionUser } from "@/lib/types";
 
 type NavItem = { href: string; label: string; icon: string; soon?: boolean };
@@ -64,8 +64,6 @@ export function AppShell({ user, mock, roleSwitcher, children }: { user: Session
           {mock && <span className="hidden sm:inline"><MockBadge /></span>}
           {roleSwitcher}
           <span className="hidden text-xs text-muted lg:inline">{ROLE_LABEL[user.role]}</span>
-          {/* Company mark right-most; user avatar lives in sidebar / account, so no collision */}
-          <BrandMark className="ml-1 h-7 w-auto max-w-[120px] sm:h-8 sm:max-w-[140px]" />
         </header>
         <main className={`w-full px-3 pt-4 pb-28 md:px-6 md:pt-6 ${tech ? "mx-auto max-w-[680px]" : "max-w-[1320px] md:pb-10"}`}>{children}</main>
       </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Bolt, Icon } from "./icons";
+import { Icon } from "./icons";
 import { ROLE_LABEL, type Role } from "@/lib/types";
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
@@ -25,9 +25,15 @@ export function BrandMark({ className = "h-8 w-auto" }: { className?: string }) 
 }
 
 export function Logo({ dark = false, compact = false }: { dark?: boolean; compact?: boolean }) {
+  // Company mark sits where the old orange bolt was — white tile keeps it readable on the dark sidebar / auth panel.
+  const tile = compact
+    ? "h-9 w-11 p-1"
+    : "h-10 w-[3.25rem] p-1.5";
   return (
     <div className="flex items-center gap-2.5">
-      <div className="grid size-9 place-items-center rounded-[10px] bg-gradient-to-br from-accent to-orange-500 text-white shadow-[0_4px_12px_rgba(245,158,11,.35)]"><Bolt /></div>
+      <div className={`grid shrink-0 place-items-center overflow-hidden rounded-[10px] bg-white shadow-[0_2px_8px_rgba(0,0,0,.18)] ring-1 ring-black/5 ${tile}`}>
+        <BrandMark className="h-full w-full max-h-full max-w-full" />
+      </div>
       {!compact && (
         <div className="leading-tight">
           <div className={`text-[15.5px] font-bold ${dark ? "text-white" : "text-ink"}`}>RR Scheduler</div>

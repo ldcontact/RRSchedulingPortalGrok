@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Icon } from "./icons";
-import { BrandMark, Logo } from "./ui";
+import { Logo } from "./ui";
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -18,10 +18,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         <div className="hidden text-sm text-[#9cc4bd] md:block">Lighting & HVAC retrofits for ComEd small business customers</div>
       </div>
       <div className="relative flex items-start justify-center bg-white p-6 md:items-center md:p-8">
-        <div className="absolute top-4 right-4 md:top-6 md:right-6">
-          <BrandMark className="h-8 w-auto max-w-[130px] md:h-9 md:max-w-[150px]" />
-        </div>
-        <div className="flex w-full max-w-[380px] flex-col gap-5 pt-10 md:pt-0">{children}</div>
+        <div className="flex w-full max-w-[380px] flex-col gap-5">{children}</div>
       </div>
     </div>
   );
