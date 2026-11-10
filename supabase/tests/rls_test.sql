@@ -275,3 +275,80 @@ select pg_temp.check('authenticated cannot execute private.set_updated_at', not 
 select pg_temp.check('authenticated cannot execute private.force_row_actor', not has_function_privilege('authenticated', 'private.force_row_actor()', 'execute'));
 select pg_temp.fails('direct call to private.handle_new_user blocked', $$select private.handle_new_user()$$);
 reset role;
+
+-- ---- service requests (tickets) + warranty visits
+-- state here: project 1 (Lakeview) is Complete (its install visit was approved);
+-- stranger@hotmail.com (…0e) is now a tech; Maria (…0b) is a manager.
+reset role;
+select pg_temp.check('project 1 complete before warranty work', (select status from projects where id='20000000-0000-0000-0000-000000000001')='complete');
+select pg_temp.check('existing visits default to install', not exists (select 1 from jobs where kind <> 'install'));
+select pg_temp.check('projects default to a 24-month warranty', (select bool_and(warranty_months = 24) from projects));
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria (manager)
+insert into service_requests (id, customer_id, project_id, channel, summary, description, priority)
+values ('50000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',
+        'call','Lobby panel flickering','Front desk says one lobby panel flickers.','high'),
+       ('50000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000002',null,'email','Wall pack out','Not sure if we installed it.','normal');
+select pg_temp.check('ticket numbers start at 1001', (select array_agg(number order by number) from service_requests) = array[1001,1002]);
+select pg_temp.check('ticket created_by forced to staff user', (select bool_and(created_by = auth.uid()) from service_requests));
+insert into service_request_events (request_id, kind, body, actor_id) values ('50000000-0000-0000-0000-000000000001','note','Inside warranty, schedule a swap','00000000-0000-0000-0000-00000000000a');
+select pg_temp.check('event actor forced to auth.uid', (select actor_id = auth.uid() from service_request_events where body='Inside warranty, schedule a swap'));
+select pg_temp.fails('empty ticket note rejected', $$insert into service_request_events (request_id, kind, body) values ('50000000-0000-0000-0000-000000000001','note','  ')$$);
+select pg_temp.check('view: linked complete project is in warranty', (select warranty_state from service_request_list where number=1001)='in');
+select pg_temp.check('view: unlinked ticket is unknown', (select warranty_state from service_request_list where number=1002)='unknown');
+select pg_temp.check('view: expiry is completion + 24 months', (select warranty_expires_at = project_completed_at + interval '24 months' from service_request_list where number=1001));
+select pg_temp.fails('install visit cannot carry a ticket', $$insert into jobs (project_id, title, starts_at, ends_at, service_request_id) values ('20000000-0000-0000-0000-000000000001','x','2027-01-05 15:00Z','2027-01-05 17:00Z','50000000-0000-0000-0000-000000000001')$$);
+insert into jobs (id, project_id, title, starts_at, ends_at, kind, service_request_id) values
+  ('30000000-0000-0000-0000-000000000009','20000000-0000-0000-0000-000000000001','Warranty — lobby panel','2027-01-05 15:00Z','2027-01-05 17:00Z','warranty','50000000-0000-0000-0000-000000000001');
+insert into job_assignments values ('30000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-00000000000e');
+update service_requests set status='scheduled' where id='50000000-0000-0000-0000-000000000001';
+select pg_temp.check('warranty visit leaves project Complete', (select status from projects where id='20000000-0000-0000-0000-000000000001')='complete');
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e'); -- tech on the warranty visit
+select pg_temp.check('tech reads only the ticket behind their visit', (select count(*) from service_requests)=1 and (select number from service_requests)=1001);
+select pg_temp.check('tech cannot read ticket notes/history', (select count(*) from service_request_events)=0);
+select pg_temp.check('tech cannot use the inbox view beyond their ticket', (select count(*) from service_request_list)<=1);
+select pg_temp.fails('tech cannot log a ticket', $$insert into service_requests (customer_id, summary) values ('10000000-0000-0000-0000-000000000001','x')$$);
+update service_requests set billable=true where id='50000000-0000-0000-0000-000000000001'; -- RLS: matches 0 rows
+select pg_temp.check('tech cannot edit a ticket', (select billable from service_requests where id='50000000-0000-0000-0000-000000000001')=false);
+select pg_temp.fails('tech cannot retag a visit', $$update jobs set kind='install', service_request_id=null where id='30000000-0000-0000-0000-000000000009'$$);
+update jobs set status='in_progress' where id='30000000-0000-0000-0000-000000000009';
+select pg_temp.check('starting a warranty visit keeps project Complete', (select status from projects where id='20000000-0000-0000-0000-000000000001')='complete');
+insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000009','Swapped the lobby driver');
+insert into photos (project_id, job_id, kind, storage_path) values
+  ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000009','completion','20000000-0000-0000-0000-000000000001/completion/w1.jpg');
+-- project 1 has an install checklist (Lobby panel, Operatory troffer); a warranty visit doesn't need it
+update jobs set status='completed' where id='30000000-0000-0000-0000-000000000009';
+select pg_temp.check('warranty visit submits without the install checklist', (select status from jobs where id='30000000-0000-0000-0000-000000000009')='completed');
+reset role;
+select pg_temp.check('completing the visit auto-resolves the ticket', (select status = 'resolved' and resolved_job_id = '30000000-0000-0000-0000-000000000009' and resolved_by = '00000000-0000-0000-0000-00000000000e' from service_requests where number=1001));
+select pg_temp.check('auto-resolve logged in history', exists (select 1 from service_request_events where request_id='50000000-0000-0000-0000-000000000001' and kind='resolved'));
+select pg_temp.check('project stays Complete after warranty visit', (select status from projects where id='20000000-0000-0000-0000-000000000001')='complete');
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria sends it back
+update jobs set status='in_progress', review_note='Photo is blurry', completed_at=null where id='30000000-0000-0000-0000-000000000009';
+select pg_temp.check('sent-back visit puts ticket back to Scheduled', (select status from service_requests where number=1001)='scheduled');
+update jobs set status='approved', approved_by=auth.uid(), approved_at=now() where id='30000000-0000-0000-0000-000000000009';
+select pg_temp.check('approving the visit resolves the ticket', (select status from service_requests where number=1001)='resolved');
+select pg_temp.check('approved warranty visit does not change project', (select status from projects where id='20000000-0000-0000-0000-000000000001')='complete');
+-- cancelling the only visit of a scheduled ticket returns it to triage
+insert into jobs (id, project_id, title, starts_at, ends_at, kind, service_request_id) values
+  ('30000000-0000-0000-0000-00000000000a','20000000-0000-0000-0000-000000000002','Service — wall pack','2027-01-06 15:00Z','2027-01-06 16:00Z','service','50000000-0000-0000-0000-000000000002');
+update service_requests set status='scheduled', project_id='20000000-0000-0000-0000-000000000002' where id='50000000-0000-0000-0000-000000000002';
+update jobs set status='cancelled' where id='30000000-0000-0000-0000-00000000000a';
+select pg_temp.check('cancelling the only visit returns ticket to Triaged', (select status from service_requests where number=1002)='triaged');
+select pg_temp.check('service visit did not move project 2', (select status from projects where id='20000000-0000-0000-0000-000000000002')='awaiting_review');
+update projects set warranty_months = 0 where id='20000000-0000-0000-0000-000000000001';
+update service_requests set received_at = now() + interval '1 day' where number=1001;
+select pg_temp.check('warranty_months is editable per project', (select warranty_state from service_request_list where number=1001)='out');
+select pg_temp.fails('negative warranty rejected', $$update projects set warranty_months=-1 where id='20000000-0000-0000-0000-000000000001'$$);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000f'); -- a tech with no visits on any ticket
+select pg_temp.check('unrelated tech sees no tickets', (select count(*) from service_requests)=0 and (select count(*) from service_request_list)=0);
+reset role;
+set role authenticated;
+select pg_temp.check('authenticated cannot execute private.sync_service_request', not has_function_privilege('authenticated', 'private.sync_service_request()', 'execute'));
+reset role;
+select pg_temp.check('anon has no access to tickets', not has_table_privilege('anon', 'public.service_requests', 'select') and not has_table_privilege('anon', 'public.service_request_list', 'select'));

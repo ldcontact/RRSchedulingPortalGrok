@@ -1,0 +1,146 @@
+# Service requests click-through (mock mode). Start `npm run dev` with NEXT_PUBLIC_RR_MOCK_MODE=1 and a fresh
+# .mock-db.json, then: RR_BASE=http://localhost:3419 RR_SHOTS=/tmp/shots/ python3 e2e/service_requests_test.py
+import asyncio, datetime, os, zoneinfo
+from playwright.async_api import async_playwright
+B=os.environ.get('RR_BASE','http://localhost:3417'); OUT=os.environ.get('RR_SHOTS','screenshots/')
+IMG=os.path.join(os.path.dirname(__file__),'..','public','brand','logo.png')
+T=datetime.datetime.now(zoneinfo.ZoneInfo('America/Chicago')).date()
+D=lambda n: (T+datetime.timedelta(days=n)).isoformat()
+errors=[]; results=[]
+def ok(label, cond):
+    results.append(('PASS' if cond else 'FAIL', label)); print(('PASS ' if cond else 'FAIL ')+label, flush=True)
+def hook(pg, tag):
+    pg.on('console', lambda m: errors.append((tag, m.text[:300])) if m.type=='error' else None)
+    pg.on('pageerror', lambda e: errors.append((tag,'pageerror '+str(e)[:300])))
+async def as_user(ctx, uid):
+    await ctx.clear_cookies(); await ctx.add_cookies([{'name':'rr_mock_uid','value':uid,'url':B}])
+async def go(pg, path):
+    await pg.goto(B+path); await pg.wait_for_load_state('networkidle')
+async def settle(pg):
+    await pg.wait_for_load_state('networkidle'); await pg.wait_for_timeout(500)
+async def shot(pg, name, full=False):
+    await pg.screenshot(path=OUT+name, full_page=full, caret='initial')
+rows=lambda pg: pg.locator('[data-testid=ticket-row]')
+
+async def main():
+    os.makedirs(OUT, exist_ok=True)
+    async with async_playwright() as p:
+        b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
+        ctx=await b.new_context(viewport={'width':1440,'height':900}); pg=await ctx.new_page(); hook(pg,'desktop')
+        await as_user(ctx,'u-manager')
+        await go(pg,'/')
+        ok('sidebar shows Service requests with open badge 4', await pg.locator('[data-testid=nav-badge-service-requests]').inner_text()=='4')
+        await go(pg,'/service-requests')
+        ok('inbox lists 4 open tickets', await rows(pg).count()==4)
+        ok('tabs show per-status counts', await pg.locator('[role=tab]:has-text("New")').inner_text()=='New\n2' or '2' in await pg.locator('[role=tab]:has-text("New")').inner_text())
+        ok('warranty pills: in / out / unknown', await pg.locator('[data-testid=ticket-list] [data-testid=warranty-pill]:visible:has-text("In warranty")').count()==2 and await pg.locator('[data-testid=ticket-list] [data-testid=warranty-pill]:visible:has-text("Out of warranty")').count()==1 and await pg.locator('[data-testid=ticket-list] [data-testid=warranty-pill]:visible:has-text("Unknown")').count()==1)
+        await shot(pg,'01-inbox.png')
+        await go(pg,'/service-requests?warranty=out'); ok('warranty filter: out -> SR-1002', await rows(pg).count()==1 and await pg.locator('text=SR-1002').count()==1)
+        await go(pg,'/service-requests?q=SR-1003'); ok('search by ticket number', await rows(pg).count()==1 and await pg.locator('text=Parking lot pole light out').count()==1)
+        await go(pg,'/service-requests?channel=email'); ok('channel filter: email', await rows(pg).count()==1)
+        await go(pg,'/service-requests?assignee=me'); ok('assignee filter: me (Maria) -> 1', await rows(pg).count()==1)
+        await go(pg,'/service-requests?status=resolved'); ok('Resolved tab', await rows(pg).count()==1 and await pg.locator('text=Thermostat schedule reset').count()==1)
+        await go(pg,'/service-requests?status=all'); ok('All tab = 6', await rows(pg).count()==6)
+
+        # ticket detail
+        await go(pg,'/service-requests/sr1')
+        ok('ticket header + in-warranty box', await pg.locator('h1 >> text=SR-1001').count()==1 and await pg.locator('[data-testid=warranty-box] >> text=In warranty').count()==1)
+        ok('warranty box shows 2-year coverage + expiry', await pg.locator('[data-testid=warranty-box] >> text=2-year lighting warranty').count()==1)
+        ok('linked original project card', await pg.locator('[data-testid=original-project] >> text=Office & breakroom LED troffer retrofit').count()==1)
+        await pg.fill('[data-testid=ticket-notes] input[name=body]','Dave says it is the panel nearest the window.'); await pg.click('[data-testid=ticket-notes] button:has-text("Add note")'); await pg.wait_for_url('**ok=*'); await settle(pg)
+        ok('internal note added', await pg.locator('[data-testid=ticket-notes] >> text=nearest the window').count()==1)
+        await go(pg,'/service-requests/sr1'); await shot(pg,'02-ticket-detail.png', True)
+        # schedule warranty visit (conflict first: Carlos is busy tomorrow)
+        await pg.click('[data-testid=schedule-visit]'); await pg.wait_for_selector('[data-testid=schedule-form]'); await settle(pg)
+        ok('schedule modal defaults to Warranty', await pg.locator('[data-testid=schedule-form] input[name=kind][value=warranty]').is_checked())
+        await pg.click('[data-testid=schedule-form] label:has-text("Carlos Mendez")')
+        await shot(pg,'03-schedule-modal.png')
+        await pg.click('[data-testid=schedule-submit]'); await pg.wait_for_selector('[data-testid=conflict-warning]'); await settle(pg)
+        ok('double-booking warning for Carlos', await pg.locator('[data-testid=conflict-warning] >> text=Carlos Mendez is already on').count()>=1)
+        await pg.click('[data-testid=schedule-form] label:has-text("Carlos Mendez")'); await pg.click('[data-testid=schedule-form] label:has-text("Jake Sullivan")')
+        await pg.fill('[data-testid=schedule-form] input[name=start]','13:00'); await pg.fill('[data-testid=schedule-form] input[name=end]','15:00')
+        await pg.click('[data-testid=schedule-submit]'); await pg.wait_for_url('**ok=*'); await settle(pg)
+        ok('visit scheduled; ticket moved to Scheduled', await pg.locator('text=Warranty visit scheduled').count()==1 and await pg.locator('h1 >> text=Scheduled').count()==1)
+        ok('visit listed on the ticket with Warranty badge', await pg.locator('[data-testid=ticket-visits] [data-testid=job-kind]').count()==1)
+        await go(pg,'/projects/p7'); ok('original project stays Complete', await pg.locator('h1 >> text=Complete').count()==1)
+        ok('project visit list shows Warranty badges (2 warranty visits)', await pg.locator('[data-testid=job-kind]').count()==2)
+        await go(pg,'/projects?status=complete'); ok('Projects: p7 still under Complete', await pg.locator('a[href="/projects/p7"]').count()==1)
+        await go(pg,'/projects?status=scheduled'); ok('Projects: p7 NOT pulled back into Scheduled', await pg.locator('a[href="/projects/p7"]').count()==0)
+        # calendar
+        await go(pg,f'/schedule?view=week&date={D(1)}'); await settle(pg)
+        ok('calendar chip has Warranty badge', await pg.locator('a[data-job] [data-testid=job-kind]').count()>=2)
+        await shot(pg,'04-calendar-week-badge.png')
+        await go(pg,f'/schedule?view=day&date={D(1)}'); await settle(pg); await shot(pg,'05-calendar-day-badge.png')
+
+        # tech Jake: My Jobs card + finish visit -> ticket auto-resolves
+        mob=await b.new_context(viewport={'width':390,'height':844},device_scale_factor=2,is_mobile=True,has_touch=True); mp=await mob.new_page(); hook(mp,'mobile')
+        await as_user(mob,'u-tech2'); await go(mp,'/')
+        ok('tech My Jobs card shows Warranty badge', await mp.locator('[data-testid=my-jobs-upcoming] [data-testid=job-kind]').count()==1)
+        ok('tech nav has no Service requests', await mp.locator('a[href="/service-requests"]').count()==0)
+        await shot(mp,'06-my-jobs-warranty-card.png')
+        await go(mp,'/service-requests'); ok('tech blocked from the inbox', 'denied=1' in mp.url)
+        await go(mp,'/service-requests/sr2'); ok('tech blocked from a ticket page', 'denied=1' in mp.url)
+        await go(mp,'/'); await mp.click('[data-testid=my-jobs-upcoming] a[data-kind=warranty]'); await mp.wait_for_url('**/jobs/*'); await settle(mp)
+        ok('tech job shows warranty banner + customer report', await mp.locator('[data-testid=warranty-banner] >> text=Conference room troffer flickering').count()==1)
+        await mp.click('button:has-text("Start job")'); await mp.wait_for_url('**ok=*'); await settle(mp)
+        ok('warranty visit uses photo+note (no install checklist)', await mp.locator('text=Open required photos').count()==0 and await mp.locator('[data-testid=completion]').count()==1)
+        await mp.set_input_files('[data-testid=gallery-completion]', IMG); await mp.wait_for_selector('[data-testid=completion] img', timeout=20000); await settle(mp)
+        await mp.fill('[data-testid=completion] textarea[name=body]','Replaced the driver in the conference room panel. Tested 15 min, no flicker.'); await mp.click('[data-testid=completion] button:has-text("Add note")'); await mp.wait_for_url('**ok=*'); await settle(mp)
+        await shot(mp,'07-tech-warranty-visit.png', True)
+        await mp.click('button:has-text("Mark complete")'); await mp.wait_for_url('**ok=*'); await settle(mp)
+        ok('tech submitted warranty visit', await mp.locator('text=Submitted for review').count()>=1)
+
+        await go(pg,'/service-requests/sr1')
+        ok('ticket auto-resolved by the visit', await pg.locator('h1 >> text=Resolved').count()==1 and await pg.locator('[data-testid=ticket-history] >> text=Resolved automatically').count()==1)
+        await go(pg,'/projects/p7'); ok('project still Complete after the visit was submitted', await pg.locator('h1 >> text=Complete').count()==1)
+        await go(pg,'/'); ok('badge drops to 3 open', await pg.locator('[data-testid=nav-badge-service-requests]').inner_text()=='3')
+
+        # log a call
+        await go(pg,'/service-requests?new=1'); await pg.wait_for_selector('[data-testid=log-call-form]')
+        await pg.fill('[data-testid=customer-search]','Golf'); await pg.wait_for_selector('[role=option]:has-text("Golf Road Auto Body")'); await pg.click('[role=option]:has-text("Golf Road Auto Body")')
+        await pg.wait_for_selector('[data-testid=suggested-projects]'); await settle(pg)
+        ok('suggested projects for the customer, finished one preselected', await pg.locator('[data-testid=suggested-projects] label:has-text("Paint booth RTU replacement") input').is_checked())
+        ok('contact + site prefilled', await pg.input_value('input[name=contact_name]')=='Tony Russo' and await pg.input_value('input[name=site_address]')=='905 E Golf Rd')
+        await pg.fill('input[name=summary]','Bay 3 high bay buzzing'); await pg.fill('textarea[name=description]','Tony called: one of the new high bays in bay 3 hums loudly.')
+        await pg.click('[data-testid=suggested-projects] label:has-text("Shop high-bay upgrade")')
+        await shot(pg,'08-log-a-call.png')
+        await pg.click('[data-testid=create-request]'); await pg.wait_for_url('**/service-requests/*?ok=*'); await settle(pg)
+        ok('ticket SR-1007 created from the call', await pg.locator('h1 >> text=SR-1007').count()==1 and await pg.locator('text=Nothing was sent to the customer').count()==1)
+        ok('new ticket linked to chosen project', await pg.locator('[data-testid=original-project] >> text=Shop high-bay upgrade').count()==1)
+        ok('unfinished project -> warranty unknown', await pg.locator('[data-testid=warranty-box] >> text=Warranty unknown').count()==1)
+
+        # link picker + unlink on SR-1003 (no project)
+        await go(pg,'/service-requests/sr3'); await pg.click('[data-testid=link-project]'); await pg.wait_for_selector('[data-testid=project-picker]')
+        ok('picker is bounded to the customer when no search', await pg.locator('[data-testid=project-picker] >> text=10 most recent').count()==1)
+        await pg.fill('[data-testid=project-picker] input[name=pq]','Prairie'); await pg.click('[data-testid=project-picker] button:has-text("Search")'); await settle(pg)
+        await pg.click('[data-testid=project-picker] li:has-text("RTU tune-up") button:has-text("Link")'); await pg.wait_for_url('**ok=*'); await settle(pg)
+        ok('linked from picker; status New -> Triaged', await pg.locator('[data-testid=original-project] >> text=RTU tune-up + thermostat').count()==1 and await pg.locator('h1 >> text=Triaged').count()==1)
+        await pg.click('[data-testid=original-project] button:has-text("Unlink project")'); await pg.wait_for_url('**ok=*'); await settle(pg)
+        ok('unlinked', await pg.locator('text=No project linked').count()>=1)
+        # convert to project
+        await pg.click('[data-testid=ticket-actions] button:has-text("Convert to project")'); await pg.wait_for_url('**/projects/*?ok=*'); await settle(pg)
+        ok('converted: new Proposed project prefilled', await pg.locator('h1 >> text=Parking lot pole light out').count()==1 and await pg.locator('h1 >> text=Proposed').count()==1 and await pg.locator('text=From service request SR-1003').count()==1)
+        await go(pg,'/service-requests/sr3'); ok('ticket marked Converted', await pg.locator('h1 >> text=Converted').count()==1)
+        # billable + resolve
+        await go(pg,'/service-requests/sr2'); await pg.click('[data-testid=ticket-actions] button:has-text("Mark billable")'); await pg.wait_for_url('**ok=*'); await settle(pg)
+        ok('marked billable', await pg.locator('h1 >> text=Billable').count()==1)
+        ok('out of warranty -> suggests a service visit', await pg.locator('[data-testid=schedule-visit]:has-text("Schedule service visit")').count()==1)
+        await pg.click('summary:has-text("Resolve or close")'); await pg.fill('input[name=reason]','Reset the unit after the cold snap; quoted a service plan.')
+        await pg.click('button:has-text("Resolve")'); await pg.wait_for_url('**ok=*'); await settle(pg)
+        ok('resolved manually with reason in history', await pg.locator('h1 >> text=Resolved').count()==1 and await pg.locator('[data-testid=ticket-history] >> text=quoted a service plan').count()==1)
+        await pg.click('button:has-text("Reopen")'); await pg.wait_for_url('**ok=*'); await settle(pg)
+        ok('reopened -> Triaged', await pg.locator('h1 >> text=Triaged').count()==1)
+        # project form has warranty months
+        await go(pg,'/projects/p7/edit'); ok('project form has warranty months (24)', await pg.input_value('input[name=warranty_months]')=='24')
+        await pg.fill('input[name=warranty_months]','12'); await pg.click('button:has-text("Save changes")'); await pg.wait_for_url('**saved=1'); await settle(pg)
+        await go(pg,'/service-requests/sr4'); ok('shorter warranty flips SR-1004 to out of warranty', await pg.locator('[data-testid=warranty-box] >> text=Out of warranty').count()==1)
+        await go(pg,'/service-requests'); await shot(pg,'09-inbox-after.png')
+        # mobile inbox
+        await as_user(mob,'u-manager'); await go(mp,'/service-requests'); await shot(mp,'10-inbox-mobile.png')
+        await b.close()
+    real=[e for e in errors if 'favicon' not in e[1] and 'Download the React DevTools' not in e[1]]
+    print('\nconsole errors:', len(real)); [print(' ', e) for e in real[:10]]
+    fails=[r for r in results if r[0]=='FAIL']
+    print(f'\n{len(results)-len(fails)}/{len(results)} passed')
+    raise SystemExit(1 if fails or real else 0)
+asyncio.run(main())

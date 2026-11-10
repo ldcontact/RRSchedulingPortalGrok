@@ -3,12 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner, PageHeader } from "@/components/ui";
-import { JobStatusPill, TypeTag } from "@/components/status";
+import { JobKindBadge, JobStatusPill, TypeTag } from "@/components/status";
 import { PhotoGrid, PhotoUploader } from "@/components/photos";
 import { SubmitButton } from "@/components/submit-button";
 import { isStaff, requireMember } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDateTime, fmtDay, fmtRange } from "@/lib/time";
+import { ticketNo } from "@/lib/types";
 import { addJobNote, approveJob, cancelJob, reopenJob, sendBack, startJob, submitJob } from "../actions";
 
 export async function generateMetadata({ params }: PageProps<"/jobs/[id]">): Promise<Metadata> {
@@ -28,8 +29,11 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const [project, contacts, before, done, notes, requirements] = await Promise.all([
     repo.getProject(job.project_id), repo.listContacts(job.customer_id),
     repo.listPhotos({ projectId: job.project_id, kind: "before" }), repo.listPhotos({ jobId: id, kind: "completion" }), repo.listNotes({ jobId: id }),
-    repo.listPhotoRequirements(job.project_id),
+    // the project's required-photo checklist is for the install; warranty/service visits only need a photo + note
+    job.kind === "install" ? repo.listPhotoRequirements(job.project_id) : Promise.resolve([]),
   ]);
+  // the ticket behind a warranty/service visit (staff, or the tech assigned to this visit)
+  const ticket = job.service_request_id ? await repo.getServiceRequest(job.service_request_id).catch(() => null) : null;
   const contact = contacts.find((k) => k.is_primary) ?? contacts[0];
   const canWork = (mine || staff) && job.status === "in_progress";
   const reqDone = requirements.filter((r) => done.some((p) => p.requirement_id === r.id)).length;
@@ -42,7 +46,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   return (
     <>
       <PageHeader back={staff ? { href: `/projects/${job.project_id}`, label: job.project_name } : { href: "/", label: "My Jobs" }}
-        title={<span className="flex flex-wrap items-center gap-2">{job.title}<JobStatusPill status={job.status} /></span>}
+        title={<span className="flex flex-wrap items-center gap-2">{job.title}<JobKindBadge kind={job.kind} /><JobStatusPill status={job.status} /></span>}
         sub={<>{job.customer_name} · {job.project_name}</>}
         actions={staff && <>
           {job.status !== "approved" && job.status !== "cancelled" && <Link href={`/jobs/${id}/edit`} className="btn"><Icon name="edit" />Reschedule / reassign</Link>}
@@ -52,6 +56,16 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
       <div className="mb-4 flex flex-col gap-2 empty:hidden">
         {ok && <Banner tone="ok"><Icon name="check" />{ok}</Banner>}
         {error && <Banner tone="error"><Icon name="alert" />{error}</Banner>}
+        {job.kind !== "install" && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-[13.5px] text-amber-900" data-testid="warranty-banner">
+            <Icon name={job.kind === "warranty" ? "shield" : "wrench"} className="mt-0.5 size-4" />
+            <div>
+              <b>{job.kind === "warranty" ? "Warranty visit" : "Service visit (billable)"}</b> on the original project{ticket ? <> · {staff ? <Link href={`/service-requests/${ticket.id}`} className="font-semibold underline">{ticketNo(ticket.number)}</Link> : ticketNo(ticket.number)}</> : ""}.
+              {ticket && <div className="mt-0.5"><span className="font-semibold">Customer reported:</span> {ticket.summary}{ticket.description && ticket.description !== ticket.summary ? ` — ${ticket.description}` : ""}</div>}
+              <div className="mt-0.5 text-[12.5px] text-amber-800">Add a completion photo and a note. Submitting resolves the service request; the project&apos;s status doesn&apos;t change.</div>
+            </div>
+          </div>
+        )}
         {job.status === "in_progress" && job.review_note && (
           <Banner tone="warn"><Icon name="undo" /><div><b>Sent back by your manager:</b> {job.review_note}</div></Banner>
         )}

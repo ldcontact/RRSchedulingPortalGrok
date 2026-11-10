@@ -24,6 +24,7 @@ export async function saveProject(_: ProjectFormState, fd: FormData): Promise<Pr
     customer_id: s(fd, "customer_id"), name: s(fd, "name"), scope: s(fd, "scope"),
     type: TYPES.includes(type) ? type : "lighting", status: PROJECT_STATUSES.includes(status) ? status : "proposed",
     value: num(s(fd, "value")), est_rebate: num(s(fd, "est_rebate")),
+    ...(s(fd, "warranty_months") !== "" ? { warranty_months: Math.min(600, Math.max(0, Math.round(Number(s(fd, "warranty_months")) || 0))) } : {}),
   };
   if (!input.customer_id) return { error: "Pick a customer.", values };
   if (!input.name) return { error: "Project name is required.", values };

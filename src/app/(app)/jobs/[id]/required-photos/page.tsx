@@ -18,7 +18,7 @@ export default async function RequiredPhotosPage({ params, searchParams }: PageP
   const repo = await getRepo();
   const job = await repo.getJob(id);
   if (!job) notFound();
-  const requirements = await repo.listPhotoRequirements(job.project_id);
+  const requirements = job.kind === "install" ? await repo.listPhotoRequirements(job.project_id) : [];
   if (!requirements.length) redirect(`/jobs/${id}`);
   const staff = isStaff(user.role);
   const mine = job.assignees.some((a) => a.id === user.id);

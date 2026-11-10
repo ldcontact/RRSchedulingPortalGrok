@@ -30,6 +30,9 @@ export function ProjectForm({ project, customers, customerId }: { project?: Proj
       </label>
       <label className="label">Project value ($)<input className="input" name="value" inputMode="decimal" defaultValue={v("value", "0")} /></label>
       <label className="label">Estimated rebate ($)<input className="input" name="est_rebate" inputMode="decimal" defaultValue={v("est_rebate", "0")} /></label>
+      <label className="label">Warranty (months)<input className="input" name="warranty_months" type="number" min={0} max={600} step={1} inputMode="numeric" defaultValue={v("warranty_months", "24")} />
+        <span className="font-normal text-muted">Counted from completion. Used to check service requests (default 24 = 2 years).</span>
+      </label>
       <label className="label sm:col-span-2">Scope of work
         <textarea className="input min-h-40 font-normal" name="scope" defaultValue={v("scope")} placeholder={"Fixture counts, wattages, rooms, access notes…\nTechs on this project will see this."} />
       </label>

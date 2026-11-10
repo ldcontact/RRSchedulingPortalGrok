@@ -1,8 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
-import { PAGE_SIZE, PROJECT_STATUSES } from "@/lib/types";
-import type { AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectRow } from "@/lib/types";
+import { PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
+import type { AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
@@ -18,7 +18,7 @@ const pageBounds = (page: number, size: number) => {
   return { p, n, from: (p - 1) * n, to: p * n - 1 };
 };
 /** Only what a Projects-tab row shows (typed as string to skip deep select-type inference). */
-const PROJECT_PAGE_SELECT: string = "id, name, type, status, value, est_rebate, updated_at, customers(name, address, city, state, zip), milestones(done), jobs(starts_at, ends_at, status, completed_at, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url)))";
+const PROJECT_PAGE_SELECT: string = "id, name, type, status, value, est_rebate, updated_at, customers(name, address, city, state, zip), milestones(done), jobs(starts_at, ends_at, status, completed_at, kind, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url)))";
 /** Most customer ids a project search will include by customer name (keeps the URL short). */
 const MAX_CUSTOMER_MATCHES = 200;
 type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "address" | "city" | "state" | "zip" | "tags"> & { contacts: { name: string; is_primary: boolean }[] };
@@ -63,6 +63,35 @@ async function attachPersonAvatars(s: Awaited<ReturnType<typeof createClient>>, 
   }));
 }
 
+
+/** Ticket search: free text over the inbox columns, or a ticket number ("SR-1042" / "1042"). */
+function srSearch(q: string | undefined) {
+  const raw = (q ?? "").trim();
+  const num = /^(?:sr-?)?(\d{1,9})$/i.exec(raw)?.[1];
+  const term = searchTerm(q);
+  if (!term) return null;
+  const cols = ["summary", "description", "customer_name", "contact_name", "site_address", "site_city", "project_name"].map((c) => `${c}.ilike.${term}`);
+  return [...cols, ...(num ? [`number.eq.${num}`] : [])].join(",");
+}
+type SRQuery = { or(f: string): SRQuery; eq(c: string, v: unknown): SRQuery; is(c: string, v: null): SRQuery; in(c: string, v: readonly unknown[]): SRQuery };
+function srFilters<Q>(q0: Q, f: SRPageFilter, status: SRPageFilter["status"]): Q {
+  let q = q0 as unknown as SRQuery;
+  const or = srSearch(f.q);
+  if (or) q = q.or(or);
+  if (f.channel) q = q.eq("channel", f.channel);
+  if (f.warranty) q = q.eq("warranty_state", f.warranty);
+  if (f.assignee === "none") q = q.is("assignee_id", null);
+  else if (f.assignee) q = q.eq("assignee_id", f.assignee);
+  if (status === "open" || !status) q = q.in("status", SR_OPEN);
+  else if (status !== "all") q = q.eq("status", status);
+  return q as unknown as Q;
+}
+const MAX_PICKS = 25;
+type PickRaw = Pick<Project, "id" | "name" | "type" | "status" | "customer_id" | "updated_at"> & { warranty_months: number | null; customers: { name: string } | null; jobs: { starts_at: string; ends_at: string; status: Job["status"]; completed_at: string | null; kind: Job["kind"] }[] };
+const toPick = (r: PickRaw): ProjectPick => ({
+  id: r.id, name: r.name, type: r.type, status: r.status, customer_id: r.customer_id, customer_name: r.customers?.name ?? "",
+  completed_at: projectDates(r.jobs).completed_date, warranty_months: r.warranty_months ?? 24,
+});
 
 /** Supabase client acting as one user (cookie session on the website, bearer token on /api/mcp). */
 export type UserDb = Awaited<ReturnType<typeof createClient>>;
@@ -326,7 +355,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       }
       fail(error);
       const nowIso = new Date().toISOString();
-      type Row = Pick<Project, "id" | "name" | "type" | "status" | "value" | "est_rebate" | "updated_at"> & { customers: { name: string; address: string | null; city: string | null; state: string | null; zip: string | null } | null; milestones: { done: boolean }[]; jobs: { starts_at: string; ends_at: string; status: Job["status"]; completed_at: string | null; job_assignments: { profiles: Person | null }[] }[] };
+      type Row = Pick<Project, "id" | "name" | "type" | "status" | "value" | "est_rebate" | "updated_at"> & { customers: { name: string; address: string | null; city: string | null; state: string | null; zip: string | null } | null; milestones: { done: boolean }[]; jobs: { starts_at: string; ends_at: string; status: Job["status"]; completed_at: string | null; kind: Job["kind"]; job_assignments: { profiles: Person | null }[] }[] };
       const rows = ((data ?? []) as unknown as Row[]).map(({ customers, milestones, jobs, ...r }) => {
         const live = jobs.filter((j) => j.status !== "cancelled");
         const team = new Map<string, Person & AvatarFields>();
@@ -379,6 +408,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       if (f.from) q = q.gt("ends_at", f.from);
       if (f.to) q = q.lt("starts_at", f.to);
       if (f.projectId) q = q.eq("project_id", f.projectId);
+      if (f.serviceRequestId) q = q.eq("service_request_id", f.serviceRequestId);
       if (f.status) q = q.in("status", f.status);
       const { data, error } = await q; fail(error);
       const jobs = ((data ?? []) as unknown as JobRow[]).map(toJobView).filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee));
@@ -546,5 +576,81 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       return count ?? 0;
     },
     async logMessage(m) { fail((await (await db()).from("messages").insert(m)).error); },
+
+    // ---------------------------------------------------------------- service requests
+    async pageServiceRequests(f) {
+      const s = await db();
+      const { p, n, from, to } = pageBounds(f.page, f.size ?? PAGE_SIZE);
+      const status = f.status ?? "open";
+      const head = { count: "exact", head: true } as const;
+      const countsP = Promise.all((["open", "all", ...SR_STATUSES] as const).map(async (st) => {
+        const { count, error } = await srFilters(s.from("service_request_list").select("id", head), f, st);
+        fail(error);
+        return [st, count ?? 0] as const;
+      }));
+      const run = (a: number, b: number) =>
+        srFilters(s.from("service_request_list").select("*", { count: "exact" }), f, status).order("received_at", { ascending: false }).order("id").range(a, b);
+      let page = p;
+      const first = await run(from, to);
+      let { data, count, error } = first;
+      if (first.status === 416 || error?.code === "PGRST103") { // past the end: show the last page
+        count = Object.fromEntries(await countsP)[status] ?? 0;
+        const last = Math.max(0, Math.ceil(count / n) - 1);
+        ({ data, error } = await run(last * n, last * n + n - 1));
+        page = last + 1;
+      }
+      fail(error);
+      return { items: (data ?? []) as ServiceRequestView[], total: count ?? 0, page, size: n, counts: Object.fromEntries(await countsP) };
+    },
+    async countOpenServiceRequests() {
+      const { count, error } = await (await db()).from("service_requests").select("id", { count: "exact", head: true }).in("status", SR_OPEN);
+      fail(error);
+      return count ?? 0;
+    },
+    async getServiceRequest(id) {
+      const { data, error } = await (await db()).from("service_request_list").select("*").eq("id", id).maybeSingle();
+      fail(error);
+      return (data as ServiceRequestView | null) ?? null;
+    },
+    async createServiceRequest(input) {
+      const s = await db();
+      const { data, error } = await s.from("service_requests").insert(input).select().single(); fail(error);
+      const sr = data as ServiceRequest;
+      fail((await s.from("service_request_events").insert({ request_id: sr.id, kind: "created", body: `Logged from ${input.channel === "email" ? "an email" : input.channel === "call" ? "a phone call" : "another channel"}.` })).error);
+      return sr;
+    },
+    async updateServiceRequest(id, patch) {
+      const { data, error } = await (await db()).from("service_requests").update(patch).eq("id", id).select("id"); fail(error);
+      if (!data?.length) throw new Error("Service request not found or not allowed");
+    },
+    async listServiceRequestEvents(requestId) {
+      const { data, error } = await (await db()).from("service_request_events").select("*, profiles:actor_id(full_name, color, deleted_at)").eq("request_id", requestId).order("created_at");
+      fail(error);
+      type EvJoin = Omit<SREvent, "actor_name" | "actor_color"> & { profiles: { full_name: string; color: string; deleted_at: string | null } | null };
+      return ((data ?? []) as EvJoin[]).map(({ profiles, ...e }) => ({
+        ...e, actor_name: e.actor_id ? authorLabel(e.actor_id, profiles) : "System", actor_color: authorColor(profiles),
+      }));
+    },
+    async addServiceRequestEvent(requestId, e) {
+      fail((await (await db()).from("service_request_events").insert({ request_id: requestId, kind: e.kind, body: e.body })).error);
+    },
+    async findProjects(f) {
+      const s = await db();
+      const limit = Math.min(Math.max(1, f.limit ?? 10), MAX_PICKS);
+      const term = searchTerm(f.q);
+      let q = s.from("projects").select("id, name, type, status, customer_id, updated_at, warranty_months, customers(name), jobs(starts_at, ends_at, status, completed_at, kind)")
+        .neq("status", "cancelled").order("updated_at", { ascending: false }).order("id").limit(limit);
+      if (f.customerId) q = q.eq("customer_id", f.customerId);
+      if (term) {
+        const { data: cs, error: ce } = await s.from("customers").select("id").ilike("name", term.slice(1, -1)).order("name").limit(MAX_CUSTOMER_MATCHES);
+        fail(ce);
+        const ids = (cs ?? []).map((c) => c.id as string);
+        q = q.or([`name.ilike.${term}`, ...(ids.length ? [`customer_id.in.(${ids.join(",")})`] : [])].join(","));
+      } else if (!f.customerId) {
+        return []; // never list every project: the picker needs a customer or a search term
+      }
+      const { data, error } = await q; fail(error);
+      return ((data ?? []) as unknown as PickRaw[]).map(toPick);
+    },
   };
 }

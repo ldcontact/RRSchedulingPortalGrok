@@ -1,6 +1,7 @@
 import type {
   Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, CustomerPageFilter, CustomerRow, Paged, ProjectPage, ProjectPageFilter, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
-  Milestone, Note, Person, Photo, PhotoKind, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectStatus, TeamMember,
+  Milestone, Note, Person, Photo, PhotoKind, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
+  ServiceRequest, ServiceRequestInput, ServiceRequestPatch, ServiceRequestView, SREvent, SREventKind, SRPage, SRPageFilter,
 } from "@/lib/types";
 
 /**
@@ -70,6 +71,20 @@ export interface Repo {
   addNote(n: { job_id?: string; project_id?: string; customer_id?: string; body: string }): Promise<void>;
   listMessages(f: { customerId?: string; projectId?: string }): Promise<Message[]>;
   logMessage(m: MessageInput): Promise<void>;
+
+  // ---- service requests (tickets). Staff only, except getServiceRequest for the tech on its visit.
+  /** Inbox: one page (50) from the database plus per-status-tab counts for the same filters. */
+  pageServiceRequests(f: SRPageFilter): Promise<SRPage>;
+  /** new + triaged + scheduled (sidebar badge). */
+  countOpenServiceRequests(): Promise<number>;
+  getServiceRequest(id: string): Promise<ServiceRequestView | null>;
+  /** Creates the ticket and its "created" history entry. */
+  createServiceRequest(input: ServiceRequestInput): Promise<ServiceRequest>;
+  updateServiceRequest(id: string, patch: ServiceRequestPatch): Promise<void>;
+  listServiceRequestEvents(requestId: string): Promise<SREvent[]>;
+  addServiceRequestEvent(requestId: string, e: { kind: SREventKind; body: string }): Promise<void>;
+  /** Bounded project search for the link picker / suggested original project (never unbounded; max 25). */
+  findProjects(f: { q?: string; customerId?: string; limit?: number }): Promise<ProjectPick[]>;
 }
 
 /** Jobs in `jobs` (not cancelled) that overlap [starts, ends) for any of `people`, excluding `exceptJob`. */

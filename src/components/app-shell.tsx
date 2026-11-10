@@ -6,13 +6,14 @@ import { Icon } from "./icons";
 import { Avatar, Logo, MockBadge } from "./ui";
 import { ROLE_LABEL, type Role, type SessionUser } from "@/lib/types";
 
-type NavItem = { href: string; label: string; icon: string; soon?: boolean };
+type NavItem = { href: string; label: string; icon: string; soon?: boolean; short?: string };
 const NAV: Record<Role, NavItem[]> = {
   admin: [
     { href: "/", label: "Home", icon: "home" },
     { href: "/schedule", label: "Schedule", icon: "calendar" },
     { href: "/customers", label: "Customers", icon: "users" },
     { href: "/projects", label: "Projects", icon: "briefcase" },
+    { href: "/service-requests", label: "Service requests", short: "Service", icon: "wrench" },
     { href: "/team", label: "Team", icon: "hardhat" },
   ],
   manager: [],
@@ -24,7 +25,8 @@ const NAV: Record<Role, NavItem[]> = {
 };
 NAV.manager = NAV.admin;
 
-export function AppShell({ user, mock, roleSwitcher, children }: { user: SessionUser & { role: Role }; mock: boolean; roleSwitcher?: ReactNode; children: ReactNode }) {
+/** badges: small counts next to nav items, keyed by href (e.g. open service requests). */
+export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { user: SessionUser & { role: Role }; mock: boolean; roleSwitcher?: ReactNode; badges?: Record<string, number>; children: ReactNode }) {
   const path = usePathname();
   const tech = user.role === "tech";
   const items = NAV[user.role];
@@ -45,6 +47,7 @@ export function AppShell({ user, mock, roleSwitcher, children }: { user: Session
             ) : (
               <Link key={i.href} href={i.href} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 font-medium hover:bg-white/5 hover:text-white ${active(i.href) ? "bg-white/12 text-white" : ""}`}>
                 <Icon name={i.icon} />{i.label}
+                {!!badges[i.href] && <span className="ml-auto min-w-5 rounded-full bg-accent px-1.5 text-center text-[11px] font-bold text-[#3b2600]" data-testid={`nav-badge-${i.href.slice(1)}`}>{badges[i.href]}</span>}
               </Link>
             ))}
           </nav>
@@ -71,8 +74,9 @@ export function AppShell({ user, mock, roleSwitcher, children }: { user: Session
         {bottom.map((i) => i.soon ? (
           <span key={i.href} className="flex min-w-[60px] flex-col items-center gap-0.5 px-2 py-1.5 text-[11px] font-semibold text-slate-300" title="Coming in phase 2"><Icon name={i.icon} className="size-[22px]" />{i.label}</span>
         ) : (
-          <Link key={i.href} href={i.href} className={`flex min-w-[60px] flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold ${bottomActive(i.href) ? "bg-brand-50 text-brand" : "text-muted"}`}>
-            <Icon name={i.icon} className="size-[22px]" />{i.label}
+          <Link key={i.href} href={i.href} className={`relative flex min-w-[56px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1.5 text-[11px] font-semibold ${bottomActive(i.href) ? "bg-brand-50 text-brand" : "text-muted"}`}>
+            <Icon name={i.icon} className="size-[22px]" />{i.short ?? i.label}
+            {!!badges[i.href] && <span className="absolute top-0.5 right-1 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold text-[#3b2600]">{badges[i.href]}</span>}
           </Link>
         ))}
       </nav>

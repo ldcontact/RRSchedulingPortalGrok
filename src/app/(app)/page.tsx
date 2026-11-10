@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { Banner } from "@/components/ui";
-import { AvatarStack, JobStatusPill } from "@/components/status";
+import { AvatarStack, JobStatusPill, JobKindBadge } from "@/components/status";
 import { isStaff, requireMember } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
@@ -13,7 +13,7 @@ function JobRow({ j, showCrew = true }: { j: JobView; showCrew?: boolean }) {
   return (
     <Link href={`/jobs/${j.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-[#fafbf9]">
       <div className="w-[72px] text-[12px] font-semibold text-muted">{fmtRange(j.starts_at, j.ends_at)}</div>
-      <div className="min-w-0 flex-1"><div className="truncate font-semibold">{j.title}</div><div className="truncate text-[12.5px] text-muted">{j.customer_name}</div></div>
+      <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="truncate font-semibold">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div><div className="truncate text-[12.5px] text-muted">{j.customer_name}</div></div>
       {showCrew && <AvatarStack people={j.assignees} max={3} />}
       <JobStatusPill status={j.status} />
     </Link>

@@ -11,13 +11,13 @@ const user = (id: string, role: Role | null): SessionUser => ({ id, email: `${ro
 
 const job = (over: Partial<JobView> = {}): JobView => ({
   id: JOB, project_id: PROJECT, title: "Install LEDs", starts_at: "2026-11-10T14:00:00.000Z", ends_at: "2026-11-10T16:00:00.000Z", status: "scheduled",
-  instructions: "Use the back door", started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null,
+  instructions: "Use the back door", started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null,
   project_name: "Lakeview LEDs", project_type: "lighting", customer_id: CUSTOMER, customer_name: "Lakeview Dental", address: "1 Main St Chicago, IL 60601",
   assignees: [{ id: TECH, full_name: "Carlos Tech", color: "#111" }], ...over,
 });
 const project: Project = {
   id: PROJECT, customer_id: CUSTOMER, name: "Lakeview LEDs", type: "lighting", status: "scheduled", scope: "Swap 40 troffers", value: 12000, est_rebate: 6000,
-  timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-02T00:00:00Z",
+  timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, warranty_months: 24, created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-02T00:00:00Z",
 };
 const req: PhotoRequirement = { id: U(40), project_id: PROJECT, label: "Panel", note: null, sort_order: 0, created_at: "2026-10-01T00:00:00Z" };
 const photo = (over: Partial<Photo>): Photo => ({

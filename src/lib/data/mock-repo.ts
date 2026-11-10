@@ -4,9 +4,9 @@ import { dirname, join } from "node:path";
 import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
-import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectStatus } from "@/lib/types";
-import { PAGE_SIZE, PROJECT_STATUSES } from "@/lib/types";
-import { formatAddress, projectDates } from "@/lib/project-row";
+import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
+import { PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
+import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
@@ -20,9 +20,11 @@ type PhotoRow = Omit<Photo, "url" | "uploader_name" | "uploader_color">;
 type NoteRow = Omit<Note, "author_name" | "author_color">;
 type MessageRow = Omit<Message, "sender_name" | "sender_color">;
 type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[] };
+type SREventRow = Omit<SREvent, "actor_name" | "actor_color">;
+type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[] };
 type MockProfile = Profile & { deleted_at?: string | null };
 type AuditRow = { id: string; actor_id: string; action: string; target_email: string | null; target_profile_id: string | null; detail: Record<string, unknown>; created_at: string };
-type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[] } & P2;
+type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[] } & P2 & SR;
 export const MOCK_UPLOADS = join(process.cwd(), ".mock-uploads");
 const FILE = join(process.cwd(), ".mock-db.json");
 
@@ -71,7 +73,9 @@ function seed(): DB {
     k("c7", "Rosa Delgado", "Owner", "(630) 555-0127", "rosa@itascaprint.example"),
     k("c8", "Ken Yamamoto", "Pharmacist / Owner", "(630) 555-0138", "ken@rosellerx.example"),
   ];
-  return { profiles, invites, customers, contacts, admin_audit: [], ...seedPhase2() };
+  const db = { profiles, invites, customers, contacts, admin_audit: [], ...seedPhase2(), service_requests: [], sr_events: [] } as DB;
+  seedServiceRequests(db);
+  return db;
 }
 
 /** Sample projects/visits placed around today so the schedule always has something to show. */
@@ -80,7 +84,7 @@ function seedPhase2(): P2 {
   const at = (dayOffset: number, h: number, m = 0) => zonedToUtc(addDays(T, dayOffset), h * 60 + m);
   const pr = (id: string, customer_id: string, name: string, type: Project["type"], scope: string, value: number, est_rebate: number, extra: Partial<Project> = {}): Project => ({
     id, customer_id, name, type, status: "proposed", scope, value, est_rebate, timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null,
-    created_at: ago(20), updated_at: ago(1), ...extra,
+    warranty_months: 24, created_at: ago(20), updated_at: ago(1), ...extra,
   });
   const projects = [
     pr("p1", "c1", "LED retrofit – full office", "lighting",
@@ -112,7 +116,7 @@ function seedPhase2(): P2 {
   ];
   const jb = (id: string, project_id: string, title: string, d: number, h1: number, h2: number, status: Job["status"], instructions: string | null, extra: Partial<Job> = {}): Job => ({
     id, project_id, title, starts_at: at(d, h1), ends_at: at(d, h2), status, instructions, started_at: null, completed_at: null, completed_by: null,
-    approved_at: null, approved_by: null, review_note: null, ...extra,
+    approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null, ...extra,
   });
   const jobs = [
     jb("j1", "p1", "Lobby + operatories troffers", -2, 8, 12, "approved", "Front desk opens 8:30. Start in the lobby.", { started_at: at(-2, 8), completed_at: at(-2, 12), completed_by: "u-tech1", approved_at: at(-1, 9), approved_by: "u-manager" }),
@@ -171,10 +175,116 @@ function seedPhase2(): P2 {
 function syncProject(db: Pick<P2, "projects" | "jobs">, projectId: string) {
   const p = db.projects.find((x) => x.id === projectId);
   if (!p || p.status === "cancelled") return;
-  const st = db.jobs.filter((j) => j.project_id === projectId && j.status !== "cancelled").map((j) => j.status);
+  // only install visits drive the project; warranty/service visits never reopen it
+  const st = db.jobs.filter((j) => j.project_id === projectId && j.status !== "cancelled" && (j.kind ?? "install") === "install").map((j) => j.status);
   const next: ProjectStatus | null = st.includes("completed") ? "awaiting_review" : st.includes("in_progress") ? "in_progress" : st.includes("scheduled") ? "scheduled" : st.includes("approved") ? "complete" : null;
   if (next && next !== p.status) { p.status = next; p.updated_at = now(); }
 }
+
+/** Mirrors the sync_service_request() trigger: a ticket follows its visit. */
+function syncServiceRequest(db: DB, j: Job, prev: Job["status"] | null, uid: string | null) {
+  if (!j.service_request_id || prev === j.status) return;
+  const sr = db.service_requests.find((x) => x.id === j.service_request_id);
+  if (!sr) return;
+  const ev = (kind: SREventRow["kind"], body: string) => db.sr_events.push({ id: randomUUID(), request_id: sr.id, kind, body, actor_id: uid || null, created_at: now() });
+  if ((j.status === "completed" || j.status === "approved") && SR_OPEN.includes(sr.status)) {
+    Object.assign(sr, { status: "resolved", resolved_at: now(), resolved_by: uid || null, resolved_job_id: j.id, updated_at: now() });
+    ev("resolved", `Resolved automatically: visit “${j.title}” was ${j.status === "approved" ? "approved" : "completed"}.`);
+  } else if ((j.status === "scheduled" || j.status === "in_progress") && sr.status === "resolved" && sr.resolved_job_id === j.id) {
+    Object.assign(sr, { status: "scheduled", resolved_at: null, resolved_by: null, resolved_job_id: null, updated_at: now() });
+    ev("reopened", `Visit “${j.title}” was sent back or reopened, so the ticket is Scheduled again.`);
+  } else if (j.status === "cancelled" && sr.status === "scheduled" && !db.jobs.some((x) => x.service_request_id === sr.id && x.id !== j.id && x.status !== "cancelled")) {
+    Object.assign(sr, { status: "triaged", updated_at: now() });
+    ev("status", `Visit “${j.title}” was cancelled, so the ticket is back to Triaged.`);
+  }
+}
+
+/** Mirrors public.service_request_list. */
+function viewSR(db: DB, sr: ServiceRequest): ServiceRequestView {
+  const p = sr.project_id ? db.projects.find((x) => x.id === sr.project_id) ?? null : null;
+  const completed = p ? projectDates(db.jobs.filter((j) => j.project_id === p.id)).completed_date : null;
+  const w = warrantyFor(completed, p?.warranty_months ?? null, sr.received_at);
+  const a = sr.assignee_id ? db.profiles.find((x) => x.id === sr.assignee_id) : null;
+  return {
+    ...sr, customer_name: db.customers.find((c) => c.id === sr.customer_id)?.name ?? "",
+    project_name: p?.name ?? null, project_type: p?.type ?? null, project_status: p?.status ?? null, warranty_months: p?.warranty_months ?? null,
+    project_completed_at: completed, warranty_expires_at: w.expires, warranty_state: w.state, assignee_name: a?.full_name ?? null, assignee_color: a?.color ?? null,
+  };
+}
+function srMatches(v: ServiceRequestView, f: SRPageFilter, status: SRPageFilter["status"]) {
+  const raw = (f.q ?? "").trim().toLowerCase();
+  const num = /^(?:sr-?)?(\d{1,9})$/i.exec(raw)?.[1];
+  if (raw && !(num && String(v.number) === num) && ![v.summary, v.description, v.customer_name, v.contact_name, v.site_address, v.site_city, v.project_name].join(" ").toLowerCase().includes(raw)) return false;
+  if (f.channel && v.channel !== f.channel) return false;
+  if (f.warranty && v.warranty_state !== f.warranty) return false;
+  if (f.assignee === "none" ? v.assignee_id : f.assignee && v.assignee_id !== f.assignee) return false;
+  if (status === "open" || !status) return SR_OPEN.includes(v.status);
+  return status === "all" || v.status === status;
+}
+
+/** Sample tickets: two finished projects from past years + a warranty visit on the calendar. */
+function seedServiceRequests(db: DB) {
+  const T = todayKey();
+  const at = (dayOffset: number, h: number, m = 0) => zonedToUtc(addDays(T, dayOffset), h * 60 + m);
+  const pr = (id: string, customer_id: string, name: string, type: Project["type"], scope: string, value: number, est_rebate: number, days: number): Project => ({
+    id, customer_id, name, type, status: "complete", scope, value, est_rebate, timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: ago(days + 20),
+    warranty_months: 24, created_at: ago(days + 30), updated_at: ago(days),
+  });
+  const done = (id: string, project_id: string, title: string, d: number, by: string, extra: Partial<Job> = {}): Job => ({
+    id, project_id, title, starts_at: at(d, 7), ends_at: at(d, 15), status: "approved", instructions: null, started_at: at(d, 7), completed_at: at(d, 14, 30), completed_by: by,
+    approved_at: at(d + 1, 9), approved_by: "u-manager", review_note: null, kind: "install", service_request_id: null, ...extra,
+  });
+  if (!db.projects.some((p) => p.id === "p7")) {
+    db.projects.push(
+      pr("p7", "c4", "Office & breakroom LED troffer retrofit", "lighting", "Replace 38 (2x4) troffers in the front office and breakroom with 40W LED panels. 2 emergency fixtures with battery backup at the exits.", 12800, 6100, 545),
+      pr("p8", "c2", "Paint booth RTU replacement", "hvac", "Replace the 15-ton paint booth RTU with a high-efficiency unit and new curb adapter.", 24500, 4800, 800),
+    );
+    db.jobs.push(done("j9", "p7", "Office troffers (day 1)", -546, "u-tech1"), done("j10", "p7", "Breakroom + exits (day 2)", -545, "u-tech2"), done("j11", "p8", "RTU swap + startup", -800, "u-tech3"));
+    db.assignments.push({ job_id: "j9", profile_id: "u-tech1" }, { job_id: "j9", profile_id: "u-tech2" }, { job_id: "j10", profile_id: "u-tech2" }, { job_id: "j11", profile_id: "u-tech3" });
+  }
+  const sr = (id: string, number: number, customer_id: string, project_id: string | null, channel: ServiceRequest["channel"], received_at: string, summary: string, description: string, extra: Partial<ServiceRequest> = {}): ServiceRequest => {
+    const c = db.customers.find((x) => x.id === customer_id);
+    const k = db.contacts.find((x) => x.customer_id === customer_id && x.is_primary);
+    return {
+      id, number, customer_id, project_id, site_address: c?.address ?? null, site_city: c?.city ?? null, site_state: c?.state ?? null, site_zip: c?.zip ?? null,
+      contact_name: k?.name ?? null, contact_phone: k?.phone ?? null, contact_email: k?.email ?? null, channel, received_at, summary, description, priority: "normal", status: "new",
+      billable: false, assignee_id: null, converted_project_id: null, resolved_at: null, resolved_by: null, resolved_job_id: null, created_by: "u-manager",
+      created_at: received_at, updated_at: received_at, ...extra,
+    };
+  };
+  const tickets = [
+    sr("sr1", 1001, "c4", "p7", "email", at(0, 9, 14), "Conference room troffer flickering", "Dave emailed: one of the LED panels in the front conference room started flickering last week and now cuts out every few minutes. Installed in the office retrofit last year.", { priority: "high", contact_name: "Dave Kowalski" }),
+    sr("sr2", 1002, "c2", "p8", "call", at(-1, 16, 22), "Paint booth RTU short-cycling", "Tony called: the paint booth unit turns on and off every few minutes since the cold snap. Booth is still usable but temps swing.", { status: "triaged", assignee_id: "u-manager" }),
+    sr("sr3", 1003, "c8", null, "call", at(0, 8, 2), "Parking lot pole light out", "Ken says the pole light by the drive-thru lane is out. Not sure if we installed it. Match a past job or convert if it's new work.", { priority: "low" }),
+    sr("sr4", 1004, "c4", "p7", "call", at(-2, 11, 6), "Exit fixtures not holding battery", "Fire inspection flagged the two emergency fixtures by the rear exits: battery test fails after about 30 seconds.", { status: "scheduled", assignee_id: "u-admin" }),
+    sr("sr5", 1005, "c3", "p3", "email", at(-4, 13, 40), "Thermostat schedule reset after outage", "Megan says the new thermostats lost their schedule after a power outage.", { status: "resolved", resolved_at: at(-3, 10), resolved_by: "u-manager" }),
+    sr("sr6", 1006, "c5", null, "other", at(-6, 10), "Asked about adding motion sensors", "Linda asked at the gate whether we could add motion sensors to building F. Not a repair; sent to sales.", { status: "closed", resolved_at: at(-5, 9), resolved_by: "u-admin" }),
+  ];
+  for (const t of tickets) if (!db.service_requests.some((x) => x.id === t.id)) db.service_requests.push(t);
+  if (!db.jobs.some((j) => j.id === "j12")) {
+    db.jobs.push({ id: "j12", project_id: "p7", title: "Warranty — exit fixture batteries", starts_at: at(1, 9), ends_at: at(1, 11), status: "scheduled",
+      instructions: "Swap the battery packs in the 2 emergency fixtures at the rear exits (same model as the 2025 install). Photo each fixture after a 90-minute test.",
+      started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null, kind: "warranty", service_request_id: "sr4" });
+    db.assignments.push({ job_id: "j12", profile_id: "u-tech1" });
+  }
+  const ev = (request_id: string, kind: SREventRow["kind"], body: string, actor_id: string | null, created_at: string) => ({ id: randomUUID(), request_id, kind, body, actor_id, created_at });
+  if (!db.sr_events.length) db.sr_events.push(
+    ev("sr1", "created", "Logged from an email.", "u-manager", at(0, 9, 14)),
+    ev("sr1", "linked", "Matched to original project “Office & breakroom LED troffer retrofit”.", "u-manager", at(0, 9, 15)),
+    ev("sr1", "note", "Panel is inside the 2-year lighting warranty, so this is a warranty swap, not a new project.", "u-admin", at(0, 9, 21)),
+    ev("sr2", "created", "Logged from a phone call.", "u-manager", at(-1, 16, 22)),
+    ev("sr2", "assigned", "Assigned to Maria Santos.", "u-manager", at(-1, 16, 25)),
+    ev("sr2", "note", "Unit is past its 2-year warranty. Quote a service call if it's not a quick fix.", "u-manager", at(-1, 16, 30)),
+    ev("sr3", "created", "Logged from a phone call.", "u-admin", at(0, 8, 2)),
+    ev("sr4", "created", "Logged from a phone call.", "u-admin", at(-2, 11, 6)),
+    ev("sr4", "scheduled", `Warranty visit “Warranty — exit fixture batteries” scheduled for ${fmtShort(at(1, 9))} with Carlos Mendez.`, "u-admin", at(-2, 11, 20)),
+    ev("sr5", "created", "Logged from an email.", "u-manager", at(-4, 13, 40)),
+    ev("sr5", "resolved", "Resolved: walked Megan through restoring the schedule by phone.", "u-manager", at(-3, 10)),
+    ev("sr6", "created", "Logged from another channel.", "u-admin", at(-6, 10)),
+    ev("sr6", "closed", "Closed: new work, passed to sales.", "u-admin", at(-5, 9)),
+  );
+}
+const fmtShort = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: process.env.NEXT_PUBLIC_TZ || "America/Chicago", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 function load(): DB {
   if (!existsSync(FILE)) { const db = seed(); save(db); return db; }
@@ -182,6 +292,9 @@ function load(): DB {
   if (!db.projects) { Object.assign(db, seedPhase2()); save(db); } // upgrade a phase-1 mock DB
   if (!db.photo_requirements) { db.photo_requirements = []; save(db); }
   for (const p of db.photos) if (p.requirement_id === undefined) (p as PhotoRow).requirement_id = null;
+  for (const j of db.jobs) { j.kind ??= "install"; if (j.service_request_id === undefined) j.service_request_id = null; }
+  for (const p of db.projects) p.warranty_months ??= 24;
+  if (!db.service_requests) { db.service_requests = []; db.sr_events = []; seedServiceRequests(db); save(db); } // upgrade an older mock DB
   return db;
 }
 function save(db: DB) { writeFileSync(FILE, JSON.stringify(db, null, 2)); }
@@ -411,7 +524,7 @@ export const mockRepo: Repo = {
   async createProject(input) {
     requireStaffMock(await who());
     return mutate((db) => {
-      const p: Project = { ...input, id: randomUUID(), timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, created_at: now(), updated_at: now() };
+      const p: Project = { ...input, warranty_months: input.warranty_months ?? 24, id: randomUUID(), timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, created_at: now(), updated_at: now() };
       db.projects.push(p); return p;
     });
   },
@@ -441,7 +554,7 @@ export const mockRepo: Repo = {
   async listJobs(f = {}) {
     const w = await who(); const db = load();
     return db.jobs
-      .filter((j) => w.canJob(j.id) && (!f.projectId || j.project_id === f.projectId) && (!f.status || f.status.includes(j.status))
+      .filter((j) => w.canJob(j.id) && (!f.projectId || j.project_id === f.projectId) && (!f.serviceRequestId || j.service_request_id === f.serviceRequestId) && (!f.status || f.status.includes(j.status))
         && (!f.from || j.ends_at > f.from) && (!f.to || j.starts_at < f.to))
       .map((j) => viewJob(db, j))
       .filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee))
@@ -452,7 +565,8 @@ export const mockRepo: Repo = {
     requireStaffMock(await who());
     return mutate((db) => {
       const id = randomUUID();
-      db.jobs.push({ ...input, id, status: "scheduled", started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null });
+      if (input.service_request_id && (input.kind ?? "install") === "install") throw new Error('new row for relation "jobs" violates check constraint "jobs_ticket_visit_kind"');
+      db.jobs.push({ ...input, kind: input.kind ?? "install", service_request_id: input.service_request_id ?? null, id, status: "scheduled", started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null });
       for (const pid of new Set(assignees)) db.assignments.push({ job_id: id, profile_id: pid });
       syncProject(db, input.project_id);
       return id;
@@ -471,7 +585,7 @@ export const mockRepo: Repo = {
         if (patch.status === "completed") {
           if (!db.notes.some((n) => n.job_id === id))
             throw new Error("add at least one completion photo and a note before submitting");
-          const reqs = db.photo_requirements.filter((r) => r.project_id === j.project_id).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+          const reqs = (j.kind ?? "install") !== "install" ? [] : db.photo_requirements.filter((r) => r.project_id === j.project_id).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
           if (reqs.length) {
             const missing = reqs.filter((r) => !db.photos.some((p) => p.job_id === id && p.kind === "completion" && p.requirement_id === r.id)).map((r) => r.label);
             if (missing.length) throw new Error(`missing required photos: ${missing.join(", ")}`);
@@ -482,8 +596,10 @@ export const mockRepo: Repo = {
         }
         if (patch.status === "in_progress") Object.assign(patch, { started_at: now() });
       }
+      const prev = j.status;
       Object.assign(j, patch);
       syncProject(db, j.project_id);
+      syncServiceRequest(db, j, prev, w.uid);
     });
   },
   async setAssignees(jobId, ids) {
@@ -592,6 +708,71 @@ export const mockRepo: Repo = {
   async logMessage(m) {
     const w = await who(); requireStaffMock(w);
     mutate((db) => { db.messages.push({ ...m, id: randomUUID(), sent_by: w.uid, created_at: now() }); });
+  },
+
+  // ---------------------------------------------------------------- service requests (staff only; tech: the ticket behind their visit)
+  async pageServiceRequests(f) {
+    requireStaffMock(await who());
+    const db = load();
+    const views = db.service_requests.map((x) => viewSR(db, x)).sort((a, b) => b.received_at.localeCompare(a.received_at) || a.id.localeCompare(b.id));
+    const counts: Record<string, number> = {};
+    for (const st of ["open", "all", ...SR_STATUSES] as const) counts[st] = views.filter((v) => srMatches(v, f, st)).length;
+    return { ...mockPage(views.filter((v) => srMatches(v, f, f.status ?? "open")), f.page, f.size), counts };
+  },
+  async countOpenServiceRequests() {
+    const w = await who(); if (!w.staff) return 0;
+    return load().service_requests.filter((x) => SR_OPEN.includes(x.status)).length;
+  },
+  async getServiceRequest(id) {
+    const w = await who(); const db = load();
+    const sr = db.service_requests.find((x) => x.id === id);
+    if (!sr) return null;
+    if (!w.staff && !db.jobs.some((j) => j.service_request_id === id && w.canJob(j.id))) return null;
+    return viewSR(db, sr);
+  },
+  async createServiceRequest(input) {
+    const w = await who(); requireStaffMock(w);
+    if (!input.summary.trim()) throw new Error("summary is required");
+    return mutate((db) => {
+      const number = Math.max(1000, ...db.service_requests.map((x) => x.number)) + 1;
+      const sr: ServiceRequest = { ...input, id: randomUUID(), number, status: "new", billable: false, assignee_id: null, converted_project_id: null,
+        resolved_at: null, resolved_by: null, resolved_job_id: null, created_by: w.uid, created_at: now(), updated_at: now() };
+      db.service_requests.push(sr);
+      db.sr_events.push({ id: randomUUID(), request_id: sr.id, kind: "created", body: `Logged from ${input.channel === "email" ? "an email" : input.channel === "call" ? "a phone call" : "another channel"}.`, actor_id: w.uid, created_at: now() });
+      return sr;
+    });
+  },
+  async updateServiceRequest(id, patch) {
+    requireStaffMock(await who());
+    mutate((db) => {
+      const sr = db.service_requests.find((x) => x.id === id);
+      if (!sr) throw new Error("Service request not found or not allowed");
+      Object.assign(sr, patch, { updated_at: now() });
+    });
+  },
+  async listServiceRequestEvents(requestId) {
+    const w = await who(); if (!w.staff) return [];
+    const db = load();
+    return db.sr_events.filter((e) => e.request_id === requestId).sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((e) => ({ ...e, actor_name: e.actor_id ? labelOf(db, e.actor_id) : "System", actor_color: colorOf(db, e.actor_id) }));
+  },
+  async addServiceRequestEvent(requestId, e) {
+    const w = await who(); requireStaffMock(w);
+    if (e.kind === "note" && !e.body.trim()) throw new Error("note is empty");
+    mutate((db) => { db.sr_events.push({ id: randomUUID(), request_id: requestId, kind: e.kind, body: e.body, actor_id: w.uid, created_at: now() }); });
+  },
+  async findProjects(f) {
+    requireStaffMock(await who());
+    const db = load();
+    const term = (f.q ?? "").trim().toLowerCase();
+    if (!term && !f.customerId) return [];
+    const limit = Math.min(Math.max(1, f.limit ?? 10), 25);
+    const cname = (id: string) => db.customers.find((c) => c.id === id)?.name ?? "";
+    return db.projects
+      .filter((p) => p.status !== "cancelled" && (!f.customerId || p.customer_id === f.customerId) && (!term || `${p.name} ${cname(p.customer_id)}`.toLowerCase().includes(term)))
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, limit)
+      .map((p): ProjectPick => ({ id: p.id, name: p.name, type: p.type, status: p.status, customer_id: p.customer_id, customer_name: cname(p.customer_id),
+        completed_at: projectDates(db.jobs.filter((j) => j.project_id === p.id)).completed_date, warranty_months: p.warranty_months ?? 24 }));
   },
 };
 

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition, type DragEvent } from "react";
 import { Icon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
-import { JOB_BAR, JobStatusPill } from "@/components/status";
+import { JOB_BAR, JobKindBadge, JobStatusPill, KIND_BAR } from "@/components/status";
 import { addDays, dayKey, fmtDay, fmtMinutes, fmtTime, minutesOfDay } from "@/lib/time";
 import type { JobView, Person } from "@/lib/types";
 import { moveJob } from "../jobs/actions";
@@ -78,11 +78,12 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
           requestAnimationFrame(() => setDragging(true));
         }}
         onDragEnd={() => { setDragging(false); setOver(null); }}
-        className={`block overflow-hidden rounded-md border border-l-4 bg-white px-2 py-1 text-left text-[11.5px] leading-tight shadow-sm hover:shadow ${JOB_BAR[j.status]} ${c ? "border-red-400 ring-2 ring-red-300" : "border-line"} ${draggable(j) ? "cursor-grab active:cursor-grabbing" : ""} ${j.status === "approved" ? "opacity-70" : ""}`}>
+        className={`block overflow-hidden rounded-md border border-l-4 bg-white px-2 py-1 text-left text-[11.5px] leading-tight shadow-sm hover:shadow ${JOB_BAR[j.status]} ${KIND_BAR[j.kind ?? "install"]} ${c ? "border-red-400 ring-2 ring-red-300" : "border-line"} ${draggable(j) ? "cursor-grab active:cursor-grabbing" : ""} ${j.status === "approved" ? "opacity-70" : ""}`}>
         {inline ? <div className="flex items-center gap-1 truncate">{c && <Icon name="alert" className="size-3 text-red-600" />}<span className="font-semibold text-muted">{fmtTime(j.starts_at)}</span><span className="truncate font-semibold text-ink">{j.title}</span></div> : <>
         <div className="flex items-center gap-1 font-semibold text-muted">{c && <Icon name="alert" className="size-3 text-red-600" />}{fmtTime(j.starts_at)}{!compact && `–${fmtTime(j.ends_at)}`}{view === "month" && lead && <span className="ml-auto size-2 rounded-full" style={{ background: lead.color }} />}</div>
         <div className="truncate font-semibold text-ink">{j.title}</div>
-        {!compact && <div className="truncate text-muted">{j.customer_name}</div>}</>}
+        {!compact && <div className="truncate text-muted">{j.customer_name}</div>}
+        {j.kind && j.kind !== "install" && <div className="mt-0.5"><JobKindBadge kind={j.kind} size="sm" /></div>}</>}
       </Link>
     );
   }
@@ -98,10 +99,10 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
             <div className="card divide-y divide-line">
               {!list.length && <div className="p-4 text-sm text-muted">Nothing scheduled.</div>}
               {list.map((j) => (
-                <Link key={j.id} href={`/jobs/${j.id}`} className={`flex items-center gap-3 border-l-4 px-3 py-3 ${JOB_BAR[j.status]}`}>
+                <Link key={j.id} href={`/jobs/${j.id}`} className={`flex items-center gap-3 border-l-4 px-3 py-3 ${JOB_BAR[j.status]} ${KIND_BAR[j.kind ?? "install"]}`}>
                   <div className="w-16 text-[12px] font-semibold text-muted">{fmtTime(j.starts_at)}<br />{fmtTime(j.ends_at)}</div>
                   <div className="min-w-0 flex-1"><div className="truncate font-semibold">{j.title}</div><div className="truncate text-[12.5px] text-muted">{j.customer_name}{j.address ? ` · ${j.address.split(" ").slice(-3, -2)[0] ?? ""}` : ""}</div>
-                    <div className="mt-1 flex items-center gap-2"><JobStatusPill status={j.status} />{conflicted.has(j.id) && <span className="pill bg-red-50 text-red-700"><Icon name="alert" className="size-3" />Double-booked</span>}</div></div>
+                    <div className="mt-1 flex items-center gap-2"><JobKindBadge kind={j.kind} size="sm" /><JobStatusPill status={j.status} />{conflicted.has(j.id) && <span className="pill bg-red-50 text-red-700"><Icon name="alert" className="size-3" />Double-booked</span>}</div></div>
                   <span className="flex -space-x-1.5">{j.assignees.slice(0, 3).map((a) => <span key={a.id} className="rounded-full ring-2 ring-white"><Avatar name={a.full_name} color={a.color} size="sm" src={a.avatar_url} /></span>)}</span>
                 </Link>
               ))}

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner, PageHeader } from "@/components/ui";
-import { JobStatusPill, ProjectStatusPill, TypeTag } from "@/components/status";
+import { JobKindBadge, JobStatusPill, ProjectStatusPill, TypeTag } from "@/components/status";
 import { PhotoGrid, PhotoUploader } from "@/components/photos";
 import { MessageLog } from "@/components/messages";
 import { SubmitButton } from "@/components/submit-button";
@@ -42,7 +42,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
     <>
       <PageHeader back={{ href: "/projects", label: "Projects" }}
         title={<span className="flex flex-wrap items-center gap-2">{p.name}<ProjectStatusPill status={p.status} /></span>}
-        sub={<><Link href={`/customers/${p.customer_id}`} className="font-semibold text-brand">{c?.name}</Link> · <TypeTag type={p.type} /></>}
+        sub={<><Link href={`/customers/${p.customer_id}`} className="font-semibold text-brand">{c?.name}</Link> · <TypeTag type={p.type} /> · <span className="text-xs">{p.warranty_months ?? 24}-month warranty</span></>}
         actions={<>
           <Link href={`/jobs/new?project=${p.id}`} className="btn btn-primary"><Icon name="plus" />Schedule visit</Link>
           <Link href={`/projects/${p.id}/edit`} className="btn"><Icon name="edit" />Edit</Link>
@@ -95,7 +95,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               {jobs.map((j) => (
                 <Link key={j.id} href={`/jobs/${j.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-[#fafbf9]">
                   <div className="w-24 text-[12.5px]"><div className="font-semibold">{fmtDay(dayKey(j.starts_at))}</div><div className="text-muted">{fmtRange(j.starts_at, j.ends_at)}</div></div>
-                  <div className="min-w-0 flex-1"><div className="truncate font-medium">{j.title}</div><div className="truncate text-xs text-muted">{j.assignees.map((a) => a.full_name).join(", ") || "Unassigned"}</div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="truncate font-medium">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div><div className="truncate text-xs text-muted">{j.assignees.map((a) => a.full_name).join(", ") || "Unassigned"}</div></div>
                   <JobStatusPill status={j.status} />
                 </Link>
               ))}

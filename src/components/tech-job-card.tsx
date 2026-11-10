@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Icon } from "./icons";
-import { AvatarStack, JobStatusPill } from "./status";
+import { AvatarStack, JobKindBadge, JobStatusPill } from "./status";
 import { fmtRange } from "@/lib/time";
 import type { JobView } from "@/lib/types";
 
@@ -8,10 +8,10 @@ import type { JobView } from "@/lib/types";
 export function TechJobCard({ j }: { j: JobView }) {
   const cta = j.status === "scheduled" ? "Open & start" : j.status === "in_progress" ? "Continue" : "View";
   return (
-    <Link href={`/jobs/${j.id}`} className="card block p-4 active:bg-[#fafbf9]">
+    <Link href={`/jobs/${j.id}`} className={`card block p-4 active:bg-[#fafbf9] ${j.kind !== "install" ? "border-l-4 border-l-amber-500" : ""}`} data-kind={j.kind}>
       <div className="flex items-start justify-between gap-2">
         <div className="text-[13px] font-semibold text-muted">{fmtRange(j.starts_at, j.ends_at)}</div>
-        <JobStatusPill status={j.status} />
+        <span className="flex flex-wrap items-center justify-end gap-1.5"><JobKindBadge kind={j.kind} /><JobStatusPill status={j.status} /></span>
       </div>
       <div className="mt-1 text-[16px] font-semibold">{j.title}</div>
       <div className="text-sm text-muted">{j.customer_name}</div>

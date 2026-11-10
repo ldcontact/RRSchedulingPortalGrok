@@ -120,7 +120,7 @@ export async function submitJob(id: string) {
   const [photos, notes, requirements] = await Promise.all([
     repo.listPhotos({ jobId: id, kind: "completion" }),
     repo.listNotes({ jobId: id }),
-    repo.listPhotoRequirements(job.project_id),
+    job.kind === "install" ? repo.listPhotoRequirements(job.project_id) : Promise.resolve([]), // warranty/service: photo + note only
   ]);
   if (!notes.length) back(job, "Add a note before submitting.", "error");
   if (requirements.length) {
