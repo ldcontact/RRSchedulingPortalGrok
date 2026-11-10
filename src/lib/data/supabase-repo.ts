@@ -92,7 +92,7 @@ export function supabaseRepo(): Repo {
     async listTeam() {
       const s = await db();
       const [{ data: profiles, error: e1 }, { data: invites }] = await Promise.all([
-        s.from("profiles").select("*"),
+        s.from("profiles").select("*").is("deleted_at", null),
         s.from("invites").select("*"), // RLS: admins only; others get []
       ]);
       fail(e1);
@@ -120,7 +120,7 @@ export function supabaseRepo(): Repo {
       fail((await (await db()).from("invites").delete().eq("email", email.toLowerCase())).error);
     },
     async setActive(profileId, active) {
-      fail((await (await db()).from("profiles").update({ active }).eq("id", profileId)).error);
+      fail((await (await db()).from("profiles").update({ active }).eq("id", profileId).is("deleted_at", null)).error);
     },
     async uploadAvatar(target, file) {
       const s = await db();
@@ -253,7 +253,7 @@ export function supabaseRepo(): Repo {
     async deleteMilestone(id) { fail((await (await db()).from("milestones").delete().eq("id", id)).error); },
     async listAssignable() {
       const s = await db();
-      const { data, error } = await s.from("profiles").select("id, full_name, color, role, avatar_source, avatar_path, google_avatar_url").not("role", "is", null).eq("active", true); fail(error);
+      const { data, error } = await s.from("profiles").select("id, full_name, color, role, avatar_source, avatar_path, google_avatar_url").not("role", "is", null).eq("active", true).is("deleted_at", null); fail(error);
       const order: Record<string, number> = { tech: 0, manager: 1, admin: 2 };
       const rows = ((data ?? []) as (Person & AvatarFields & { role: string })[]).sort((a, b) => order[a.role] - order[b.role] || a.full_name.localeCompare(b.full_name));
       const people = await attachPersonAvatars(s, rows);
@@ -377,6 +377,43 @@ export function supabaseRepo(): Repo {
       if (f.projectId) q = q.eq("project_id", f.projectId);
       const { data, error } = await q; fail(error);
       return ((data ?? []) as (Omit<Message, "sender_name"> & { profiles: { full_name: string } | null })[]).map(({ profiles, ...m }) => ({ ...m, sender_name: profiles?.full_name ?? "Someone" }));
+    },
+    async softDeleteMember(profileId, actorId) {
+      const s = await db();
+      const { data, error } = await s.from("profiles").select("id, email, full_name, role").eq("id", profileId).is("deleted_at", null).maybeSingle();
+      fail(error);
+      if (!data) throw new Error("Member not found.");
+      const tombstone = `deleted-${profileId.slice(0, 8)}@deleted.invalid`;
+      fail((await s.from("profiles").update({
+        email: tombstone,
+        full_name: "Removed user",
+        phone: null,
+        title: null,
+        role: null,
+        active: false,
+        avatar_source: "none",
+        avatar_path: null,
+        google_avatar_url: null,
+        deleted_at: new Date().toISOString(),
+        deleted_by: actorId,
+      }).eq("id", profileId)).error);
+      await s.from("invites").delete().eq("email", data.email);
+      return { email: data.email as string, full_name: data.full_name as string };
+    },
+    async writeAdminAudit(row) {
+      fail((await (await db()).from("admin_audit").insert({
+        actor_id: row.actor_id,
+        action: row.action,
+        target_email: row.target_email ?? null,
+        target_profile_id: row.target_profile_id ?? null,
+        detail: row.detail ?? {},
+      })).error);
+    },
+    async countActiveAdmins() {
+      const { count, error } = await (await db()).from("profiles").select("id", { count: "exact", head: true })
+        .eq("role", "admin").eq("active", true).is("deleted_at", null);
+      fail(error);
+      return count ?? 0;
     },
     async logMessage(m) { fail((await (await db()).from("messages").insert(m)).error); },
   };

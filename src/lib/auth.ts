@@ -16,7 +16,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     const { mockProfiles } = await import("@/lib/data/mock-repo");
     const { resolveAvatarUrl } = await import("@/lib/avatar");
     const p = mockProfiles().find((x) => x.id === uid);
-    if (!p) return null;
+    if (!p || (p as { deleted_at?: string | null }).deleted_at) return null;
     return {
       id: p.id, email: p.email, name: p.full_name, role: p.active ? p.role : null, color: p.color, active: p.active,
       avatar_source: p.avatar_source, google_avatar_url: p.google_avatar_url,
@@ -28,7 +28,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data: p } = await supabase.from("profiles").select("full_name, role, color, active, avatar_source, avatar_path, google_avatar_url").eq("id", user.id).maybeSingle();
+  const { data: p } = await supabase.from("profiles").select("full_name, role, color, active, deleted_at, avatar_source, avatar_path, google_avatar_url").eq("id", user.id).maybeSingle();
+  if (p?.deleted_at) return null;
   let avatar_url: string | null = null;
   if (p?.avatar_source === "upload" && p.avatar_path) {
     const { data: signed } = await supabase.storage.from("avatars").createSignedUrl(p.avatar_path, 3600);

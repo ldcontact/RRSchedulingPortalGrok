@@ -6,6 +6,14 @@ import { MOCK_MODE } from "@/lib/env";
 import { getRepo } from "@/lib/data/repo";
 import { siteUrl } from "@/lib/site";
 import { ROLES, type InviteInput, type Role } from "@/lib/types";
+import {
+  adminKeyMissingMessage,
+  banAuthUser,
+  setAuthPassword,
+  updateAuthEmail,
+  validateAdminPassword,
+} from "@/lib/admin-users";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const back = (msg: string, tone: "ok" | "error" = "ok"): never => redirect(`/team?${tone}=${encodeURIComponent(msg)}`);
@@ -17,17 +25,14 @@ function readMember(fd: FormData, email: string): InviteInput | string {
   return { email, role, full_name: s(fd, "full_name"), title: s(fd, "title") || null, phone: s(fd, "phone") || null, color: s(fd, "color") || "#0891b2" };
 }
 
-/** Email a sign-up / set-password link. Needs SUPABASE_SERVICE_ROLE_KEY (server only). */
 async function emailInvite(email: string): Promise<string> {
   if (MOCK_MODE) return `Dev mock mode: invite email to ${email} simulated.`;
   const base = await siteUrl();
-  const { createAdminClient } = await import("@/lib/supabase/admin");
   const admin = createAdminClient();
   if (!admin) return `${email} is on the team list. Invite emails need SUPABASE_SERVICE_ROLE_KEY; until then they can use Sign in with Google, or “Forgot password” after signing in once.`;
   const { error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: `${base}/account/password` });
   if (!error) return `Invite email sent to ${email}.`;
   if (/already|registered|exists/i.test(error.message)) {
-    // Existing account (e.g. signed in with Google before): send a set-password link instead.
     const { createClient } = await import("@/lib/supabase/server");
     await (await createClient()).auth.resetPasswordForEmail(email, { redirectTo: `${base}/auth/callback?next=/account/password` });
     return `${email} already has an account, so we sent them a link to set a password.`;
@@ -40,7 +45,12 @@ export async function inviteMember(fd: FormData) {
   const email = s(fd, "email").toLowerCase();
   const input = readMember(fd, email);
   if (typeof input === "string") back(input, "error");
-  await (await getRepo()).upsertInvite(input as InviteInput);
+  const repo = await getRepo();
+  const existing = (await repo.listTeam()).find((m) => m.email === email);
+  if (existing?.status === "inactive") {
+    back(`${email} is suspended. Restore them under Manage instead of inviting again.`, "error");
+  }
+  await repo.upsertInvite(input as InviteInput);
   const msg = fd.get("send_email") === "on" ? await emailInvite(email) : `${email} added to the team list. They can sign in with Google or email.`;
   revalidatePath("/team");
   back(msg);
@@ -70,16 +80,104 @@ export async function removeMember(email: string) {
   back(`${email} removed from the team list. They can no longer get in.`);
 }
 
+/** Suspend (active=false + auth ban) or restore. */
 export async function setMemberActive(profileId: string, active: boolean) {
   const me = await requireRole("admin");
-  if (profileId === me.id) back("You can't deactivate yourself.", "error");
-  await (await getRepo()).setActive(profileId, active);
+  if (profileId === me.id) back("You can't suspend yourself.", "error");
+  const repo = await getRepo();
+  const profile = await repo.getProfile(profileId);
+  if (!profile || profile.deleted_at) back("Member not found.", "error");
+  if (!active && profile!.role === "admin") {
+    const admins = await repo.countActiveAdmins();
+    if (admins <= 1) back("You can't suspend the last active admin.", "error");
+  }
+  await repo.setActive(profileId, active);
+  let banNote = "";
+  if (!MOCK_MODE) {
+    try {
+      await banAuthUser(profileId, !active);
+    } catch (e) {
+      banNote = ` App access updated, but auth ban failed: ${(e as Error).message}`;
+    }
+  }
+  await repo.writeAdminAudit({
+    actor_id: me.id,
+    action: active ? "restore" : "suspend",
+    target_email: profile!.email,
+    target_profile_id: profileId,
+  });
   revalidatePath("/team");
-  back(active ? "Member reactivated." : "Member deactivated. They keep their history but can't sign in to the app.");
+  back((active ? "Member restored." : "Member suspended. Their app sessions are blocked.") + banNote);
 }
 
+export async function deleteMember(fd: FormData) {
+  const me = await requireRole("admin");
+  const profileId = s(fd, "profile_id");
+  const confirm = s(fd, "confirm_name");
+  if (!profileId) back("Missing member.", "error");
+  if (profileId === me.id) back("You can't delete yourself.", "error");
+  const repo = await getRepo();
+  const profile = await repo.getProfile(profileId);
+  if (!profile || profile.deleted_at) back("Member not found.", "error");
+  if (confirm !== profile!.full_name) back("Type their full name exactly to confirm delete.", "error");
+  if (profile!.role === "admin") {
+    const admins = await repo.countActiveAdmins();
+    if (admins <= 1) back("You can't delete the last active admin.", "error");
+  }
+  const { email, full_name } = await repo.softDeleteMember(profileId, me.id);
+  let authNote = "";
+  if (!MOCK_MODE) {
+    try {
+      await banAuthUser(profileId, true);
+      try {
+        await updateAuthEmail(profileId, `deleted-${profileId.slice(0, 8)}@deleted.invalid`);
+      } catch { /* optional */ }
+    } catch (e) {
+      authNote = ` Profile removed in-app; auth ban/email update failed: ${(e as Error).message}`;
+    }
+  }
+  await repo.writeAdminAudit({
+    actor_id: me.id,
+    action: "soft_delete",
+    target_email: email,
+    target_profile_id: profileId,
+    detail: { full_name },
+  });
+  revalidatePath("/team");
+  back(`${full_name} deleted (soft). Job/photo history kept; name anonymized.${authNote}`);
+}
 
-/** Upload / switch / clear avatar for a team member (admin). */
+export async function adminSetPassword(fd: FormData) {
+  const me = await requireRole("admin");
+  const profileId = s(fd, "profile_id");
+  const password = String(fd.get("password") ?? "");
+  const verr = validateAdminPassword(password);
+  if (verr) back(verr, "error");
+  if (!profileId) back("Missing member.", "error");
+  const repo = await getRepo();
+  const profile = await repo.getProfile(profileId);
+  if (!profile || profile.deleted_at) back("Member not found.", "error");
+  if (MOCK_MODE) {
+    await repo.writeAdminAudit({ actor_id: me.id, action: "set_password", target_email: profile!.email, target_profile_id: profileId, detail: { mock: true } });
+    revalidatePath("/team");
+    back(`Dev mock mode: password change for ${profile!.email} simulated (not stored).`);
+  }
+  try {
+    await setAuthPassword(profileId, password);
+  } catch (e) {
+    const msg = (e as Error).message;
+    back(msg.includes("not configured") || msg.includes("Admin key") ? adminKeyMissingMessage() : msg, "error");
+  }
+  await repo.writeAdminAudit({ actor_id: me.id, action: "set_password", target_email: profile!.email, target_profile_id: profileId });
+  revalidatePath("/team");
+  back(`Password updated for ${profile!.email}.`);
+}
+
+export async function sendPasswordResetNoted(email: string) {
+  await requireRole("admin");
+  back(`Password reset email for ${email} needs Resend SMTP (deferred). Use “Set password” above for now.`, "error");
+}
+
 export async function manageMemberAvatar(fd: FormData): Promise<{ error?: string; ok?: string }> {
   await requireRole("admin");
   const email = String(fd.get("email") ?? "").trim().toLowerCase();

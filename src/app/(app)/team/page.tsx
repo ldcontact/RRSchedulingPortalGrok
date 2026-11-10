@@ -6,11 +6,11 @@ import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { ROLE_LABEL, ROLES, type TeamMember } from "@/lib/types";
-import { inviteMember, manageMemberAvatar, removeMember, resendInvite, setMemberActive, updateMember } from "./actions";
+import { adminSetPassword, deleteMember, inviteMember, manageMemberAvatar, removeMember, resendInvite, sendPasswordResetNoted, setMemberActive, updateMember } from "./actions";
 
 export const metadata: Metadata = { title: "Team" };
 
-const STATUS = { active: "bg-green-100 text-green-800", invited: "bg-accent-50 text-amber-700", inactive: "bg-slate-100 text-slate-600" };
+const STATUS = { active: "bg-green-100 text-green-800", invited: "bg-accent-50 text-amber-700", inactive: "bg-red-50 text-red-800" };
 const ROLE_HELP = { admin: "Everything, including team and roles", manager: "Customers, scheduling, approvals", tech: "Only their assigned jobs" };
 
 function MemberFields({ m }: { m?: TeamMember }) {
@@ -66,7 +66,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
               <div className="flex items-center gap-2"><Icon name="phone" className="size-4 text-muted" />{m.phone ?? "—"}</div>
             </div>
             <div className="flex items-center justify-between">
-              <span className={`pill ${STATUS[m.status]}`}>{m.status === "invited" ? "Invited, not signed in yet" : m.status === "active" ? "Active" : "Deactivated"}</span>
+              <span className={`pill ${STATUS[m.status]}`}>{m.status === "invited" ? "Invited, not signed in yet" : m.status === "active" ? "Active" : "Suspended"}</span>
               <span className="text-xs text-muted">Jobs: phase 2</span>
             </div>
             {admin && (
@@ -87,10 +87,40 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
                     />
                   </div>
                   <form action={updateMember.bind(null, m.email)} className="grid gap-2.5"><MemberFields m={m} /><SubmitButton className="btn btn-sm btn-primary">Save</SubmitButton></form>
-                  <div className="flex flex-wrap gap-2 border-t border-line pt-3">
-                    <form action={resendInvite.bind(null, m.email)}><SubmitButton className="btn btn-sm" pendingText="Sending…"><Icon name="send" className="size-4" />{m.status === "invited" ? "Resend invite" : "Send password link"}</SubmitButton></form>
-                    {m.profile_id && m.email !== me.email && <form action={setMemberActive.bind(null, m.profile_id, m.status !== "active")}><SubmitButton className="btn btn-sm">{m.status === "active" ? "Deactivate" : "Reactivate"}</SubmitButton></form>}
-                    {m.email !== me.email && <form action={removeMember.bind(null, m.email)}><SubmitButton className="btn btn-sm btn-danger" pendingText="Removing…"><Icon name="trash" className="size-4" />Remove</SubmitButton></form>}
+                  <div className="flex flex-col gap-3 border-t border-line pt-3">
+                    {m.profile_id && (
+                      <form action={adminSetPassword} className="grid gap-2 rounded-lg border border-line bg-white p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted">Set password</div>
+                        <input type="hidden" name="profile_id" value={m.profile_id} />
+                        <label className="label">New password (min 8 characters)
+                          <input className="input" name="password" type="password" autoComplete="new-password" minLength={8} required />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <SubmitButton className="btn btn-sm btn-primary" pendingText="Saving…"><Icon name="lock" className="size-4" />Set password</SubmitButton>
+                          <SubmitButton formAction={sendPasswordResetNoted.bind(null, m.email)} className="btn btn-sm" pendingText="…">Email reset link (needs SMTP)</SubmitButton>
+                        </div>
+                      </form>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <form action={resendInvite.bind(null, m.email)}><SubmitButton className="btn btn-sm" pendingText="Sending…"><Icon name="send" className="size-4" />{m.status === "invited" ? "Resend invite" : "Send password link"}</SubmitButton></form>
+                      {m.profile_id && m.email !== me.email && (
+                        <form action={setMemberActive.bind(null, m.profile_id, m.status !== "active")}>
+                          <SubmitButton className="btn btn-sm">{m.status === "active" ? "Suspend" : "Restore"}</SubmitButton>
+                        </form>
+                      )}
+                      {m.status === "invited" && m.email !== me.email && (
+                        <form action={removeMember.bind(null, m.email)}><SubmitButton className="btn btn-sm btn-danger" pendingText="Removing…"><Icon name="trash" className="size-4" />Remove invite</SubmitButton></form>
+                      )}
+                    </div>
+                    {m.profile_id && m.email !== me.email && (
+                      <form action={deleteMember} className="grid gap-2 rounded-lg border border-red-200 bg-red-50/50 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Delete user</div>
+                        <p className="text-[12px] text-red-900/80">Soft-deletes access and anonymizes their profile. Job/photo history stays. Type <b>{m.full_name}</b> to confirm.</p>
+                        <input type="hidden" name="profile_id" value={m.profile_id} />
+                        <input className="input" name="confirm_name" placeholder="Type full name" required autoComplete="off" />
+                        <SubmitButton className="btn btn-sm btn-danger" pendingText="Deleting…"><Icon name="trash" className="size-4" />Delete permanently</SubmitButton>
+                      </form>
+                    )}
                   </div>
                 </div>
               </details>

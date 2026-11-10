@@ -31,6 +31,10 @@ export interface Repo {
   /** Current user: refresh google_avatar_url from auth metadata and optionally switch source. */
   syncOwnGoogleAvatar(googleUrl: string | null): Promise<void>;
   updateOwnAvatar(patch: { avatar_source?: import("@/lib/types").AvatarSource; file?: File | null; clear?: boolean }): Promise<void>;
+  /** Soft-delete: anonymize PII, strip role, remove invite; keeps FK history. */
+  softDeleteMember(profileId: string, actorId: string): Promise<{ email: string; full_name: string }>;
+  writeAdminAudit(row: { actor_id: string; action: string; target_email?: string | null; target_profile_id?: string | null; detail?: Record<string, unknown> }): Promise<void>;
+  countActiveAdmins(): Promise<number>;
 
   counts(): Promise<Counts>;
 

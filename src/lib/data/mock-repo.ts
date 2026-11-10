@@ -17,7 +17,9 @@ type PhotoRow = Omit<Photo, "url">;
 type NoteRow = Omit<Note, "author_name">;
 type MessageRow = Omit<Message, "sender_name">;
 type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[] };
-type DB = { profiles: Profile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[] } & P2;
+type MockProfile = Profile & { deleted_at?: string | null };
+type AuditRow = { id: string; actor_id: string; action: string; target_email: string | null; target_profile_id: string | null; detail: Record<string, unknown>; created_at: string };
+type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[] } & P2;
 export const MOCK_UPLOADS = join(process.cwd(), ".mock-uploads");
 const FILE = join(process.cwd(), ".mock-db.json");
 
@@ -25,8 +27,8 @@ const now = () => new Date().toISOString();
 const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
 
 function seed(): DB {
-  const p = (id: string, email: string, full_name: string, role: Profile["role"], title: string, phone: string, color: string, avatar?: Partial<Pick<Profile, "avatar_source" | "avatar_path" | "google_avatar_url">>): Profile =>
-    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null });
+  const p = (id: string, email: string, full_name: string, role: Profile["role"], title: string, phone: string, color: string, avatar?: Partial<Pick<Profile, "avatar_source" | "avatar_path" | "google_avatar_url">>): MockProfile =>
+    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null, deleted_at: null });
   const profiles = [
     p("u-admin", "luke@retrofitrebates.com", "Luke Dlugosz", "admin", "Owner / President", "(847) 555-0100", "#0f766e", { avatar_source: "google", google_avatar_url: "/api/mock-photo/seed/avatar/Luke%20Dlugosz.svg" }),
     p("u-manager", "maria.santos@gmail.com", "Maria Santos", "manager", "Operations Manager", "(847) 555-0101", "#7c3aed", { avatar_source: "upload", avatar_path: "seed/avatar/Maria%20Santos.svg" }),
@@ -66,7 +68,7 @@ function seed(): DB {
     k("c7", "Rosa Delgado", "Owner", "(630) 555-0127", "rosa@itascaprint.example"),
     k("c8", "Ken Yamamoto", "Pharmacist / Owner", "(630) 555-0138", "ken@rosellerx.example"),
   ];
-  return { profiles, invites, customers, contacts, ...seedPhase2() };
+  return { profiles, invites, customers, contacts, admin_audit: [], ...seedPhase2() };
 }
 
 /** Sample projects/visits placed around today so the schedule always has something to show. */
@@ -242,7 +244,7 @@ export const mockRepo: Repo = {
 
   async listTeam() {
     const db = load();
-    const merged = mergeTeam(db.profiles, db.invites);
+    const merged = mergeTeam(db.profiles.filter((p) => !p.deleted_at), db.invites);
     return merged.map((m) => ({
       ...m,
       avatar_url: resolveAvatarUrl(m, m.avatar_source === "upload" && m.avatar_path ? `/api/mock-photo/${m.avatar_path}` : null),
@@ -272,7 +274,7 @@ export const mockRepo: Repo = {
       const prof = db.profiles.find((p) => p.email === email); if (prof) prof.role = null;
     });
   },
-  async setActive(profileId, active) { mutate((db) => { const p = db.profiles.find((x) => x.id === profileId); if (p) p.active = active; }); },
+  async setActive(profileId, active) { mutate((db) => { const p = db.profiles.find((x) => x.id === profileId); if (p && !p.deleted_at) p.active = active; }); },
   async uploadAvatar(target, file) {
     const folder = target.profile_id ?? `pending/${target.email.toLowerCase()}`;
     const path = `${folder}/${randomUUID()}.jpg`;
@@ -320,6 +322,33 @@ export const mockRepo: Repo = {
     if (patch.clear) return this.removeAvatar({ email: me.email, profile_id: me.id });
     if (patch.file) return this.uploadAvatar({ email: me.email, profile_id: me.id }, patch.file);
     if (patch.avatar_source) return this.setAvatarSource({ email: me.email, profile_id: me.id }, patch.avatar_source);
+  },
+  async softDeleteMember(profileId, actorId) {
+    return mutate((db) => {
+      const p = db.profiles.find((x) => x.id === profileId && !x.deleted_at);
+      if (!p) throw new Error("Member not found.");
+      const email = p.email; const full_name = p.full_name;
+      db.invites = db.invites.filter((i) => i.email !== email);
+      Object.assign(p, {
+        email: `deleted-${profileId.slice(0, 8)}@deleted.invalid`, full_name: "Removed user", phone: null, title: null,
+        role: null, active: false, avatar_source: "none" as const, avatar_path: null, google_avatar_url: null,
+        deleted_at: now(),
+      });
+      db.admin_audit.push({ id: randomUUID(), actor_id: actorId, action: "soft_delete", target_email: email, target_profile_id: profileId, detail: {}, created_at: now() });
+      return { email, full_name };
+    });
+  },
+  async writeAdminAudit(row) {
+    mutate((db) => {
+      db.admin_audit.push({
+        id: randomUUID(), actor_id: row.actor_id, action: row.action,
+        target_email: row.target_email ?? null, target_profile_id: row.target_profile_id ?? null,
+        detail: row.detail ?? {}, created_at: now(),
+      });
+    });
+  },
+  async countActiveAdmins() {
+    return load().profiles.filter((p) => p.role === "admin" && p.active && !p.deleted_at).length;
   },
   async counts() {
     const db = load();
@@ -379,7 +408,7 @@ export const mockRepo: Repo = {
   async deleteMilestone(id) { requireStaffMock(await who()); mutate((db) => { db.milestones = db.milestones.filter((x) => x.id !== id); }); },
   async listAssignable() {
     const order = { tech: 0, manager: 1, admin: 2 } as Record<string, number>;
-    return load().profiles.filter((p) => p.role && p.active).sort((a, b) => order[a.role!] - order[b.role!] || a.full_name.localeCompare(b.full_name))
+    return load().profiles.filter((p) => p.role && p.active && !p.deleted_at).sort((a, b) => order[a.role!] - order[b.role!] || a.full_name.localeCompare(b.full_name))
       .map((p) => ({
         id: p.id, full_name: p.full_name, color: p.color, role: p.role!,
         avatar_url: resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null),

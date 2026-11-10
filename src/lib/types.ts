@@ -19,6 +19,7 @@ export type Profile = {
   google_avatar_url: string | null;
   /** Resolved display URL (signed upload or Google); set by repos, not stored. */
   avatar_url?: string | null;
+  deleted_at?: string | null;
 };
 
 export type Invite = {

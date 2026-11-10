@@ -1,6 +1,9 @@
 -- RLS behaviour tests. Run with: npm run test:db   (expects a fresh database)
 create or replace function pg_temp.as_user(p uuid) returns void language plpgsql as $$
-begin perform set_config('request.jwt.claim.sub', coalesce(p::text, ''), false); execute 'set role authenticated'; end $$;
+begin
+  perform set_config('request.jwt.claim.sub', coalesce(p::text, ''), false);
+  if p is null then execute 'reset role'; else execute 'set role authenticated'; end if;
+end $$;
 create or replace function pg_temp.check(label text, ok boolean) returns void language plpgsql as $$
 begin if not ok then raise exception 'FAIL: %', label; end if; raise notice 'ok  %', label; end $$;
 create or replace function pg_temp.fails(label text, stmt text) returns void language plpgsql as $$
@@ -173,6 +176,55 @@ reset role;
 select pg_temp.check('avatars bucket exists', exists (select 1 from storage.buckets where id='avatars' and public=false));
 select pg_temp.check('avatar_source enum on profiles', exists (
   select 1 from information_schema.columns where table_schema='public' and table_name='profiles' and column_name='avatar_source'));
+
+
+-- ---- admin user lifecycle (suspend / soft-delete / audit)
+select pg_temp.as_user(null); -- clear JWT so superuser updates are not blocked by guard_profile_update
+-- soft-delete target: seed a deletable tech
+insert into invites (email, role, full_name) values ('deleteme@example.com','tech','Delete Me') on conflict (email) do nothing;
+insert into auth.users (id, email, email_confirmed_at) values
+  ('00000000-0000-0000-0000-0000000000aa','deleteme@example.com', now())
+  on conflict (id) do nothing;
+-- ensure profile exists with role (as superuser with cleared JWT)
+update profiles set role='tech', active=true, full_name='Delete Me', deleted_at=null where id='00000000-0000-0000-0000-0000000000aa';
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a'); -- admin
+update profiles set active=false where id='00000000-0000-0000-0000-0000000000aa';
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000aa');
+select pg_temp.check('suspended user has no role', private.current_user_role() is null);
+select pg_temp.check('suspended user cannot read customers', (select count(*) from customers)=0);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+insert into admin_audit (actor_id, action, target_email, target_profile_id, detail)
+  values (auth.uid(), 'suspend', 'deleteme@example.com', '00000000-0000-0000-0000-0000000000aa', '{}'::jsonb);
+select pg_temp.check('admin can write audit row', (select count(*) from admin_audit where action='suspend')>=1);
+-- soft-delete
+update profiles set
+  email='deleted-00000000@deleted.invalid', full_name='Removed user', role=null, active=false,
+  deleted_at=now(), deleted_by=auth.uid(), phone=null, title=null
+ where id='00000000-0000-0000-0000-0000000000aa';
+delete from invites where email='deleteme@example.com';
+select pg_temp.check('soft-deleted profile marked', (select deleted_at is not null from profiles where id='00000000-0000-0000-0000-0000000000aa'));
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c'); -- non-admin member
+select pg_temp.check('non-admin cannot see soft-deleted profile', (select count(*) from profiles where id='00000000-0000-0000-0000-0000000000aa')=0);
+select pg_temp.check('non-admin cannot read admin_audit', (select count(*) from admin_audit)=0);
+select pg_temp.fails('non-admin cannot insert admin_audit',
+  $$insert into admin_audit(actor_id, action) values (auth.uid(), 'x')$$);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select pg_temp.check('admin can still see soft-deleted profile', (select count(*) from profiles where id='00000000-0000-0000-0000-0000000000aa')=1);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- manager
+update profiles set active=false where id='00000000-0000-0000-0000-00000000000a';
+select pg_temp.check('manager cannot suspend admin via RLS', (select active from profiles where id='00000000-0000-0000-0000-00000000000a')=true);
+reset role;
 
 -- ---- privilege / schema hardening (private helpers)
 select pg_temp.check('private schema exists', exists (select 1 from pg_namespace where nspname='private'));
