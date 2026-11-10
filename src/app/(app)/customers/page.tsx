@@ -10,16 +10,16 @@ import { PAGE_SIZE, type CustomerSort } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Customers" };
 
-const SORTS: Record<CustomerSort, string> = { name: "Name A–Z", name_desc: "Name Z–A", newest: "Newest first" };
+const SORTS: Record<CustomerSort, string> = { newest: "Newest first", name: "Name A–Z", name_desc: "Name Z–A" };
 
 export default async function CustomersPage({ searchParams }: PageProps<"/customers">) {
   await requireRole("admin", "manager");
   const sp = await searchParams;
   const query = typeof sp.q === "string" ? sp.q.trim() : "";
-  const sort: CustomerSort = typeof sp.sort === "string" && sp.sort in SORTS ? (sp.sort as CustomerSort) : "name";
+  const sort: CustomerSort = typeof sp.sort === "string" && sp.sort in SORTS ? (sp.sort as CustomerSort) : "newest";
   // One database page (range + exact count); search and sort run in Postgres across all customers.
   const { items: list, total, page, size } = await (await getRepo()).pageCustomers({ q: query, page: pageParam(sp.page), size: PAGE_SIZE, sort });
-  const href = (p: number) => `/customers?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(sort !== "name" ? { sort } : {}), ...(p > 1 ? { page: String(p) } : {}) })}`;
+  const href = (p: number) => `/customers?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(sort !== "newest" ? { sort } : {}), ...(p > 1 ? { page: String(p) } : {}) })}`;
   return (
     <>
       <PageHeader title="Customers" sub={query ? `${total.toLocaleString("en-US")} match “${query}”` : `${total.toLocaleString("en-US")} customers and leads`}
@@ -33,7 +33,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/custom
           {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <button className="btn">Search</button>
-        {(query || sort !== "name") && <Link href="/customers" className="btn">Clear</Link>}
+        {(query || sort !== "newest") && <Link href="/customers" className="btn">Clear</Link>}
       </form>
       <div className="card divide-y divide-line">
         {list.length === 0 && <div className="p-8 text-center text-muted">{query ? "No customers match your search." : "No customers yet. Add your first one."}</div>}
