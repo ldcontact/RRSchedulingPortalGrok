@@ -1,11 +1,12 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
-import type { Contact, Customer, CustomerListItem, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem } from "@/lib/types";
+import type { AvatarSource, Contact, Customer, CustomerListItem, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
+import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
 
 const iso = (t: string | null) => (t ? new Date(t).toISOString() : t); // normalise "+00:00" -> "Z" so string compares work
-const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip)), job_assignments(profiles(id, full_name, color))";
+const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip)), job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))";
 type JobRow = Job & {
   projects: { name: string; type: Project["type"]; customer_id: string; customers: { name: string; address: string | null; city: string | null; state: string | null; zip: string | null } | null };
   job_assignments: { profiles: Person | null }[];
@@ -21,6 +22,28 @@ function toJobView(r: JobRow): JobView {
 }
 
 const fail = (e: { message: string } | null) => { if (e) throw new Error(e.message); };
+
+type AvatarFields = { avatar_source?: AvatarSource | null; avatar_path?: string | null; google_avatar_url?: string | null };
+async function signAvatarPaths(s: Awaited<ReturnType<typeof createClient>>, paths: (string | null | undefined)[]) {
+  const unique = [...new Set(paths.filter((x): x is string => !!x))];
+  if (!unique.length) return new Map<string, string>();
+  const { data } = await s.storage.from("avatars").createSignedUrls(unique, 3600);
+  return new Map((data ?? []).filter((x) => x.signedUrl).map((x) => [x.path!, x.signedUrl!]));
+}
+async function withAvatarUrl<T extends AvatarFields>(s: Awaited<ReturnType<typeof createClient>>, row: T): Promise<T & { avatar_url: string | null }> {
+  const signed = row.avatar_source === "upload" && row.avatar_path
+    ? (await signAvatarPaths(s, [row.avatar_path])).get(row.avatar_path) ?? null
+    : null;
+  return { ...row, avatar_url: resolveAvatarUrl(row, signed) };
+}
+async function attachPersonAvatars(s: Awaited<ReturnType<typeof createClient>>, people: (Person & AvatarFields)[]): Promise<Person[]> {
+  const signed = await signAvatarPaths(s, people.map((p) => (p.avatar_source === "upload" ? p.avatar_path : null)));
+  return people.map((p) => ({
+    id: p.id, full_name: p.full_name, color: p.color,
+    avatar_url: resolveAvatarUrl(p, p.avatar_path ? signed.get(p.avatar_path) : null),
+  }));
+}
+
 
 export function supabaseRepo(): Repo {
   const db = createClient;
@@ -73,21 +96,93 @@ export function supabaseRepo(): Repo {
         s.from("invites").select("*"), // RLS: admins only; others get []
       ]);
       fail(e1);
-      return mergeTeam((profiles ?? []) as Profile[], invites ?? []);
+      const merged = mergeTeam((profiles ?? []) as Profile[], invites ?? []);
+      const signed = await signAvatarPaths(s, merged.map((m) => (m.avatar_source === "upload" ? m.avatar_path : null)));
+      return merged.map((m) => ({ ...m, avatar_url: resolveAvatarUrl(m, m.avatar_path ? signed.get(m.avatar_path) : null) }));
     },
     async getProfile(id) {
-      const { data, error } = await (await db()).from("profiles").select("*").eq("id", id).maybeSingle();
+      const s = await db();
+      const { data, error } = await s.from("profiles").select("*").eq("id", id).maybeSingle();
       fail(error);
-      return data as Profile | null;
+      if (!data) return null;
+      return withAvatarUrl(s, data as Profile);
     },
     async upsertInvite(input) {
-      fail((await (await db()).from("invites").upsert({ ...input, email: input.email.toLowerCase() })).error);
+      const row = {
+        email: input.email.toLowerCase(), role: input.role, full_name: input.full_name,
+        title: input.title, phone: input.phone, color: input.color,
+        ...(input.avatar_source !== undefined ? { avatar_source: input.avatar_source } : {}),
+        ...(input.avatar_path !== undefined ? { avatar_path: input.avatar_path } : {}),
+      };
+      fail((await (await db()).from("invites").upsert(row)).error);
     },
     async removeFromTeam(email) {
       fail((await (await db()).from("invites").delete().eq("email", email.toLowerCase())).error);
     },
     async setActive(profileId, active) {
       fail((await (await db()).from("profiles").update({ active }).eq("id", profileId)).error);
+    },
+    async uploadAvatar(target, file) {
+      const s = await db();
+      const email = target.email.toLowerCase();
+      const folder = avatarStorageFolder(target.profile_id, email);
+      const path = `${folder}/${crypto.randomUUID()}.jpg`;
+      fail((await s.storage.from("avatars").upload(path, file, { contentType: file.type || "image/jpeg", upsert: false })).error);
+      const prev = target.profile_id
+        ? (await s.from("profiles").select("avatar_path").eq("id", target.profile_id).maybeSingle()).data?.avatar_path
+        : (await s.from("invites").select("avatar_path").eq("email", email).maybeSingle()).data?.avatar_path;
+      if (target.profile_id) {
+        fail((await s.from("profiles").update({ avatar_source: "upload", avatar_path: path }).eq("id", target.profile_id)).error);
+        // keep invite in sync when present
+        await s.from("invites").update({ avatar_source: "upload", avatar_path: path }).eq("email", email);
+      } else {
+        fail((await s.from("invites").update({ avatar_source: "upload", avatar_path: path }).eq("email", email)).error);
+      }
+      if (prev && prev !== path) await s.storage.from("avatars").remove([prev]);
+    },
+    async setAvatarSource(target, source) {
+      const s = await db();
+      const email = target.email.toLowerCase();
+      if (target.profile_id) {
+        const patch: Record<string, unknown> = { avatar_source: source };
+        if (source === "none") patch.avatar_path = null;
+        fail((await s.from("profiles").update(patch).eq("id", target.profile_id)).error);
+        await s.from("invites").update({ avatar_source: source, ...(source === "none" ? { avatar_path: null } : {}) }).eq("email", email);
+      } else {
+        fail((await s.from("invites").update({ avatar_source: source, ...(source === "none" ? { avatar_path: null } : {}) }).eq("email", email)).error);
+      }
+    },
+    async removeAvatar(target) {
+      const s = await db();
+      const email = target.email.toLowerCase();
+      let prev: string | null = null;
+      if (target.profile_id) {
+        const { data } = await s.from("profiles").select("avatar_path").eq("id", target.profile_id).maybeSingle();
+        prev = data?.avatar_path ?? null;
+        fail((await s.from("profiles").update({ avatar_source: "none", avatar_path: null }).eq("id", target.profile_id)).error);
+      }
+      const inv = await s.from("invites").select("avatar_path").eq("email", email).maybeSingle();
+      prev = prev ?? inv.data?.avatar_path ?? null;
+      await s.from("invites").update({ avatar_source: "none", avatar_path: null }).eq("email", email);
+      if (prev) await s.storage.from("avatars").remove([prev]);
+    },
+    async syncOwnGoogleAvatar(googleUrl) {
+      const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      if (!user) throw new Error("Not signed in");
+      const patch: Record<string, unknown> = { google_avatar_url: googleUrl };
+      const { data: p } = await s.from("profiles").select("avatar_source").eq("id", user.id).maybeSingle();
+      if (googleUrl && (p?.avatar_source === "none" || !p?.avatar_source)) patch.avatar_source = "google";
+      fail((await s.from("profiles").update(patch).eq("id", user.id)).error);
+    },
+    async updateOwnAvatar(patch) {
+      const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      if (!user) throw new Error("Not signed in");
+      const email = (user.email ?? "").toLowerCase();
+      if (patch.clear) return this.removeAvatar({ email, profile_id: user.id });
+      if (patch.file) return this.uploadAvatar({ email, profile_id: user.id }, patch.file);
+      if (patch.avatar_source) return this.setAvatarSource({ email, profile_id: user.id }, patch.avatar_source);
     },
     async counts() {
       const s = await db();
@@ -108,23 +203,32 @@ export function supabaseRepo(): Repo {
     // ---------------------------------------------------------------- phase 2
     async listProjects(f = {}) {
       const s = await db();
-      let q = s.from("projects").select("*, customers(name), milestones(done), jobs(starts_at, ends_at, status, job_assignments(profiles(id, full_name, color)))").order("updated_at", { ascending: false });
+      let q = s.from("projects").select("*, customers(name), milestones(done), jobs(starts_at, ends_at, status, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url)))").order("updated_at", { ascending: false });
       if (f.status) q = q.eq("status", f.status);
       if (f.customerId) q = q.eq("customer_id", f.customerId);
       const { data, error } = await q; fail(error);
       const term = f.q?.toLowerCase().trim();
       const nowIso = new Date().toISOString();
       type Row = Project & { customers: { name: string } | null; milestones: { done: boolean }[]; jobs: { starts_at: string; ends_at: string; status: Job["status"]; job_assignments: { profiles: Person | null }[] }[] };
-      return ((data ?? []) as Row[]).map(({ customers, milestones, jobs, ...p }) => {
+      const rows = ((data ?? []) as Row[]).map(({ customers, milestones, jobs, ...p }) => {
         const live = jobs.filter((j) => j.status !== "cancelled");
-        const team = new Map<string, Person>();
-        for (const j of live) for (const a of j.job_assignments) if (a.profiles) team.set(a.profiles.id, a.profiles);
+        const team = new Map<string, Person & AvatarFields>();
+        for (const j of live) for (const a of j.job_assignments) if (a.profiles) team.set(a.profiles.id, a.profiles as Person & AvatarFields);
         return {
           ...p, value: Number(p.value), est_rebate: Number(p.est_rebate), customer_name: customers?.name ?? "",
           next_visit: live.filter((j) => iso(j.ends_at)! > nowIso && (j.status === "scheduled" || j.status === "in_progress")).map((j) => iso(j.starts_at)!).sort()[0] ?? null,
           team: [...team.values()], done_milestones: milestones.filter((m) => m.done).length, total_milestones: milestones.length,
-        } satisfies ProjectListItem;
+        };
       }).filter((p) => !term || `${p.name} ${p.customer_name} ${p.scope}`.toLowerCase().includes(term));
+      const allPeople = rows.flatMap((r) => r.team);
+      const signed = await signAvatarPaths(s, allPeople.map((p) => (p.avatar_source === "upload" ? p.avatar_path : null)));
+      return rows.map((r) => ({
+        ...r,
+        team: r.team.map((p) => ({
+          id: p.id, full_name: p.full_name, color: p.color,
+          avatar_url: resolveAvatarUrl(p, p.avatar_path ? signed.get(p.avatar_path) : null),
+        })),
+      })) satisfies ProjectListItem[];
     },
     async getProject(id) {
       const { data, error } = await (await db()).from("projects").select("*").eq("id", id).maybeSingle(); fail(error);
@@ -148,22 +252,43 @@ export function supabaseRepo(): Repo {
     async updateMilestone(id, patch) { fail((await (await db()).from("milestones").update(patch).eq("id", id)).error); },
     async deleteMilestone(id) { fail((await (await db()).from("milestones").delete().eq("id", id)).error); },
     async listAssignable() {
-      const { data, error } = await (await db()).from("profiles").select("id, full_name, color, role").not("role", "is", null).eq("active", true); fail(error);
+      const s = await db();
+      const { data, error } = await s.from("profiles").select("id, full_name, color, role, avatar_source, avatar_path, google_avatar_url").not("role", "is", null).eq("active", true); fail(error);
       const order: Record<string, number> = { tech: 0, manager: 1, admin: 2 };
-      return ((data ?? []) as (Person & { role: string })[]).sort((a, b) => order[a.role] - order[b.role] || a.full_name.localeCompare(b.full_name));
+      const rows = ((data ?? []) as (Person & AvatarFields & { role: string })[]).sort((a, b) => order[a.role] - order[b.role] || a.full_name.localeCompare(b.full_name));
+      const people = await attachPersonAvatars(s, rows);
+      return people.map((p, i) => ({ ...p, role: rows[i].role }));
     },
     async listJobs(f = {}) {
-      let q = (await db()).from("jobs").select(JOB_SELECT).order("starts_at");
+      const s = await db();
+      let q = s.from("jobs").select(JOB_SELECT).order("starts_at");
       if (f.from) q = q.gt("ends_at", f.from);
       if (f.to) q = q.lt("starts_at", f.to);
       if (f.projectId) q = q.eq("project_id", f.projectId);
       if (f.status) q = q.in("status", f.status);
       const { data, error } = await q; fail(error);
-      return ((data ?? []) as unknown as JobRow[]).map(toJobView).filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee));
+      const jobs = ((data ?? []) as unknown as JobRow[]).map(toJobView).filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee));
+      const flat = jobs.flatMap((j) => j.assignees as (Person & AvatarFields)[]);
+      const signed = await signAvatarPaths(s, flat.map((p) => (p.avatar_source === "upload" ? p.avatar_path : null)));
+      for (const j of jobs) {
+        j.assignees = j.assignees.map((a) => {
+          const p = a as Person & AvatarFields;
+          return { id: p.id, full_name: p.full_name, color: p.color, avatar_url: resolveAvatarUrl(p, p.avatar_path ? signed.get(p.avatar_path) : null) };
+        });
+      }
+      return jobs;
     },
     async getJob(id) {
-      const { data, error } = await (await db()).from("jobs").select(JOB_SELECT).eq("id", id).maybeSingle(); fail(error);
-      return data ? toJobView(data as unknown as JobRow) : null;
+      const s = await db();
+      const { data, error } = await s.from("jobs").select(JOB_SELECT).eq("id", id).maybeSingle(); fail(error);
+      if (!data) return null;
+      const job = toJobView(data as unknown as JobRow);
+      const signed = await signAvatarPaths(s, (job.assignees as (Person & AvatarFields)[]).map((p) => (p.avatar_source === "upload" ? p.avatar_path : null)));
+      job.assignees = job.assignees.map((a) => {
+        const p = a as Person & AvatarFields;
+        return { id: p.id, full_name: p.full_name, color: p.color, avatar_url: resolveAvatarUrl(p, p.avatar_path ? signed.get(p.avatar_path) : null) };
+      });
+      return job;
     },
     async createJob(input, assignees) {
       const s = await db();

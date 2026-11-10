@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Icon } from "./icons";
-import { Avatar, Logo, MockBadge } from "./ui";
+import { Avatar, BrandMark, Logo, MockBadge } from "./ui";
 import { ROLE_LABEL, type Role, type SessionUser } from "@/lib/types";
 
 type NavItem = { href: string; label: string; icon: string; soon?: boolean };
@@ -50,7 +50,7 @@ export function AppShell({ user, mock, roleSwitcher, children }: { user: Session
           </nav>
           <div className="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
             <Link href="/account" className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-white/5">
-              <Avatar name={user.name} color={user.color} />
+              <Avatar name={user.name} color={user.color} src={user.avatar_url} />
               <div className="min-w-0"><div className="truncate font-semibold text-white">{user.name}</div><div className="truncate text-[11.5px] text-[#8fb5ae]">{user.email}</div></div>
             </Link>
             <form action="/auth/signout" method="post"><button className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[#8fb5ae] hover:bg-white/5 hover:text-white"><Icon name="logout" />Sign out</button></form>
@@ -64,6 +64,8 @@ export function AppShell({ user, mock, roleSwitcher, children }: { user: Session
           {mock && <span className="hidden sm:inline"><MockBadge /></span>}
           {roleSwitcher}
           <span className="hidden text-xs text-muted lg:inline">{ROLE_LABEL[user.role]}</span>
+          {/* Company mark right-most; user avatar lives in sidebar / account, so no collision */}
+          <BrandMark className="ml-1 h-7 w-auto max-w-[120px] sm:h-8 sm:max-w-[140px]" />
         </header>
         <main className={`w-full px-3 pt-4 pb-28 md:px-6 md:pt-6 ${tech ? "mx-auto max-w-[680px]" : "max-w-[1320px] md:pb-10"}`}>{children}</main>
       </div>

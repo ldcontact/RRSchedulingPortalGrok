@@ -23,6 +23,14 @@ export interface Repo {
   upsertInvite(input: InviteInput): Promise<void>;
   removeFromTeam(email: string): Promise<void>;
   setActive(profileId: string, active: boolean): Promise<void>;
+  /** Upload or replace a profile picture (admin for anyone; self via updateOwnAvatar). */
+  uploadAvatar(target: { email: string; profile_id: string | null }, file: File): Promise<void>;
+  /** Switch source to google/none/upload (upload keeps existing path). */
+  setAvatarSource(target: { email: string; profile_id: string | null }, source: import("@/lib/types").AvatarSource): Promise<void>;
+  removeAvatar(target: { email: string; profile_id: string | null }): Promise<void>;
+  /** Current user: refresh google_avatar_url from auth metadata and optionally switch source. */
+  syncOwnGoogleAvatar(googleUrl: string | null): Promise<void>;
+  updateOwnAvatar(patch: { avatar_source?: import("@/lib/types").AvatarSource; file?: File | null; clear?: boolean }): Promise<void>;
 
   counts(): Promise<Counts>;
 
@@ -79,7 +87,7 @@ export async function getRepo(): Promise<Repo> {
 /** Merge signed-up profiles with the admin-managed invite list into one team view. */
 export function mergeTeam(
   profiles: Profile[],
-  invites: { email: string; role: TeamMember["role"]; full_name: string; title: string | null; phone: string | null; color: string; invited_at: string; accepted_at: string | null }[],
+  invites: { email: string; role: TeamMember["role"]; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: TeamMember["avatar_source"]; avatar_path?: string | null; invited_at: string; accepted_at: string | null }[],
 ): TeamMember[] {
   const byEmail = new Map<string, TeamMember>();
   for (const p of profiles) {
@@ -87,14 +95,26 @@ export function mergeTeam(
     byEmail.set(p.email, {
       email: p.email, full_name: p.full_name, role: p.role, title: p.title, phone: p.phone, color: p.color,
       profile_id: p.id, status: p.active ? "active" : "inactive", invited_at: null,
+      avatar_source: p.avatar_source ?? "none", avatar_path: p.avatar_path ?? null,
+      google_avatar_url: p.google_avatar_url ?? null, avatar_url: p.avatar_url ?? null,
     });
   }
   for (const i of invites) {
     const existing = byEmail.get(i.email);
-    if (existing) { existing.invited_at = i.invited_at; continue; }
+    if (existing) {
+      existing.invited_at = i.invited_at;
+      // Prefer live profile avatar; fill from invite only if profile has none
+      if ((existing.avatar_source ?? "none") === "none" && i.avatar_source && i.avatar_source !== "none") {
+        existing.avatar_source = i.avatar_source;
+        existing.avatar_path = i.avatar_path ?? null;
+      }
+      continue;
+    }
     byEmail.set(i.email, {
       email: i.email, full_name: i.full_name, role: i.role, title: i.title, phone: i.phone, color: i.color,
       profile_id: null, status: "invited", invited_at: i.invited_at,
+      avatar_source: i.avatar_source ?? "none", avatar_path: i.avatar_path ?? null,
+      google_avatar_url: null, avatar_url: null,
     });
   }
   const order = { admin: 0, manager: 1, tech: 2 } as const;

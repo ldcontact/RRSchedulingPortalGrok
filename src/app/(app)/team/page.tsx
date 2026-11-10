@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner, PageHeader, RolePill } from "@/components/ui";
+import { AvatarEditor } from "@/components/avatar-editor";
 import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { ROLE_LABEL, ROLES, type TeamMember } from "@/lib/types";
-import { inviteMember, removeMember, resendInvite, setMemberActive, updateMember } from "./actions";
+import { inviteMember, manageMemberAvatar, removeMember, resendInvite, setMemberActive, updateMember } from "./actions";
 
 export const metadata: Metadata = { title: "Team" };
 
@@ -46,6 +47,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
             <label className="label sm:col-span-2 lg:col-span-1">Email (Google account or any email)<input className="input" name="email" type="email" required placeholder="name@gmail.com" /></label>
             <MemberFields />
             <label className="flex items-center gap-2 text-sm sm:col-span-2 lg:col-span-3"><input type="checkbox" name="send_email" defaultChecked className="accent-brand" />Email them an invite link (to set a password). They can also just use Sign in with Google.</label>
+            <div className="sm:col-span-2 lg:col-span-3 text-xs text-muted">After they appear on the list, open Manage to add a profile photo (or use their Google photo once they sign in).</div>
             <div className="sm:col-span-2 lg:col-span-3"><SubmitButton pendingText="Inviting…"><Icon name="send" className="size-4" />Add to team</SubmitButton></div>
           </div>
         </form>
@@ -55,7 +57,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
         {team.map((m) => (
           <div key={m.email} className="card flex flex-col gap-3 p-4">
             <div className="flex items-center gap-3">
-              <Avatar name={m.full_name || m.email} color={m.color} size="lg" />
+              <Avatar name={m.full_name || m.email} color={m.color} size="lg" src={m.avatar_url} />
               <div className="min-w-0 flex-1"><div className="truncate font-semibold">{m.full_name || m.email}{m.email === me.email && <span className="ml-1 text-xs font-normal text-muted">(you)</span>}</div><div className="truncate text-[12.5px] text-muted">{m.title ?? ""}</div></div>
               <RolePill role={m.role} />
             </div>
@@ -71,6 +73,19 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
               <details className="rounded-lg border border-line bg-canvas/60 [&_summary::-webkit-details-marker]:hidden">
                 <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-semibold"><Icon name="edit" className="size-4" />Manage</summary>
                 <div className="flex flex-col gap-3 border-t border-line p-3">
+                  <div className="rounded-lg border border-line bg-white p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Profile photo</div>
+                    <AvatarEditor
+                      name={m.full_name || m.email}
+                      color={m.color}
+                      src={m.avatar_url}
+                      source={m.avatar_source}
+                      hasGoogle={!!m.google_avatar_url}
+                      action={manageMemberAvatar}
+                      hidden={{ email: m.email, ...(m.profile_id ? { profile_id: m.profile_id } : {}) }}
+                      compact
+                    />
+                  </div>
                   <form action={updateMember.bind(null, m.email)} className="grid gap-2.5"><MemberFields m={m} /><SubmitButton className="btn btn-sm btn-primary">Save</SubmitButton></form>
                   <div className="flex flex-wrap gap-2 border-t border-line pt-3">
                     <form action={resendInvite.bind(null, m.email)}><SubmitButton className="btn btn-sm" pendingText="Sending…"><Icon name="send" className="size-4" />{m.status === "invited" ? "Resend invite" : "Send password link"}</SubmitButton></form>

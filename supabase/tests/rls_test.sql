@@ -133,6 +133,47 @@ insert into project_photo_requirements (project_id, label, sort_order) values ('
 select pg_temp.check('manager can add photo requirements', (select count(*) from project_photo_requirements where project_id='20000000-0000-0000-0000-000000000001')=2);
 reset role;
 
+
+-- ---- profile avatars
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a'); -- Luke admin
+insert into storage.objects (bucket_id, name) values
+  ('avatars','00000000-0000-0000-0000-00000000000c/a1.jpg');
+update profiles set avatar_source='upload', avatar_path='00000000-0000-0000-0000-00000000000c/a1.jpg'
+ where id='00000000-0000-0000-0000-00000000000c';
+select pg_temp.check('admin can write avatar object for tech', exists (
+  select 1 from storage.objects where bucket_id='avatars' and name='00000000-0000-0000-0000-00000000000c/a1.jpg'));
+update invites set avatar_source='upload', avatar_path='pending/newhire@gmail.com/x.jpg' where email='newtech@gmail.com';
+-- pending path write
+insert into storage.objects (bucket_id, name) values ('avatars','pending/newtech@gmail.com/x.jpg');
+select pg_temp.check('admin can stage invite avatar under pending/', exists (
+  select 1 from storage.objects where name='pending/newtech@gmail.com/x.jpg'));
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c'); -- Carlos tech
+select pg_temp.check('member can read avatars bucket objects', (select count(*) from storage.objects where bucket_id='avatars') >= 1);
+insert into storage.objects (bucket_id, name) values ('avatars','00000000-0000-0000-0000-00000000000c/self.jpg');
+select pg_temp.check('tech can upload own avatar folder', exists (
+  select 1 from storage.objects where name='00000000-0000-0000-0000-00000000000c/self.jpg'));
+select pg_temp.fails('tech cannot upload into another profile folder',
+  $$insert into storage.objects (bucket_id, name) values ('avatars','00000000-0000-0000-0000-00000000000b/x.jpg')$$);
+select pg_temp.fails('tech cannot write pending invite avatar',
+  $$insert into storage.objects (bucket_id, name) values ('avatars','pending/someone@gmail.com/x.jpg')$$);
+update profiles set avatar_source='google', google_avatar_url='https://lh3.googleusercontent.com/a/test' where id=auth.uid();
+select pg_temp.check('tech can set own google avatar fields', (select avatar_source from profiles where id=auth.uid())='google');
+update profiles set avatar_source='upload', avatar_path='stolen.jpg' where id='00000000-0000-0000-0000-00000000000b';
+select pg_temp.check('cannot change another profile avatar via RLS', (select avatar_source from profiles where id='00000000-0000-0000-0000-00000000000b')='none');
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager
+select pg_temp.fails('manager cannot write pending invite avatar',
+  $$insert into storage.objects (bucket_id, name) values ('avatars','pending/x@y.com/z.jpg')$$);
+reset role;
+
+select pg_temp.check('avatars bucket exists', exists (select 1 from storage.buckets where id='avatars' and public=false));
+select pg_temp.check('avatar_source enum on profiles', exists (
+  select 1 from information_schema.columns where table_schema='public' and table_name='profiles' and column_name='avatar_source'));
+
 -- ---- privilege / schema hardening (private helpers)
 select pg_temp.check('private schema exists', exists (select 1 from pg_namespace where nspname='private'));
 select pg_temp.check('no public.is_admin helper', not exists (

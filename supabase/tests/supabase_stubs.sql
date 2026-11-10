@@ -12,4 +12,4 @@ create function storage.foldername(name text) returns text[] language sql immuta
   $$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
 grant usage on schema auth, storage to authenticated, anon;
 grant execute on function auth.uid() to authenticated, anon;
-grant select, insert, delete on storage.objects to authenticated;
+grant select, insert, update, delete on storage.objects to authenticated;

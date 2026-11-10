@@ -29,7 +29,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
               <form key={p.id} action={mockSignIn}>
                 <input type="hidden" name="uid" value={p.id} />
                 <button className="flex w-full items-center gap-3 rounded-lg border border-line bg-white px-3 py-2 text-left hover:border-brand hover:bg-brand-50">
-                  <Avatar name={p.full_name} color={p.color} size="sm" />
+                  <Avatar name={p.full_name} color={p.color} size="sm" src={p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : p.google_avatar_url} />
                   <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{p.full_name}</span><span className="block truncate text-xs text-muted">{p.email}</span></span>
                   <RolePill role={p.role} />
                 </button>

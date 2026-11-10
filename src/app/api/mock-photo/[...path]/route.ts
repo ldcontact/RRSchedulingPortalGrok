@@ -11,6 +11,14 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/mock-photo/[...
   const parts = (await ctx.params).path;
   if (parts[0] === "seed") {
     const kind = parts[1];
+    if (kind === "avatar") {
+      const label = decodeURIComponent(parts.slice(2).join("/")).replace(/\.svg$/, "").replace(/[<>&"]/g, "") || "?";
+      const initials = label.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
+      const colors = ["#0f766e", "#7c3aed", "#ea580c", "#2563eb", "#db2777", "#16a34a"];
+      const bg = colors[Math.abs([...label].reduce((a, c) => a + c.charCodeAt(0), 0)) % colors.length];
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><rect width="256" height="256" rx="128" fill="${bg}"/><text x="128" y="140" text-anchor="middle" font-family="system-ui,sans-serif" font-size="96" font-weight="700" fill="#fff">${initials}</text></svg>`;
+      return new Response(svg, { headers: { "content-type": "image/svg+xml", "cache-control": "private, max-age=3600" } });
+    }
     const label = decodeURIComponent(parts.slice(2).join("/")).replace(/\.svg$/, "").replace(/[<>&"]/g, "");
     const [a, b] = kind === "completion" ? ["#0f766e", "#134e4a"] : ["#78716c", "#3f3f46"];
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><title>${label}</title><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="800" height="600" fill="url(#g)"/><g fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="10"><rect x="120" y="120" width="220" height="110" rx="8"/><rect x="460" y="120" width="220" height="110" rx="8"/><rect x="120" y="330" width="220" height="110" rx="8"/><rect x="460" y="330" width="220" height="110" rx="8"/></g><text x="40" y="60" font-family="sans-serif" font-size="26" fill="#fff" fill-opacity=".8">${kind === "completion" ? "AFTER" : "BEFORE"} · sample</text></svg>`;

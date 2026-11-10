@@ -2,6 +2,9 @@ export type Role = "admin" | "manager" | "tech";
 export const ROLES: Role[] = ["admin", "manager", "tech"];
 export const ROLE_LABEL: Record<Role, string> = { admin: "Admin", manager: "Manager", tech: "Field Tech" };
 
+export type AvatarSource = "none" | "upload" | "google";
+export const AVATAR_SOURCES: AvatarSource[] = ["none", "upload", "google"];
+
 export type Profile = {
   id: string;
   email: string;
@@ -11,6 +14,11 @@ export type Profile = {
   color: string;
   role: Role | null;
   active: boolean;
+  avatar_source: AvatarSource;
+  avatar_path: string | null;
+  google_avatar_url: string | null;
+  /** Resolved display URL (signed upload or Google); set by repos, not stored. */
+  avatar_url?: string | null;
 };
 
 export type Invite = {
@@ -20,6 +28,8 @@ export type Invite = {
   phone: string | null;
   title: string | null;
   color: string;
+  avatar_source: AvatarSource;
+  avatar_path: string | null;
   invited_at: string;
   accepted_at: string | null;
 };
@@ -34,6 +44,10 @@ export type TeamMember = {
   profile_id: string | null;
   status: "active" | "invited" | "inactive";
   invited_at: string | null;
+  avatar_source: AvatarSource;
+  avatar_path: string | null;
+  google_avatar_url: string | null;
+  avatar_url?: string | null;
 };
 
 export type Customer = {
@@ -64,9 +78,9 @@ export type Contact = {
 };
 export type ContactInput = Omit<Contact, "id" | "customer_id">;
 
-export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string };
+export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: AvatarSource; avatar_path?: string | null };
 
-export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean };
+export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean; avatar_url?: string | null; avatar_source?: AvatarSource; google_avatar_url?: string | null };
 
 // ---------------------------------------------------------------- phase 2
 export type ProjectType = "lighting" | "hvac" | "lighting_hvac" | "other";
@@ -89,7 +103,7 @@ export type Project = {
   created_at: string; updated_at: string;
 };
 export type ProjectInput = Pick<Project, "customer_id" | "name" | "type" | "status" | "scope" | "value" | "est_rebate">;
-export type Person = { id: string; full_name: string; color: string };
+export type Person = { id: string; full_name: string; color: string; avatar_url?: string | null };
 export type ProjectListItem = Project & { customer_name: string; next_visit: string | null; team: Person[]; done_milestones: number; total_milestones: number };
 
 export type Milestone = { id: string; project_id: string; name: string; due_date: string | null; done: boolean; sort_order: number };

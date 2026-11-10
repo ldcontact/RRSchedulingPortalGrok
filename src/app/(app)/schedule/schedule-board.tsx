@@ -102,7 +102,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
                   <div className="w-16 text-[12px] font-semibold text-muted">{fmtTime(j.starts_at)}<br />{fmtTime(j.ends_at)}</div>
                   <div className="min-w-0 flex-1"><div className="truncate font-semibold">{j.title}</div><div className="truncate text-[12.5px] text-muted">{j.customer_name}{j.address ? ` · ${j.address.split(" ").slice(-3, -2)[0] ?? ""}` : ""}</div>
                     <div className="mt-1 flex items-center gap-2"><JobStatusPill status={j.status} />{conflicted.has(j.id) && <span className="pill bg-red-50 text-red-700"><Icon name="alert" className="size-3" />Double-booked</span>}</div></div>
-                  <span className="flex -space-x-1.5">{j.assignees.slice(0, 3).map((a) => <span key={a.id} className="rounded-full ring-2 ring-white"><Avatar name={a.full_name} color={a.color} size="sm" /></span>)}</span>
+                  <span className="flex -space-x-1.5">{j.assignees.slice(0, 3).map((a) => <span key={a.id} className="rounded-full ring-2 ring-white"><Avatar name={a.full_name} color={a.color} size="sm" src={a.avatar_url} /></span>)}</span>
                 </Link>
               ))}
             </div>
@@ -153,7 +153,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
             {dayList.map((d) => <div key={d} className={`border-b border-l border-line p-2 text-center text-xs font-semibold ${d === today ? "bg-brand-50 text-brand" : "bg-canvas/60 text-muted"}`}>{fmtDay(d)}</div>)}
             {boardRows.map((r) => (
               <div key={r.id} className="contents">
-                <div className="flex items-center gap-2 border-b border-line p-2 text-sm font-semibold"><Avatar name={r.full_name} color={r.color} size="sm" /><span className="truncate">{r.full_name}</span></div>
+                <div className="flex items-center gap-2 border-b border-line p-2 text-sm font-semibold"><Avatar name={r.full_name} color={r.color} size="sm" src={r.avatar_url} /><span className="truncate">{r.full_name}</span></div>
                 {dayList.map((d) => {
                   const key = `${r.id}|${d}`;
                   return (
@@ -180,7 +180,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
               const key = `${r.id}|${date}`;
               return (
                 <div key={r.id} className="grid grid-cols-[170px_1fr] border-b border-line">
-                  <div className="flex items-center gap-2 p-2 text-sm font-semibold"><Avatar name={r.full_name} color={r.color} size="sm" /><span className="truncate">{r.full_name}</span></div>
+                  <div className="flex items-center gap-2 p-2 text-sm font-semibold"><Avatar name={r.full_name} color={r.color} size="sm" src={r.avatar_url} /><span className="truncate">{r.full_name}</span></div>
                   <div data-track {...dropProps(key, (e) => {
                     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     return { day: date, row: r.id, startMin: DAY_START + ((e.clientX - rect.left) / rect.width) * (DAY_END - DAY_START) };

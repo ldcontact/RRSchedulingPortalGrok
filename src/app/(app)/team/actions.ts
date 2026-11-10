@@ -77,3 +77,38 @@ export async function setMemberActive(profileId: string, active: boolean) {
   revalidatePath("/team");
   back(active ? "Member reactivated." : "Member deactivated. They keep their history but can't sign in to the app.");
 }
+
+
+/** Upload / switch / clear avatar for a team member (admin). */
+export async function manageMemberAvatar(fd: FormData): Promise<{ error?: string; ok?: string }> {
+  await requireRole("admin");
+  const email = String(fd.get("email") ?? "").trim().toLowerCase();
+  const profileId = String(fd.get("profile_id") ?? "").trim() || null;
+  if (!email) return { error: "Missing email." };
+  const repo = await getRepo();
+  const target = { email, profile_id: profileId };
+  try {
+    if (fd.get("clear") === "1") {
+      await repo.removeAvatar(target);
+      revalidatePath("/team");
+      return { ok: "Photo removed." };
+    }
+    const file = fd.get("file");
+    if (file instanceof File && file.size > 0) {
+      if (!file.type.startsWith("image/")) return { error: "Not an image." };
+      if (file.size > 5 * 1024 * 1024) return { error: "Image must be under 5 MB." };
+      await repo.uploadAvatar(target, file);
+      revalidatePath("/team");
+      return { ok: "Photo uploaded." };
+    }
+    const source = String(fd.get("avatar_source") ?? "").trim();
+    if (source === "google" || source === "none" || source === "upload") {
+      await repo.setAvatarSource(target, source);
+      revalidatePath("/team");
+      return { ok: source === "google" ? "Using Google photo." : "Avatar updated." };
+    }
+    return { error: "Nothing to update." };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}

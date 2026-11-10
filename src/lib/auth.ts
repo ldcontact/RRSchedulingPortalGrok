@@ -14,21 +14,39 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     assertMockAllowed();
     if (!uid) return null;
     const { mockProfiles } = await import("@/lib/data/mock-repo");
+    const { resolveAvatarUrl } = await import("@/lib/avatar");
     const p = mockProfiles().find((x) => x.id === uid);
-    return p ? { id: p.id, email: p.email, name: p.full_name, role: p.role, color: p.color, active: p.active } : null;
+    if (!p) return null;
+    return {
+      id: p.id, email: p.email, name: p.full_name, role: p.active ? p.role : null, color: p.color, active: p.active,
+      avatar_source: p.avatar_source, google_avatar_url: p.google_avatar_url,
+      avatar_url: resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null),
+    };
   }
   const { createClient } = await import("@/lib/supabase/server");
+  const { resolveAvatarUrl } = await import("@/lib/avatar");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data: p } = await supabase.from("profiles").select("full_name, role, color, active").eq("id", user.id).maybeSingle();
+  const { data: p } = await supabase.from("profiles").select("full_name, role, color, active, avatar_source, avatar_path, google_avatar_url").eq("id", user.id).maybeSingle();
+  let avatar_url: string | null = null;
+  if (p?.avatar_source === "upload" && p.avatar_path) {
+    const { data: signed } = await supabase.storage.from("avatars").createSignedUrl(p.avatar_path, 3600);
+    avatar_url = signed?.signedUrl ?? null;
+  } else {
+    avatar_url = resolveAvatarUrl({ avatar_source: p?.avatar_source, google_avatar_url: p?.google_avatar_url });
+  }
+  const active = p?.active !== false;
   return {
     id: user.id,
     email: user.email ?? "",
     name: p?.full_name || (user.user_metadata?.full_name as string) || user.email || "",
-    role: p?.active === false ? null : ((p?.role as Role | null) ?? null),
+    role: !active ? null : ((p?.role as Role | null) ?? null),
     color: p?.color ?? "#0f766e",
-    active: p?.active ?? true,
+    active,
+    avatar_source: p?.avatar_source,
+    google_avatar_url: p?.google_avatar_url,
+    avatar_url,
   };
 });
 

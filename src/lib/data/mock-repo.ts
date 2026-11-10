@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectStatus } from "@/lib/types";
+import { resolveAvatarUrl } from "@/lib/avatar";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 
 /*
@@ -24,21 +25,22 @@ const now = () => new Date().toISOString();
 const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
 
 function seed(): DB {
-  const p = (id: string, email: string, full_name: string, role: Profile["role"], title: string, phone: string, color: string): Profile =>
-    ({ id, email, full_name, role, title, phone, color, active: true });
+  const p = (id: string, email: string, full_name: string, role: Profile["role"], title: string, phone: string, color: string, avatar?: Partial<Pick<Profile, "avatar_source" | "avatar_path" | "google_avatar_url">>): Profile =>
+    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null });
   const profiles = [
-    p("u-admin", "luke@retrofitrebates.com", "Luke Dlugosz", "admin", "Owner / President", "(847) 555-0100", "#0f766e"),
-    p("u-manager", "maria.santos@gmail.com", "Maria Santos", "manager", "Operations Manager", "(847) 555-0101", "#7c3aed"),
-    p("u-tech1", "carlos.mendez@yahoo.com", "Carlos Mendez", "tech", "Lead Electrician", "(847) 555-0102", "#ea580c"),
+    p("u-admin", "luke@retrofitrebates.com", "Luke Dlugosz", "admin", "Owner / President", "(847) 555-0100", "#0f766e", { avatar_source: "google", google_avatar_url: "/api/mock-photo/seed/avatar/Luke%20Dlugosz.svg" }),
+    p("u-manager", "maria.santos@gmail.com", "Maria Santos", "manager", "Operations Manager", "(847) 555-0101", "#7c3aed", { avatar_source: "upload", avatar_path: "seed/avatar/Maria%20Santos.svg" }),
+    p("u-tech1", "carlos.mendez@yahoo.com", "Carlos Mendez", "tech", "Lead Electrician", "(847) 555-0102", "#ea580c", { avatar_source: "google", google_avatar_url: "/api/mock-photo/seed/avatar/Carlos%20Mendez.svg" }),
     p("u-tech2", "jake.sullivan@gmail.com", "Jake Sullivan", "tech", "Electrician", "(847) 555-0103", "#2563eb"),
     p("u-tech3", "andre.w@outlook.com", "Andre Williams", "tech", "HVAC Technician", "(847) 555-0104", "#db2777"),
-    p("u-tech4", "emily.chen@icloud.com", "Emily Chen", "tech", "Electrician", "(847) 555-0105", "#16a34a"),
+    p("u-tech4", "emily.chen@icloud.com", "Emily Chen", "tech", "Electrician", "(847) 555-0105", "#16a34a", { avatar_source: "upload", avatar_path: "seed/avatar/Emily%20Chen.svg" }),
     p("u-stranger", "someone.else@gmail.com", "Someone Else", null, "", "", "#64748b"),
   ];
   const invites: Invite[] = profiles.filter((x) => x.role).map((x) => ({
-    email: x.email, role: x.role!, full_name: x.full_name, phone: x.phone, title: x.title, color: x.color, invited_at: ago(40), accepted_at: ago(39),
+    email: x.email, role: x.role!, full_name: x.full_name, phone: x.phone, title: x.title, color: x.color,
+    avatar_source: x.avatar_source, avatar_path: x.avatar_path, invited_at: ago(40), accepted_at: ago(39),
   }));
-  invites.push({ email: "sam.ortiz@gmail.com", role: "tech", full_name: "Sam Ortiz", phone: "(630) 555-0177", title: "Apprentice Electrician", color: "#0891b2", invited_at: ago(1), accepted_at: null });
+  invites.push({ email: "sam.ortiz@gmail.com", role: "tech", full_name: "Sam Ortiz", phone: "(630) 555-0177", title: "Apprentice Electrician", color: "#0891b2", avatar_source: "none", avatar_path: null, invited_at: ago(1), accepted_at: null });
   const c = (id: string, name: string, phone: string, email: string, address: string, city: string, zip: string, tags: string[], notes: string, days: number): Customer =>
     ({ id, name, phone, email, address, city, state: "IL", zip, tags, notes, created_at: ago(days), updated_at: ago(days) });
   const customers = [
@@ -200,7 +202,10 @@ function viewJob(db: DB, j: Job): JobView {
   const c = db.customers.find((x) => x.id === p.customer_id);
   const addr = c ? [c.address, [c.city, c.state].filter(Boolean).join(", "), c.zip].filter(Boolean).join(" ") : null;
   const assignees = db.assignments.filter((a) => a.job_id === j.id).map((a) => db.profiles.find((x) => x.id === a.profile_id)).filter(Boolean)
-    .map((x) => ({ id: x!.id, full_name: x!.full_name, color: x!.color }));
+    .map((x) => ({
+      id: x!.id, full_name: x!.full_name, color: x!.color,
+      avatar_url: resolveAvatarUrl(x!, x!.avatar_source === "upload" && x!.avatar_path ? `/api/mock-photo/${x!.avatar_path}` : null),
+    }));
   return { ...j, project_name: p.name, project_type: p.type, customer_id: p.customer_id, customer_name: c?.name ?? "", address: addr || null, assignees };
 }
 const nameOf = (db: DB, id: string | null) => db.profiles.find((p) => p.id === id)?.full_name ?? "Someone";
@@ -235,17 +240,28 @@ export const mockRepo: Repo = {
   },
   async deleteContact(id) { mutate((db) => { db.contacts = db.contacts.filter((c) => c.id !== id); }); },
 
-  async listTeam() { const db = load(); return mergeTeam(db.profiles, db.invites); },
+  async listTeam() {
+    const db = load();
+    const merged = mergeTeam(db.profiles, db.invites);
+    return merged.map((m) => ({
+      ...m,
+      avatar_url: resolveAvatarUrl(m, m.avatar_source === "upload" && m.avatar_path ? `/api/mock-photo/${m.avatar_path}` : null),
+    }));
+  },
   async getProfile(id) { return load().profiles.find((p) => p.id === id) ?? null; },
   async upsertInvite(input) {
     mutate((db) => {
       const email = input.email.toLowerCase();
       const existing = db.invites.find((i) => i.email === email);
-      if (existing) Object.assign(existing, input, { email });
-      else db.invites.push({ ...input, email, invited_at: now(), accepted_at: null });
+      if (existing) Object.assign(existing, input, { email, avatar_source: input.avatar_source ?? existing.avatar_source, avatar_path: input.avatar_path !== undefined ? input.avatar_path : existing.avatar_path });
+      else db.invites.push({ ...input, email, avatar_source: input.avatar_source ?? "none", avatar_path: input.avatar_path ?? null, invited_at: now(), accepted_at: null });
       const prof = db.profiles.find((p) => p.email === email); // mirrors the sync_invite_to_profile trigger
       if (prof) {
-        Object.assign(prof, { role: input.role, full_name: input.full_name || prof.full_name, title: input.title, phone: input.phone, color: input.color });
+        Object.assign(prof, {
+          role: input.role, full_name: input.full_name || prof.full_name, title: input.title, phone: input.phone, color: input.color,
+          ...(input.avatar_source !== undefined ? { avatar_source: input.avatar_source } : {}),
+          ...(input.avatar_path !== undefined ? { avatar_path: input.avatar_path } : {}),
+        });
         const inv = db.invites.find((i) => i.email === email)!; inv.accepted_at ??= now();
       }
     });
@@ -257,6 +273,54 @@ export const mockRepo: Repo = {
     });
   },
   async setActive(profileId, active) { mutate((db) => { const p = db.profiles.find((x) => x.id === profileId); if (p) p.active = active; }); },
+  async uploadAvatar(target, file) {
+    const folder = target.profile_id ?? `pending/${target.email.toLowerCase()}`;
+    const path = `${folder}/${randomUUID()}.jpg`;
+    const full = join(MOCK_UPLOADS, path);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, Buffer.from(await file.arrayBuffer()));
+    mutate((db) => {
+      const email = target.email.toLowerCase();
+      if (target.profile_id) {
+        const p = db.profiles.find((x) => x.id === target.profile_id);
+        if (p) { p.avatar_source = "upload"; p.avatar_path = path; }
+      }
+      const inv = db.invites.find((i) => i.email === email);
+      if (inv) { inv.avatar_source = "upload"; inv.avatar_path = path; }
+    });
+  },
+  async setAvatarSource(target, source) {
+    mutate((db) => {
+      const email = target.email.toLowerCase();
+      if (target.profile_id) {
+        const p = db.profiles.find((x) => x.id === target.profile_id);
+        if (p) { p.avatar_source = source; if (source === "none") p.avatar_path = null; }
+      }
+      const inv = db.invites.find((i) => i.email === email);
+      if (inv) { inv.avatar_source = source; if (source === "none") inv.avatar_path = null; }
+    });
+  },
+  async removeAvatar(target) {
+    await this.setAvatarSource(target, "none");
+  },
+  async syncOwnGoogleAvatar(googleUrl) {
+    const w = await who();
+    mutate((db) => {
+      const p = db.profiles.find((x) => x.id === w.uid);
+      if (!p) return;
+      p.google_avatar_url = googleUrl;
+      if (googleUrl && p.avatar_source === "none") p.avatar_source = "google";
+    });
+  },
+  async updateOwnAvatar(patch) {
+    const w = await who();
+    const db = load();
+    const me = db.profiles.find((p) => p.id === w.uid);
+    if (!me) throw new Error("Not signed in");
+    if (patch.clear) return this.removeAvatar({ email: me.email, profile_id: me.id });
+    if (patch.file) return this.uploadAvatar({ email: me.email, profile_id: me.id }, patch.file);
+    if (patch.avatar_source) return this.setAvatarSource({ email: me.email, profile_id: me.id }, patch.avatar_source);
+  },
   async counts() {
     const db = load();
     const T = todayKey();
@@ -278,7 +342,7 @@ export const mockRepo: Repo = {
       .filter((p) => w.canProject(p.id) && (!f.status || p.status === f.status) && (!f.customerId || p.customer_id === f.customerId))
       .map((p) => {
         const jobs = db.jobs.filter((j) => j.project_id === p.id && j.status !== "cancelled");
-        const team = new Map<string, { id: string; full_name: string; color: string }>();
+        const team = new Map<string, { id: string; full_name: string; color: string; avatar_url?: string | null }>();
         for (const j of jobs) for (const a of viewJob(db, j).assignees) team.set(a.id, a);
         const ms = db.milestones.filter((m) => m.project_id === p.id);
         return {
@@ -316,7 +380,10 @@ export const mockRepo: Repo = {
   async listAssignable() {
     const order = { tech: 0, manager: 1, admin: 2 } as Record<string, number>;
     return load().profiles.filter((p) => p.role && p.active).sort((a, b) => order[a.role!] - order[b.role!] || a.full_name.localeCompare(b.full_name))
-      .map((p) => ({ id: p.id, full_name: p.full_name, color: p.color, role: p.role! }));
+      .map((p) => ({
+        id: p.id, full_name: p.full_name, color: p.color, role: p.role!,
+        avatar_url: resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null),
+      }));
   },
   async listJobs(f = {}) {
     const w = await who(); const db = load();
