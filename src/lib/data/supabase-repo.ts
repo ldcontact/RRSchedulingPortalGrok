@@ -21,7 +21,7 @@ const pageBounds = (page: number, size: number) => {
 const PROJECT_PAGE_SELECT: string = "id, name, type, status, value, est_rebate, updated_at, customers(name, address, city, state, zip), milestones(done), jobs(starts_at, ends_at, status, completed_at, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url)))";
 /** Most customer ids a project search will include by customer name (keeps the URL short). */
 const MAX_CUSTOMER_MATCHES = 200;
-type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "city" | "tags"> & { contacts: { name: string; is_primary: boolean }[] };
+type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "address" | "city" | "state" | "zip" | "tags"> & { contacts: { name: string; is_primary: boolean }[] };
 const mapCustomers = (data: unknown[] | null): CustomerRow[] =>
   ((data ?? []) as CustomerRowRaw[]).map(({ contacts, ...c }) => ({ ...c, primary_contact: contacts.find((x) => x.is_primary)?.name ?? contacts[0]?.name ?? null }));
 const iso = (t: string | null) => (t ? new Date(t).toISOString() : t); // normalise "+00:00" -> "Z" so string compares work
@@ -87,7 +87,7 @@ export function supabaseRepo(): Repo {
       const term = searchTerm(f.q);
       const search = term ? `name.ilike.${term},city.ilike.${term},email.ilike.${term},phone.ilike.${term}` : null;
       const run = (a: number, b: number) => {
-        let q = s.from("customers").select("id, name, phone, email, city, tags, contacts(name, is_primary)", { count: "exact" });
+        let q = s.from("customers").select("id, name, phone, email, address, city, state, zip, tags, contacts(name, is_primary)", { count: "exact" });
         if (search) q = q.or(search);
         q = f.sort === "newest" ? q.order("created_at", { ascending: false }) : q.order("name", { ascending: f.sort !== "name_desc" });
         return q.order("id").range(a, b);

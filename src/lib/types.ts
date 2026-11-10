@@ -72,7 +72,7 @@ export type CustomerListItem = Customer & { primary_contact: string | null; proj
 export const PAGE_SIZE = 50;
 export type Paged<T> = { items: T[]; total: number; page: number; size: number };
 export type CustomerSort = "name" | "name_desc" | "newest";
-export type CustomerRow = Pick<Customer, "id" | "name" | "phone" | "email" | "city" | "tags"> & { primary_contact: string | null };
+export type CustomerRow = Pick<Customer, "id" | "name" | "phone" | "email" | "address" | "city" | "state" | "zip" | "tags"> & { primary_contact: string | null };
 export type CustomerPageFilter = { q?: string; page: number; size?: number; sort?: CustomerSort };
 
 export type Contact = {

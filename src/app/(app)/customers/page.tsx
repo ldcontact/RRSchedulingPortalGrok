@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui";
 import { Pager, pageParam } from "@/components/pager";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
+import { formatAddress } from "@/lib/project-row";
 import { PAGE_SIZE, type CustomerSort } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Customers" };
@@ -36,15 +37,22 @@ export default async function CustomersPage({ searchParams }: PageProps<"/custom
       </form>
       <div className="card divide-y divide-line">
         {list.length === 0 && <div className="p-8 text-center text-muted">{query ? "No customers match your search." : "No customers yet. Add your first one."}</div>}
-        {list.map((c) => (
+        {list.map((c) => {
+          const address = formatAddress(c);
+          return (
           <Link key={c.id} href={`/customers/${c.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-[#fafbf9] sm:px-5">
             <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand-50 font-bold text-brand">{c.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</div>
-            <div className="min-w-0 flex-1"><div className="truncate font-semibold">{c.name}</div><div className="truncate text-[12.5px] text-muted">{[c.primary_contact, c.city].filter(Boolean).join(" · ") || "—"}</div></div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-semibold">{c.name}</div>
+              <div className="truncate text-[12.5px] text-muted">{[c.primary_contact, c.city].filter(Boolean).join(" · ") || "—"}</div>
+              <div className="flex min-w-0 items-center gap-1 text-[12.5px] text-muted"><Icon name="pin" className="size-3.5 shrink-0" /><span className="truncate" title={address || undefined}>{address || "No address on file"}</span></div>
+            </div>
             <div className="hidden w-32 text-[13px] md:block">{c.phone ?? "—"}</div>
             <div className="hidden w-44 flex-wrap gap-1 lg:flex">{c.tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>
             <Icon name="right" className="size-4 text-muted" />
           </Link>
-        ))}
+          );
+        })}
       </div>
       <Pager page={page} size={size} total={total} href={href} label="Customers" />
     </>

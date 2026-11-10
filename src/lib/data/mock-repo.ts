@@ -234,7 +234,7 @@ export const mockRepo: Repo = {
     if (f.sort === "name_desc") all.reverse();
     else if (f.sort === "newest") all.sort((a, b) => b.created_at.localeCompare(a.created_at));
     const r = mockPage(all, f.page, f.size);
-    return { ...r, items: r.items.map((c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, city: c.city, tags: c.tags, primary_contact: c.primary_contact })) };
+    return { ...r, items: r.items.map((c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, city: c.city, state: c.state, zip: c.zip, tags: c.tags, primary_contact: c.primary_contact })) };
   },
   async getCustomer(id) { return load().customers.find((c) => c.id === id) ?? null; },
   async createCustomer(input) {
