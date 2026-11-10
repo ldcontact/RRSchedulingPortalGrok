@@ -6,6 +6,7 @@ import { isStaff, requireMember } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
 import { ComingUpList } from "@/components/coming-up-list";
+import { TechJobCard } from "@/components/tech-job-card";
 import type { JobView } from "@/lib/types";
 
 function JobRow({ j, showCrew = true }: { j: JobView; showCrew?: boolean }) {
@@ -52,18 +53,10 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
         <h2 className="mb-2 text-sm font-bold text-muted">Today</h2>
         <div className="mb-5 flex flex-col gap-3" data-testid="my-jobs-today">
           {!today.length && <div className="card p-6 text-center text-sm text-muted">No jobs today.</div>}
-          {today.map((j) => (
-            <Link key={j.id} href={`/jobs/${j.id}`} className="card block p-4 active:bg-[#fafbf9]">
-              <div className="flex items-start justify-between gap-2"><div className="text-[13px] font-semibold text-muted">{fmtRange(j.starts_at, j.ends_at)}</div><JobStatusPill status={j.status} /></div>
-              <div className="mt-1 text-[16px] font-semibold">{j.title}</div>
-              <div className="text-sm text-muted">{j.customer_name}</div>
-              {j.address && <div className="mt-1 flex items-center gap-1.5 text-[13px] text-muted"><Icon name="pin" className="size-3.5" />{j.address}</div>}
-              <div className="mt-3 flex items-center justify-between"><AvatarStack people={j.assignees} /><span className="flex items-center gap-1 text-sm font-semibold text-brand">{j.status === "scheduled" ? "Open & start" : j.status === "in_progress" ? "Continue" : "View"}<Icon name="right" className="size-4" /></span></div>
-            </Link>
-          ))}
+          {today.map((j) => <TechJobCard key={j.id} j={j} />)}
         </div>
         <h2 className="mb-2 text-sm font-bold text-muted">Coming up</h2>
-        <div className="card mb-5 overflow-hidden" data-testid="my-jobs-upcoming">
+        <div className="mb-5" data-testid="my-jobs-upcoming">
           <ComingUpList jobs={upcoming} />
         </div>
         {submitted.length > 0 && (<>
