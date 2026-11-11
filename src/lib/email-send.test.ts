@@ -15,7 +15,7 @@ describe("sendEmail", () => {
     close.mockReset();
     createTransport.mockClear();
     vi.unstubAllEnvs();
-    vi.stubEnv("SMTP_USER", "scheduler@retrofitrebates.com");
+    vi.stubEnv("SMTP_USER", "admin@retrofitrebates.com");
     vi.stubEnv("SMTP_PASSWORD", "app-password");
     vi.stubEnv("EMAIL_FROM", "Retrofit Rebates Scheduler");
   });
@@ -36,12 +36,12 @@ describe("sendEmail", () => {
         host: "smtp.gmail.com",
         port: 465,
         secure: true,
-        auth: { user: "scheduler@retrofitrebates.com", pass: "app-password" },
+        auth: { user: "admin@retrofitrebates.com", pass: "app-password" },
       }),
     );
     expect(sendMail).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: '"Retrofit Rebates Scheduler" <scheduler@retrofitrebates.com>',
+        from: '"Retrofit Rebates Scheduler" <admin@retrofitrebates.com>',
         to: ["luke@retrofitrebates.com"],
         subject: "RR Scheduler test email",
       }),

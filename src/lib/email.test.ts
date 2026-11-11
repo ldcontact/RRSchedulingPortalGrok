@@ -25,26 +25,26 @@ function stubSmtp(values: Partial<Record<(typeof KEYS)[number], string>>) {
 
 describe("formatFromAddress", () => {
   it("defaults to the product display name and SMTP user", () => {
-    expect(formatFromAddress(undefined, "scheduler@retrofitrebates.com")).toBe(
-      `"${DEFAULT_EMAIL_FROM_NAME}" <scheduler@retrofitrebates.com>`,
+    expect(formatFromAddress(undefined, "admin@retrofitrebates.com")).toBe(
+      `"${DEFAULT_EMAIL_FROM_NAME}" <admin@retrofitrebates.com>`,
     );
-    expect(formatFromAddress("  ", "scheduler@retrofitrebates.com")).toBe(
-      `"${DEFAULT_EMAIL_FROM_NAME}" <scheduler@retrofitrebates.com>`,
+    expect(formatFromAddress("  ", "admin@retrofitrebates.com")).toBe(
+      `"${DEFAULT_EMAIL_FROM_NAME}" <admin@retrofitrebates.com>`,
     );
   });
   it("keeps a full Name <email> value", () => {
-    expect(formatFromAddress("Office <office@retrofitrebates.com>", "scheduler@retrofitrebates.com")).toBe(
+    expect(formatFromAddress("Office <office@retrofitrebates.com>", "admin@retrofitrebates.com")).toBe(
       "Office <office@retrofitrebates.com>",
     );
   });
   it("wraps a bare mailbox with the default display name", () => {
-    expect(formatFromAddress("office@retrofitrebates.com", "scheduler@retrofitrebates.com")).toBe(
+    expect(formatFromAddress("office@retrofitrebates.com", "admin@retrofitrebates.com")).toBe(
       `"${DEFAULT_EMAIL_FROM_NAME}" <office@retrofitrebates.com>`,
     );
   });
   it("pairs a display name with SMTP_USER", () => {
-    expect(formatFromAddress("Retrofit Rebates Scheduler", "scheduler@retrofitrebates.com")).toBe(
-      `"Retrofit Rebates Scheduler" <scheduler@retrofitrebates.com>`,
+    expect(formatFromAddress("Retrofit Rebates Scheduler", "admin@retrofitrebates.com")).toBe(
+      `"Retrofit Rebates Scheduler" <admin@retrofitrebates.com>`,
     );
   });
 });
@@ -68,13 +68,13 @@ describe("parseSmtpPort / smtpSecureForPort", () => {
 describe("smtpEnv", () => {
   it("returns null when user or password is missing", () => {
     expect(smtpEnv({})).toBeNull();
-    expect(smtpEnv({ SMTP_USER: "scheduler@retrofitrebates.com" })).toBeNull();
+    expect(smtpEnv({ SMTP_USER: "admin@retrofitrebates.com" })).toBeNull();
     expect(smtpEnv({ SMTP_PASSWORD: "x" })).toBeNull();
     expect(smtpConfigured({})).toBe(false);
   });
   it("fills Gmail defaults and formats From", () => {
     const cfg = smtpEnv({
-      SMTP_USER: " scheduler@retrofitrebates.com ",
+      SMTP_USER: " admin@retrofitrebates.com ",
       SMTP_PASSWORD: "app-password",
       EMAIL_FROM: "Retrofit Rebates Scheduler",
     });
@@ -82,8 +82,8 @@ describe("smtpEnv", () => {
       host: DEFAULT_SMTP_HOST,
       port: 465,
       secure: true,
-      user: "scheduler@retrofitrebates.com",
-      from: `"Retrofit Rebates Scheduler" <scheduler@retrofitrebates.com>`,
+      user: "admin@retrofitrebates.com",
+      from: `"Retrofit Rebates Scheduler" <admin@retrofitrebates.com>`,
     });
     expect(cfg?.password).toBe("app-password");
     expect(smtpConfigured({ SMTP_USER: "s@x.com", SMTP_PASSWORD: "x" })).toBe(true);

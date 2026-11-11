@@ -50,7 +50,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
         <form action={sendSelfTestEmail} className="card mb-5">
           <div className="card-hd"><h3 className="font-semibold">Test outbound email</h3><span className="text-xs text-muted">Sends only to you</span></div>
           <div className="grid gap-3 p-5">
-            <p className="text-sm text-muted">Confirm that the portal can send from the scheduler mailbox. The test goes to <span className="font-medium text-ink">{me.email}</span> only. Customer emails are not sent automatically yet.</p>
+            <p className="text-sm text-muted">Confirm that the portal can send from the admin@retrofitrebates.com mailbox. The test goes to <span className="font-medium text-ink">{me.email}</span> only. Customer emails are not sent automatically yet.</p>
             {emailReady ? (
               <div><SubmitButton pendingText="Sending…"><Icon name="send" className="size-4" />Send a test email to me</SubmitButton></div>
             ) : (

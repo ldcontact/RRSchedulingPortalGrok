@@ -151,7 +151,7 @@ For a real team, set **Authentication → Emails → SMTP Settings** to Gmail / 
 
 * **Host:** `smtp.gmail.com`
 * **Port:** `465` (SSL)
-* **Username / Sender email:** the dedicated mailbox (e.g. `scheduler@retrofitrebates.com`)
+* **Username / Sender email:** the dedicated mailbox (`admin@retrofitrebates.com`)
 * **Password:** a Google Workspace **app password** for that mailbox (16 characters; 2-Step Verification required)
 * **Sender name:** `Retrofit Rebates Scheduler`
 * **Minimum interval between emails:** `60` seconds (per recipient; safe default for a small team)
@@ -173,7 +173,7 @@ email **and** use *Sign in with Google* with the same Gmail address; both reach 
 | `NEXT_PUBLIC_RR_MOCK_MODE` | dev only | `1` = mock mode (no Supabase). Leave unset in production. |
 | `SMTP_HOST` | **server only** | SMTP host. Default `smtp.gmail.com`. |
 | `SMTP_PORT` | **server only** | SMTP port. Default `465` (SSL). Use `587` for STARTTLS. |
-| `SMTP_USER` | **server only** | Sender mailbox, e.g. `scheduler@retrofitrebates.com`. |
+| `SMTP_USER` | **server only** | Sender mailbox: `admin@retrofitrebates.com`. |
 | `SMTP_PASSWORD` | **server only** | Google Workspace app password. On Vercel: Production env, mark Sensitive / encrypted. **Never** expose it to the browser or commit it. |
 | `EMAIL_FROM` | **server only** | From display name (`Retrofit Rebates Scheduler`), a bare mailbox, or a full `Name <email>` value. Defaults to `Retrofit Rebates Scheduler <SMTP_USER>`. |
 
