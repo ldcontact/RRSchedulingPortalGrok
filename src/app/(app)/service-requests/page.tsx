@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
-import { Avatar, Banner, PageHeader } from "@/components/ui";
-import { ChannelIcon, SRStatusPill, WarrantyPill } from "@/components/status";
+import { Banner, PageHeader } from "@/components/ui";
+import { AvatarStack, ChannelIcon, SRStatusPill, WarrantyPill } from "@/components/status";
 import { Modal } from "@/components/modal";
 import { Pager, pageParam } from "@/components/pager";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { formatAddress, ageText } from "@/lib/project-row";
 import { fmtMonthYear, fmtReceived, localInput } from "@/lib/tickets";
-import { PAGE_SIZE, SR_CHANNEL_LABEL, SR_STATUSES, SR_STATUS_LABEL, WARRANTY_LABEL, ticketNo, type SRChannel, type SRPageFilter, type SRStatus, type WarrantyState } from "@/lib/types";
+import { PAGE_SIZE, SR_CHANNEL_LABEL, SR_STATUSES, SR_STATUS_LABEL, WARRANTY_LABEL, ticketNo, type Person, type SRChannel, type SRPageFilter, type SRStatus, type WarrantyState } from "@/lib/types";
 import { LogCallForm } from "./log-call-form";
 
 export const metadata: Metadata = { title: "Service requests" };
@@ -33,6 +33,7 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
     repo.listAssignable(),
   ]);
   const staffPeople = people.filter((p) => p.role === "admin" || p.role === "manager");
+  const personById = new Map(people.map((p) => [p.id, p]));
   const keep = { ...(q ? { q } : {}), ...(channel ? { channel } : {}), ...(warranty ? { warranty } : {}), ...(str("assignee") ? { assignee: str("assignee") } : {}) };
   const qs = (st: SRPageFilter["status"], p = 1, extra: Record<string, string> = {}) => `${new URLSearchParams({ ...(st && st !== "open" ? { status: st } : {}), ...keep, ...(p > 1 ? { page: String(p) } : {}), ...extra })}`;
   const href = (st: SRPageFilter["status"], p = 1) => `/service-requests${qs(st, p) ? `?${qs(st, p)}` : ""}`;
@@ -76,9 +77,13 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
       </form>
       <div className="card divide-y divide-line" data-testid="ticket-list">
         {items.length === 0 && <div className="p-8 text-center text-muted">{filtered ? "No service requests match these filters." : status === "open" ? "No open service requests. Log a call with New request." : "Nothing here."}</div>}
-        {items.map((t) => (
+        {items.map((t) => {
+          const office: Person[] = t.assignee_id
+            ? [personById.get(t.assignee_id) ?? { id: t.assignee_id, full_name: t.assignee_name ?? "?", color: t.assignee_color ?? "#64748b" }]
+            : [];
+          return (
           <Link key={t.id} href={`/service-requests/${t.id}`} data-testid="ticket-row"
-            className="block px-4 py-3 hover:bg-[#fafbf9] sm:px-5">
+            className="block min-w-0 px-4 py-3 hover:bg-[#fafbf9] sm:px-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1 truncate font-semibold">{t.customer_name}</div>
               <div className="shrink-0 text-[13px] font-bold tabular-nums tracking-tight" data-testid="ticket-number">{ticketNo(t.number)}</div>
@@ -94,19 +99,23 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
                   <div className="truncate text-muted">{t.project_completed_at ? `Completed ${fmtMonthYear(t.project_completed_at)} · ${ageText(t.project_completed_at)} ago` : "Original project not finished"}</div>
                 </> : <><div className="text-muted">No project linked</div><div className="text-muted">Match a past job, or convert if it is new work</div></>}
               </div>
-              <div className="flex items-center gap-2 text-[12.5px] text-muted xl:contents">
-                <div className="flex items-center gap-2 text-[12.5px] text-muted">
+              <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted xl:contents">
+                <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted">
                   <ChannelIcon channel={t.channel} />{fmtReceived(t.received_at)}
                 </div>
-                <div className="ml-auto flex items-center gap-2 xl:ml-0 xl:justify-end">
+                <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0 xl:justify-end">
                   <WarrantyPill state={t.warranty_state} />
                   <SRStatusPill status={t.status} />
-                  <span className="hidden xl:inline-flex">{t.assignee_id ? <Avatar name={t.assignee_name ?? "?"} color={t.assignee_color ?? "#64748b"} size="sm" /> : <span className="text-muted">—</span>}</span>
                 </div>
               </div>
             </div>
+            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+              <PeopleCell label="Office" people={office} empty="Unassigned" testId="ticket-office" />
+              <PeopleCell label="Tech" people={t.visit?.techs ?? []} empty={t.visit ? "Unassigned" : "No visit yet"} testId="ticket-tech" />
+            </div>
           </Link>
-        ))}
+          );
+        })}
       </div>
       <Pager page={page} size={size} total={total} href={(p) => href(status, p)} label="Service requests" />
       {showNew && (
@@ -115,5 +124,20 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
         </Modal>
       )}
     </>
+  );
+}
+
+function PeopleCell({ label, people, empty, testId }: { label: string; people: Person[]; empty: string; testId: string }) {
+  const names = people.map((p) => p.full_name).join(", ");
+  return (
+    <div className="flex min-w-0 max-w-full items-center gap-1.5" data-testid={testId}>
+      <span className="shrink-0 text-[10.5px] font-semibold uppercase tracking-wide text-muted">{label}</span>
+      {people.length === 0
+        ? <span className="truncate text-[12.5px] text-muted">{empty}</span>
+        : <>
+            <AvatarStack people={people} max={3} />
+            <span className="hidden min-w-0 truncate text-[12.5px] sm:inline" title={names}>{names}</span>
+          </>}
+    </div>
   );
 }

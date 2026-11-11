@@ -179,11 +179,17 @@ export type ServiceRequest = {
   resolved_at: string | null; resolved_by: string | null; resolved_job_id: string | null;
   created_by: string | null; created_at: string; updated_at: string;
 };
+/** Crew on the ticket's next upcoming service/warranty visit, or the latest visit if none are upcoming. */
+export type TicketVisitCrew = {
+  job_id: string; starts_at: string; status: JobStatus; kind: JobKind; techs: Person[];
+};
 /** A ticket row as the inbox and detail page show it (public.service_request_list). */
 export type ServiceRequestView = ServiceRequest & {
   customer_name: string; project_name: string | null; project_type: ProjectType | null; project_status: ProjectStatus | null;
   warranty_months: number | null; project_completed_at: string | null; warranty_expires_at: string | null; warranty_state: WarrantyState;
   assignee_name: string | null; assignee_color: string | null;
+  /** Present on inbox pages after a batched visit-crew lookup. Null = no visit yet. */
+  visit?: TicketVisitCrew | null;
 };
 export type ServiceRequestInput = Pick<ServiceRequest, "customer_id" | "project_id" | "site_address" | "site_city" | "site_state" | "site_zip"
   | "contact_name" | "contact_phone" | "contact_email" | "channel" | "received_at" | "summary" | "description" | "priority"> & {

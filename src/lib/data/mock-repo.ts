@@ -11,6 +11,7 @@ import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
+import { applyTicketVisits } from "@/lib/tickets";
 
 /*
  * DEV MOCK MODE data layer. Persists to .mock-db.json in the project root
@@ -198,6 +199,15 @@ function syncServiceRequest(db: DB, j: Job, prev: Job["status"] | null, uid: str
     Object.assign(sr, { status: "triaged", updated_at: now() });
     ev("status", `Visit “${j.title}” was cancelled, so the ticket is back to Triaged.`);
   }
+}
+
+/** All service/warranty visits for the given tickets (one pass over jobs, no N+1). */
+function ticketVisitsFor(db: DB, requestIds: string[]) {
+  const want = new Set(requestIds);
+  return db.jobs.filter((j) => j.service_request_id && want.has(j.service_request_id)).map((j) => {
+    const techs = viewJob(db, j).assignees;
+    return { request_id: j.service_request_id!, job_id: j.id, starts_at: j.starts_at, status: j.status, kind: j.kind, techs };
+  });
 }
 
 /** Mirrors public.service_request_list. */
@@ -730,7 +740,8 @@ export const mockRepo: Repo = {
     const views = db.service_requests.map((x) => viewSR(db, x)).sort((a, b) => b.received_at.localeCompare(a.received_at) || a.id.localeCompare(b.id));
     const counts: Record<string, number> = {};
     for (const st of ["open", "all", ...SR_STATUSES] as const) counts[st] = views.filter((v) => srMatches(v, f, st)).length;
-    return { ...mockPage(views.filter((v) => srMatches(v, f, f.status ?? "open")), f.page, f.size), counts };
+    const page = mockPage(views.filter((v) => srMatches(v, f, f.status ?? "open")), f.page, f.size);
+    return { ...page, items: applyTicketVisits(page.items, ticketVisitsFor(db, page.items.map((t) => t.id))), counts };
   },
   async countOpenServiceRequests() {
     const w = await who(); if (!w.staff) return 0;

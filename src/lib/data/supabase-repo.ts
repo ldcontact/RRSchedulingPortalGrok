@@ -8,6 +8,8 @@ import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { applySearch, parseSearch } from "@/lib/search";
+import { applyTicketVisits } from "@/lib/tickets";
+import type { TicketVisitCrew } from "@/lib/types";
 
 /** Search term safe inside a PostgREST or=() filter: quoted, without wildcard/grouping chars. */
 const searchTerm = (q: string | undefined) => {
@@ -87,6 +89,31 @@ function srFilters<Q>(q0: Q, f: SRPageFilter, status: SRPageFilter["status"]): Q
   else if (status !== "all") q = q.eq("status", status);
   return q as unknown as Q;
 }
+/** One query for all service/warranty visits on this inbox page (no N+1). */
+async function loadTicketVisits(s: UserDb, requestIds: string[]): Promise<(TicketVisitCrew & { request_id: string })[]> {
+  if (!requestIds.length) return [];
+  const { data, error } = await s.from("jobs").select(
+    "id, service_request_id, starts_at, status, kind, job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))",
+  ).in("service_request_id", requestIds);
+  fail(error);
+  type Row = {
+    id: string; service_request_id: string; starts_at: string; status: JobView["status"]; kind: JobView["kind"];
+    job_assignments: { profiles: (Person & AvatarFields) | null }[];
+  };
+  const visits = ((data ?? []) as unknown as Row[]).map((r) => ({
+    request_id: r.service_request_id, job_id: r.id, starts_at: iso(r.starts_at)!, status: r.status, kind: r.kind,
+    techs: r.job_assignments.map((a) => a.profiles).filter((x): x is Person & AvatarFields => !!x),
+  }));
+  const signed = await signAvatarPaths(s, visits.flatMap((v) => v.techs).map((p) => (p.avatar_source === "upload" ? p.avatar_path : null)));
+  return visits.map((v) => ({
+    ...v,
+    techs: v.techs.map((p) => ({
+      id: p.id, full_name: p.full_name, color: p.color,
+      avatar_url: resolveAvatarUrl(p, p.avatar_path ? signed.get(p.avatar_path) : null),
+    })),
+  }));
+}
+
 const MAX_PICKS = 25;
 type PickRaw = Pick<Project, "id" | "name" | "type" | "status" | "customer_id" | "updated_at"> & { warranty_months: number | null; customers: { name: string } | null; jobs: { starts_at: string; ends_at: string; status: Job["status"]; completed_at: string | null; kind: Job["kind"] }[] };
 const toPick = (r: PickRaw): ProjectPick => ({
@@ -591,7 +618,9 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
         page = last + 1;
       }
       fail(error);
-      return { items: (data ?? []) as ServiceRequestView[], total: count ?? 0, page, size: n, counts: Object.fromEntries(await countsP) };
+      const items = (data ?? []) as ServiceRequestView[];
+      const visits = await loadTicketVisits(s, items.map((t) => t.id));
+      return { items: applyTicketVisits(items, visits), total: count ?? 0, page, size: n, counts: Object.fromEntries(await countsP) };
     },
     async countOpenServiceRequests() {
       const { count, error } = await (await db()).from("service_requests").select("id", { count: "exact", head: true }).in("status", SR_OPEN);
