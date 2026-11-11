@@ -5,6 +5,9 @@ import { Icon } from "@/components/icons";
 import { Banner, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
+import { customerDeleteBlockers, hasDeleteAccess } from "@/lib/delete-access";
+import { DeleteConfirmDialog } from "@/components/delete-confirm";
+import { deleteCustomerAction } from "@/app/(app)/delete-actions";
 import { getRepo } from "@/lib/data/repo";
 import { addContact, deleteContact } from "../actions";
 import { MessageLog } from "@/components/messages";
@@ -19,11 +22,17 @@ export async function generateMetadata({ params }: PageProps<"/customers/[id]">)
 const tel = (p: string) => `tel:${p.replace(/[^\d+]/g, "")}`;
 
 export default async function CustomerPage({ params, searchParams }: PageProps<"/customers/[id]">) {
-  await requireRole("admin", "manager");
+  const user = await requireRole("admin", "manager");
+  const canDelete = hasDeleteAccess(user);
   const { id } = await params;
-  const { saved } = await searchParams;
+  const sp = await searchParams;
+  const saved = sp.saved;
+  const error = typeof sp.error === "string" ? sp.error : null;
   const repo = await getRepo();
-  const [c, contacts, projects, messages] = await Promise.all([repo.getCustomer(id), repo.listContacts(id), repo.listProjects({ customerId: id }), repo.listMessages({ customerId: id })]);
+  const [c, contacts, projects, messages, dependents] = await Promise.all([
+    repo.getCustomer(id), repo.listContacts(id), repo.listProjects({ customerId: id }), repo.listMessages({ customerId: id }),
+    canDelete ? repo.countCustomerDependents(id) : Promise.resolve({ projects: 0, serviceRequests: 0 }),
+  ]);
   if (!c) notFound();
   const primary = contacts.find((x) => x.is_primary) ?? contacts[0];
   const addr = [c.address, [c.city, c.state].filter(Boolean).join(", "), c.zip].filter(Boolean).join(" ");
@@ -36,8 +45,9 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
           {c.phone && <a href={`sms:${c.phone.replace(/[^\d+]/g, "")}`} className="btn"><Icon name="text" />Text</a>}
           {c.email && <a href={`mailto:${c.email}`} className="btn"><Icon name="mail" />Email</a>}
           <Link href={`/customers/${c.id}/edit`} className="btn"><Icon name="edit" />Edit</Link>
+          {canDelete && <Link href={`/customers/${c.id}?delete=1`} scroll={false} className="btn btn-danger" data-testid="delete-button"><Icon name="trash" />Delete</Link>}
         </>} />
-      {saved && <div className="mb-4"><Banner tone="ok"><Icon name="check" />Customer saved.</Banner></div>}
+      {(saved || error) && <div className="mb-4">{saved && <Banner tone="ok"><Icon name="check" />Customer saved.</Banner>}{error && <Banner tone="error"><Icon name="alert" />{error}</Banner>}</div>}
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
           <div className="card">
@@ -88,6 +98,20 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
           </form>
         </div>
       </div>
+      {canDelete && sp.delete === "1" && (
+        <DeleteConfirmDialog
+          title="Delete customer"
+          itemName={c.name}
+          cancelHref={`/customers/${c.id}`}
+          action={deleteCustomerAction.bind(null, c.id)}
+          blocked={customerDeleteBlockers(dependents)}
+          consequences={[
+            "Contacts and notes for this customer",
+            "Messages to and from this customer",
+          ]}
+          confirmLabel="Delete customer"
+        />
+      )}
     </>
   );
 }

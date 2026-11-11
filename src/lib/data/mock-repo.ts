@@ -1,5 +1,5 @@
 import "server-only";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
@@ -14,6 +14,7 @@ import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 import { applyTicketVisits } from "@/lib/tickets";
 import { SAMPLE_DEFAULT_MAP } from "@/lib/geotab/sample";
 import { hasFleetAccess } from "@/lib/geotab/access";
+import { customerDeleteBlockers, hasDeleteAccess } from "@/lib/delete-access";
 import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 
 /*
@@ -57,7 +58,7 @@ const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
 
 function seed(): DB {
   const p = (id: string, email: string, full_name: string, role: Profile["role"], title: string, phone: string, color: string, avatar?: Partial<Pick<Profile, "avatar_source" | "avatar_path" | "google_avatar_url">>): MockProfile =>
-    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null, deleted_at: null, fleet_access: false });
+    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null, deleted_at: null, fleet_access: false, can_delete: false });
   const profiles = [
     p("u-admin", "luke@retrofitrebates.com", "Luke Dlugosz", "admin", "Owner / President", "(847) 555-0100", "#0f766e", { avatar_source: "google", google_avatar_url: "/api/mock-photo/seed/avatar/Luke%20Dlugosz.svg" }),
     p("u-manager", "maria.santos@gmail.com", "Maria Santos", "manager", "Operations Manager", "(847) 555-0101", "#7c3aed", { avatar_source: "upload", avatar_path: "seed/avatar/Maria%20Santos.svg" }),
@@ -339,6 +340,10 @@ function load(): DB {
       prof.fleet_access = prof.id === "u-manager";
       fleetTouched = true;
     }
+    if (prof.can_delete === undefined) {
+      prof.can_delete = false;
+      fleetTouched = true;
+    }
   }
   if (fleetTouched) save(db);
   let geoTouched = false;
@@ -365,11 +370,19 @@ async function who() {
   const role = me?.active ? me.role : null;
   const staff = role === "admin" || role === "manager";
   const fleetAccess = hasFleetAccess({ role, fleet_access: me?.fleet_access });
+  const canDelete = hasDeleteAccess({ role, can_delete: me?.can_delete });
   const myJobs = new Set(db.assignments.filter((a) => a.profile_id === uid).map((a) => a.job_id));
   const myProjects = new Set(db.jobs.filter((j) => myJobs.has(j.id)).map((j) => j.project_id));
-  return { uid, role, staff, fleetAccess, canJob: (id: string) => staff || myJobs.has(id), canProject: (id: string) => staff || myProjects.has(id) };
+  return { uid, role, staff, fleetAccess, canDelete, canJob: (id: string) => staff || myJobs.has(id), canProject: (id: string) => staff || myProjects.has(id) };
 }
 function requireStaffMock(w: { staff: boolean }) { if (!w.staff) throw new Error("permission denied (mock RLS)"); }
+function requireDeleteMock(w: { canDelete: boolean }) { if (!w.canDelete) throw new Error("permission denied (mock RLS)"); }
+function unlinkPhotoFiles(paths: string[]) {
+  for (const path of [...new Set(paths.filter(Boolean))]) {
+    const full = join(MOCK_UPLOADS, path);
+    if (existsSync(full)) unlinkSync(full);
+  }
+}
 
 function viewJob(db: DB, j: Job): JobView {
   const p = db.projects.find((x) => x.id === j.project_id)!;
@@ -442,7 +455,7 @@ export const mockRepo: Repo = {
       avatar_url: resolveAvatarUrl(m, m.avatar_source === "upload" && m.avatar_path ? `/api/mock-photo/${m.avatar_path}` : null),
     }));
   },
-  async getProfile(id) { const row = load().profiles.find((p) => p.id === id); return row ? { ...row, fleet_access: !!row.fleet_access } : null; },
+  async getProfile(id) { const row = load().profiles.find((p) => p.id === id); return row ? { ...row, fleet_access: !!row.fleet_access, can_delete: !!row.can_delete } : null; },
   async upsertInvite(input) {
     mutate((db) => {
       const email = input.email.toLowerCase();
@@ -877,6 +890,76 @@ export const mockRepo: Repo = {
     mutate((db) => {
       const prof = db.profiles.find((x) => x.id === profileId);
       if (prof && !prof.deleted_at) prof.fleet_access = access;
+    });
+  },
+  async setDeleteAccess(profileId, access) {
+    const w = await who();
+    if (w.role !== "admin") throw new Error("permission denied (mock RLS)");
+    mutate((db) => {
+      const prof = db.profiles.find((x) => x.id === profileId);
+      if (prof && !prof.deleted_at && prof.role === "manager") prof.can_delete = access;
+    });
+  },
+  async countCustomerDependents(customerId) {
+    const db = load();
+    return {
+      projects: db.projects.filter((p) => p.customer_id === customerId).length,
+      serviceRequests: db.service_requests.filter((r) => r.customer_id === customerId).length,
+    };
+  },
+  async deleteCustomer(id) {
+    requireDeleteMock(await who());
+    const deps = await this.countCustomerDependents(id);
+    const blocked = customerDeleteBlockers(deps);
+    if (blocked) throw new Error(blocked);
+    mutate((db) => {
+      db.contacts = db.contacts.filter((x) => x.customer_id !== id);
+      db.notes = db.notes.filter((x) => x.customer_id !== id);
+      db.messages = db.messages.filter((x) => x.customer_id !== id);
+      db.customers = db.customers.filter((x) => x.id !== id);
+    });
+  },
+  async deleteProject(id) {
+    requireDeleteMock(await who());
+    const paths: string[] = [];
+    mutate((db) => {
+      const jobIds = new Set(db.jobs.filter((j) => j.project_id === id).map((j) => j.id));
+      paths.push(...db.photos.filter((p) => p.project_id === id).map((p) => p.storage_path));
+      db.photos = db.photos.filter((p) => p.project_id !== id);
+      db.photo_requirements = db.photo_requirements.filter((r) => r.project_id !== id);
+      db.milestones = db.milestones.filter((m) => m.project_id !== id);
+      db.notes = db.notes.filter((n) => n.project_id !== id);
+      db.assignments = db.assignments.filter((a) => !jobIds.has(a.job_id));
+      db.jobs = db.jobs.filter((j) => j.project_id !== id);
+      for (const r of db.service_requests) {
+        if (r.project_id === id) r.project_id = null;
+        if (r.converted_project_id === id) r.converted_project_id = null;
+        if (r.resolved_job_id && jobIds.has(r.resolved_job_id)) r.resolved_job_id = null;
+      }
+      for (const m of db.messages) if (m.project_id === id) m.project_id = null;
+      db.projects = db.projects.filter((p) => p.id !== id);
+    });
+    unlinkPhotoFiles(paths);
+  },
+  async deleteJob(id) {
+    requireDeleteMock(await who());
+    const paths: string[] = [];
+    mutate((db) => {
+      paths.push(...db.photos.filter((p) => p.job_id === id).map((p) => p.storage_path));
+      db.photos = db.photos.filter((p) => p.job_id !== id);
+      db.notes = db.notes.filter((n) => n.job_id !== id);
+      db.assignments = db.assignments.filter((a) => a.job_id !== id);
+      for (const r of db.service_requests) if (r.resolved_job_id === id) r.resolved_job_id = null;
+      db.jobs = db.jobs.filter((j) => j.id !== id);
+    });
+    unlinkPhotoFiles(paths);
+  },
+  async deleteServiceRequest(id) {
+    requireDeleteMock(await who());
+    mutate((db) => {
+      for (const j of db.jobs) if (j.service_request_id === id) j.service_request_id = null;
+      db.sr_events = db.sr_events.filter((e) => e.request_id !== id);
+      db.service_requests = db.service_requests.filter((r) => r.id !== id);
     });
   },
   async setCustomerGeocode(id, patch) {

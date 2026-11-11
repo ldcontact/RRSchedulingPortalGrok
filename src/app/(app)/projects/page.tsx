@@ -49,6 +49,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
         <button className="btn">Search</button>
         {(q || sort !== "updated") && <Link href={href(status)} className="btn">Clear</Link>}
       </form>
+      {typeof sp.ok === "string" && sp.ok && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{sp.ok}</Banner></div>}
       {note && <div className="mb-3"><Banner tone="warn"><Icon name="alert" />{note}</Banner></div>}
       <div className="card divide-y divide-line">
         {list.length === 0 && <div className="p-8 text-center text-muted">{q ? "No projects match your search." : "No projects here yet."}</div>}

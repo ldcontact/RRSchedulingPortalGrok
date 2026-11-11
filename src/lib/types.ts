@@ -22,6 +22,8 @@ export type Profile = {
   deleted_at?: string | null;
   /** Admin-granted Geotab access. Admins always have access even when this is false. */
   fleet_access: boolean;
+  /** Admin-granted delete access. Admins always have it; techs never do, even when this is true. */
+  can_delete: boolean;
 };
 
 export type Invite = {
@@ -53,6 +55,8 @@ export type TeamMember = {
   avatar_url?: string | null;
   /** Raw flag; invited members are false until they have a profile. */
   fleet_access: boolean;
+  /** Raw flag; invited members are false until they have a profile. */
+  can_delete: boolean;
 };
 
 export type GeocodeStatus = "matched" | "no_match" | "tie" | "error";
@@ -95,7 +99,7 @@ export type ContactInput = Omit<Contact, "id" | "customer_id">;
 
 export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: AvatarSource; avatar_path?: string | null };
 
-export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean; avatar_url?: string | null; avatar_source?: AvatarSource; google_avatar_url?: string | null; fleet_access: boolean };
+export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean; avatar_url?: string | null; avatar_source?: AvatarSource; google_avatar_url?: string | null; fleet_access: boolean; can_delete: boolean };
 
 // ---------------------------------------------------------------- phase 2
 export type ProjectType = "lighting" | "hvac" | "lighting_hvac" | "other";

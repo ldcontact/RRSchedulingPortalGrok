@@ -7,6 +7,9 @@ import { AvatarStack, JobKindBadge, JobStatusPill, PriorityPill, ProjectStatusPi
 import { Modal } from "@/components/modal";
 import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
+import { countLabel, hasDeleteAccess } from "@/lib/delete-access";
+import { DeleteConfirmDialog } from "@/components/delete-confirm";
+import { deleteServiceRequestAction } from "@/app/(app)/delete-actions";
 import { hasFleetAccess } from "@/lib/geotab/access";
 import { AssignedTruckCard } from "@/components/fleet/assigned-truck-card";
 import { getRepo } from "@/lib/data/repo";
@@ -31,6 +34,7 @@ const EV_ICON: Record<SREvent["kind"], string> = {
 
 export default async function ServiceRequestPage({ params, searchParams }: PageProps<"/service-requests/[id]">) {
   const user = await requireRole("admin", "manager");
+  const canDelete = hasDeleteAccess(user);
   const { id } = await params;
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string).trim() : "");
@@ -68,7 +72,8 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
     <>
       <PageHeader back={{ href: "/service-requests", label: "Service requests" }}
         title={<span className="flex flex-wrap items-center gap-2"><span data-testid="ticket-number">{ticketNo(sr.number)}</span><SRStatusPill status={sr.status} /><PriorityPill priority={sr.priority} />{sr.billable && <span className="pill bg-orange-50 text-orange-800">Billable</span>}</span>}
-        sub={<>{sr.summary} · <Link href={`/customers/${sr.customer_id}`} className="font-semibold text-brand">{sr.customer_name}</Link> · Received {fmtReceived(sr.received_at).replace(/^Today/, "today at")} via {SR_CHANNEL_LABEL[sr.channel].toLowerCase()}</>} />
+        sub={<>{sr.summary} · <Link href={`/customers/${sr.customer_id}`} className="font-semibold text-brand">{sr.customer_name}</Link> · Received {fmtReceived(sr.received_at).replace(/^Today/, "today at")} via {SR_CHANNEL_LABEL[sr.channel].toLowerCase()}</>}
+        actions={canDelete ? <Link href={`/service-requests/${id}?delete=1`} scroll={false} className="btn btn-danger" data-testid="delete-button"><Icon name="trash" />Delete</Link> : undefined} />
       <div className="mb-4 flex flex-col gap-2 empty:hidden">
         {ok && <Banner tone="ok"><Icon name="check" />{ok}</Banner>}
         {error && <Banner tone="error"><Icon name="alert" />{error}</Banner>}
@@ -279,6 +284,21 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
             people={techs.length ? techs : people}
             d={{ title: defaults.title, kind: defaults.kind, date: tomorrow, start: "09:00", end: "11:00", instructions: sr.description }} />
         </Modal>
+      )}
+      {canDelete && str("delete") === "1" && (
+        <DeleteConfirmDialog
+          title="Delete service request"
+          itemName={`${ticketNo(sr.number)} · ${sr.summary}`}
+          cancelHref={`/service-requests/${id}`}
+          action={deleteServiceRequestAction.bind(null, id)}
+          consequences={[
+            "This ticket and its history are removed",
+            visits.length
+              ? `${countLabel(visits.length, "linked visit stays", "linked visits stay")} on the project but will no longer point at this ticket`
+              : "No visits are linked to this ticket",
+          ]}
+          confirmLabel="Delete request"
+        />
       )}
     </>
   );

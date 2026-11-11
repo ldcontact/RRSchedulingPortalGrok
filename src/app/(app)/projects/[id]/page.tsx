@@ -8,6 +8,9 @@ import { PhotoGrid, PhotoUploader } from "@/components/photos";
 import { MessageLog } from "@/components/messages";
 import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
+import { countLabel, hasDeleteAccess } from "@/lib/delete-access";
+import { DeleteConfirmDialog } from "@/components/delete-confirm";
+import { deleteProjectAction } from "@/app/(app)/delete-actions";
 import { getRepo } from "@/lib/data/repo";
 import { fmtDateTime, fmtRange, fmtDay, dayKey, money, todayKey } from "@/lib/time";
 import { DEFAULT_WARRANTY_MONTHS, type Person } from "@/lib/types";
@@ -22,7 +25,8 @@ export async function generateMetadata({ params }: PageProps<"/projects/[id]">):
 }
 
 export default async function ProjectPage({ params, searchParams }: PageProps<"/projects/[id]">) {
-  await requireRole("admin", "manager");
+  const user = await requireRole("admin", "manager");
+  const canDelete = hasDeleteAccess(user);
   const { id } = await params;
   const sp = await searchParams;
   const repo = await getRepo();
@@ -52,6 +56,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           {p.status === "cancelled"
             ? <form action={setProjectStatus.bind(null, p.id, "proposed")}><SubmitButton className="btn"><Icon name="undo" />Reopen</SubmitButton></form>
             : <form action={setProjectStatus.bind(null, p.id, "cancelled")}><SubmitButton className="btn btn-danger">Cancel project</SubmitButton></form>}
+          {canDelete && <Link href={`/projects/${p.id}?delete=1`} scroll={false} className="btn btn-danger" data-testid="delete-button"><Icon name="trash" />Delete</Link>}
         </>} />
       {ok && <div className="mb-4"><Banner tone="ok"><Icon name="check" />{ok}</Banner></div>}
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
@@ -175,6 +180,22 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           <MessageLog messages={messages} customerId={p.customer_id} projectId={p.id} />
         </div>
       </div>
+      {canDelete && sp.delete === "1" && (
+        <DeleteConfirmDialog
+          title="Delete project"
+          itemName={p.name}
+          cancelHref={`/projects/${p.id}`}
+          action={deleteProjectAction.bind(null, p.id)}
+          consequences={[
+            `${countLabel(jobs.filter((j) => j.status !== "cancelled").length, "visit", "visits")} (and their assignments)`,
+            `${countLabel(photos.length + completionPhotos.length, "photo", "photos")} (files are removed from storage)`,
+            "Milestones, notes, and the required-photo checklist",
+            "Service requests stay in the inbox, unlinked from this project",
+            "Customer messages stay on the customer (the project link is cleared)",
+          ]}
+          confirmLabel="Delete project"
+        />
+      )}
     </>
   );
 }

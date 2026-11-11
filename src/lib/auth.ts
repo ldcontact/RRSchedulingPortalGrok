@@ -6,6 +6,7 @@ import { MOCK_MODE, assertMockAllowed } from "@/lib/env";
 import type { User } from "@supabase/supabase-js";
 import type { UserDb } from "@/lib/data/supabase-repo";
 import { hasFleetAccess } from "@/lib/geotab/access";
+import { hasDeleteAccess } from "@/lib/delete-access";
 import type { Role, SessionUser } from "@/lib/types";
 
 export const MOCK_COOKIE = "rr_mock_uid";
@@ -25,6 +26,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       avatar_source: p.avatar_source, google_avatar_url: p.google_avatar_url,
       avatar_url: resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null),
       fleet_access: !!p.fleet_access,
+      can_delete: !!p.can_delete,
     };
   }
   const { createClient } = await import("@/lib/supabase/server");
@@ -37,7 +39,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 /** Profile + role for an already-verified auth user, read through that user's own (RLS) client. */
 async function sessionFromClient(supabase: UserDb, user: User): Promise<SessionUser | null> {
   const { resolveAvatarUrl } = await import("@/lib/avatar");
-  const { data: p } = await supabase.from("profiles").select("full_name, role, color, active, deleted_at, avatar_source, avatar_path, google_avatar_url, fleet_access").eq("id", user.id).maybeSingle();
+  const { data: p } = await supabase.from("profiles").select("full_name, role, color, active, deleted_at, avatar_source, avatar_path, google_avatar_url, fleet_access, can_delete").eq("id", user.id).maybeSingle();
   if (p?.deleted_at) return null;
   let avatar_url: string | null = null;
   if (p?.avatar_source === "upload" && p.avatar_path) {
@@ -58,6 +60,7 @@ async function sessionFromClient(supabase: UserDb, user: User): Promise<SessionU
     google_avatar_url: p?.google_avatar_url,
     avatar_url,
     fleet_access: !!(p as { fleet_access?: boolean } | null)?.fleet_access,
+    can_delete: !!(p as { can_delete?: boolean } | null)?.can_delete,
   };
 }
 
@@ -96,5 +99,12 @@ export const isStaff = (r: Role | null | undefined) => r === "admin" || r === "m
 export async function requireFleetAccess() {
   const u = await requireMember();
   if (!hasFleetAccess(u)) redirect("/?denied=1");
+  return u;
+}
+
+/** Require permission to delete customers, projects, visits, or service requests. */
+export async function requireDeleteAccess() {
+  const u = await requireMember();
+  if (!hasDeleteAccess(u)) redirect("/?denied=1");
   return u;
 }

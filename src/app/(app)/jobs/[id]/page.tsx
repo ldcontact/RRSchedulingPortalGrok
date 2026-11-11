@@ -7,6 +7,9 @@ import { JobKindBadge, JobStatusPill, TypeTag } from "@/components/status";
 import { PhotoGrid, PhotoUploader } from "@/components/photos";
 import { SubmitButton } from "@/components/submit-button";
 import { isStaff, requireMember } from "@/lib/auth";
+import { countLabel, hasDeleteAccess } from "@/lib/delete-access";
+import { DeleteConfirmDialog } from "@/components/delete-confirm";
+import { deleteVisitAction } from "@/app/(app)/delete-actions";
 import { hasFleetAccess } from "@/lib/geotab/access";
 import { AssignedTruckCard } from "@/components/fleet/assigned-truck-card";
 import { getRepo } from "@/lib/data/repo";
@@ -27,6 +30,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const job = await repo.getJob(id);
   if (!job) notFound(); // RLS: techs only get jobs they're assigned to
   const staff = isStaff(user.role);
+  const canDelete = hasDeleteAccess(user);
   const mine = job.assignees.some((a) => a.id === user.id);
   const [project, contacts, before, done, notes, requirements] = await Promise.all([
     repo.getProject(job.project_id), repo.listContacts(job.customer_id),
@@ -54,6 +58,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
           {job.status !== "approved" && job.status !== "cancelled" && <Link href={`/jobs/${id}/edit`} className="btn"><Icon name="edit" />Reschedule / reassign</Link>}
           {job.status === "scheduled" && <form action={cancelJob.bind(null, id)}><SubmitButton className="btn btn-danger">Cancel visit</SubmitButton></form>}
           {job.status === "cancelled" && <form action={reopenJob.bind(null, id)}><SubmitButton className="btn"><Icon name="undo" />Reopen</SubmitButton></form>}
+          {canDelete && <Link href={`/jobs/${id}?delete=1`} scroll={false} className="btn btn-danger" data-testid="delete-button"><Icon name="trash" />Delete</Link>}
         </>} />
       <div className="mb-4 flex flex-col gap-2 empty:hidden">
         {ok && <Banner tone="ok"><Icon name="check" />{ok}</Banner>}
@@ -194,6 +199,23 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
           </div>
         </div>
       </div>
+      {canDelete && sp.delete === "1" && (
+        <DeleteConfirmDialog
+          title="Delete visit"
+          itemName={job.title}
+          cancelHref={`/jobs/${id}`}
+          action={deleteVisitAction.bind(null, id)}
+          consequences={[
+            "Only this visit is removed. The project and other visits stay.",
+            (done.length + before.filter((ph) => ph.job_id === id).length)
+              ? `${countLabel(done.length + before.filter((ph) => ph.job_id === id).length, "photo", "photos")} from this visit (files are removed from storage)`
+              : "No photos are attached to this visit",
+            "Notes and assignments for this visit are removed",
+            "If this visit is linked to a service request, the ticket stays (the job link is cleared)",
+          ]}
+          confirmLabel="Delete visit"
+        />
+      )}
     </>
   );
 }

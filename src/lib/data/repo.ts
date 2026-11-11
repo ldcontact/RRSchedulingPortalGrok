@@ -91,6 +91,12 @@ export interface Repo {
   listFleetVehicles(): Promise<FleetVehicleRow[]>;
   setFleetVehicleMapping(deviceId: string, patch: { label?: string | null; profile_id?: string | null }): Promise<void>;
   setFleetAccess(profileId: string, access: boolean): Promise<void>;
+  setDeleteAccess(profileId: string, access: boolean): Promise<void>;
+  countCustomerDependents(customerId: string): Promise<{ projects: number; serviceRequests: number }>;
+  deleteCustomer(id: string): Promise<void>;
+  deleteProject(id: string): Promise<void>;
+  deleteJob(id: string): Promise<void>;
+  deleteServiceRequest(id: string): Promise<void>;
 
   setCustomerGeocode(id: string, patch: GeocodeFields): Promise<void>;
   setServiceRequestGeocode(id: string, patch: GeocodeFields): Promise<void>;
@@ -130,6 +136,7 @@ export function mergeTeam(
       avatar_source: p.avatar_source ?? "none", avatar_path: p.avatar_path ?? null,
       google_avatar_url: p.google_avatar_url ?? null, avatar_url: p.avatar_url ?? null,
       fleet_access: !!p.fleet_access,
+      can_delete: !!p.can_delete,
     });
   }
   for (const i of invites) {
@@ -149,6 +156,7 @@ export function mergeTeam(
       avatar_source: i.avatar_source ?? "none", avatar_path: i.avatar_path ?? null,
       google_avatar_url: null, avatar_url: null,
       fleet_access: false,
+      can_delete: false,
     });
   }
   const order = { admin: 0, manager: 1, tech: 2 } as const;

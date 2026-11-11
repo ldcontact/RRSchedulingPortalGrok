@@ -222,7 +222,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       fail(error);
       if (!data) return null;
       const profile = await withAvatarUrl(s, data as Profile);
-      return { ...profile, fleet_access: !!profile.fleet_access };
+      return { ...profile, fleet_access: !!profile.fleet_access, can_delete: !!profile.can_delete };
     },
     async upsertInvite(input) {
       const row = {
@@ -692,6 +692,47 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     },
     async setFleetAccess(profileId, access) {
       fail((await (await db()).from("profiles").update({ fleet_access: access }).eq("id", profileId).is("deleted_at", null)).error);
+    },
+    async setDeleteAccess(profileId, access) {
+      fail((await (await db()).from("profiles").update({ can_delete: access }).eq("id", profileId).eq("role", "manager").is("deleted_at", null)).error);
+    },
+    async countCustomerDependents(customerId) {
+      const s = await db();
+      const [projects, serviceRequests] = await Promise.all([
+        s.from("projects").select("id", { count: "exact", head: true }).eq("customer_id", customerId),
+        s.from("service_requests").select("id", { count: "exact", head: true }).eq("customer_id", customerId),
+      ]);
+      fail(projects.error);
+      fail(serviceRequests.error);
+      return { projects: projects.count ?? 0, serviceRequests: serviceRequests.count ?? 0 };
+    },
+    async deleteCustomer(id) {
+      const deps = await this.countCustomerDependents(id);
+      const { customerDeleteBlockers } = await import("@/lib/delete-access");
+      const blocked = customerDeleteBlockers(deps);
+      if (blocked) throw new Error(blocked);
+      fail((await (await db()).from("customers").delete().eq("id", id)).error);
+    },
+    async deleteProject(id) {
+      const s = await db();
+      const { data, error } = await s.from("photos").select("storage_path").eq("project_id", id);
+      fail(error);
+      const paths = [...new Set((data ?? []).map((r: { storage_path: string }) => r.storage_path).filter(Boolean))];
+      if (paths.length) fail((await s.storage.from("photos").remove(paths)).error);
+      fail((await s.from("projects").delete().eq("id", id)).error);
+    },
+    async deleteJob(id) {
+      const s = await db();
+      const { data, error } = await s.from("photos").select("storage_path").eq("job_id", id);
+      fail(error);
+      const paths = [...new Set((data ?? []).map((r: { storage_path: string }) => r.storage_path).filter(Boolean))];
+      if (paths.length) fail((await s.storage.from("photos").remove(paths)).error);
+      fail((await s.from("jobs").delete().eq("id", id)).error);
+    },
+    async deleteServiceRequest(id) {
+      const s = await db();
+      fail((await s.from("jobs").update({ service_request_id: null }).eq("service_request_id", id)).error);
+      fail((await s.from("service_requests").delete().eq("id", id)).error);
     },
     async setCustomerGeocode(id, patch) {
       fail((await (await db()).from("customers").update(patch).eq("id", id)).error);

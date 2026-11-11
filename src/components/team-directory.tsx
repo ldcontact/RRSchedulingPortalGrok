@@ -17,6 +17,7 @@ import {
   updateMember,
 } from "@/app/(app)/team/actions";
 import { setFleetAccess } from "@/app/(app)/fleet/actions";
+import { setDeleteAccess } from "@/app/(app)/delete-actions";
 
 const STORAGE_KEY = "rr-team-view";
 const STATUS = { active: "bg-green-100 text-green-800", invited: "bg-accent-50 text-amber-700", inactive: "bg-red-50 text-red-800" } as const;
@@ -70,6 +71,21 @@ function ManagePanel({ m, meEmail }: { m: TeamMember; meEmail: string }) {
             </div>
             <SubmitButton className="btn btn-sm shrink-0" pendingText="Saving…">{m.fleet_access ? "On" : "Off"}</SubmitButton>
           </form>
+        )}
+        {m.profile_id && m.role === "admin" && (
+          <div className="rounded-lg border border-line bg-white p-3 text-[12.5px] text-muted">Delete access is always on for admins.</div>
+        )}
+        {m.profile_id && m.role === "manager" && (
+          <form action={setDeleteAccess.bind(null, m.profile_id, !m.can_delete)} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white p-3" data-testid="delete-access-toggle">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted">Delete access</div>
+              <div className="text-[12.5px] text-muted">{m.can_delete ? "Can delete customers, projects, visits, and service requests." : "Off by default. Turn on so this manager can delete records."}</div>
+            </div>
+            <SubmitButton className="btn btn-sm shrink-0" pendingText="Saving…">{m.can_delete ? "On" : "Off"}</SubmitButton>
+          </form>
+        )}
+        {m.profile_id && m.role === "tech" && (
+          <div className="rounded-lg border border-line bg-white p-3 text-[12.5px] text-muted">Techs can’t delete customers, projects, visits, or service requests.</div>
         )}
         <div className="flex flex-col gap-3 border-t border-line pt-3">
           {m.profile_id && (
@@ -192,7 +208,7 @@ export function TeamDirectory({ team, meEmail, admin }: { team: TeamMember[]; me
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <RolePill role={m.role} />
-                  {(m.role === "admin" || m.fleet_access) && <span className="pill bg-brand-50 text-brand">Fleet</span>}
+                  {(m.role === "admin" || m.fleet_access) && <span className="pill bg-brand-50 text-brand">Fleet</span>}{(m.role === "admin" || (m.role === "manager" && m.can_delete)) && <span className="pill bg-red-50 text-red-800">Delete</span>}
                 </div>
               </div>
               <div className="grid gap-1 text-[13px]">
@@ -236,7 +252,7 @@ export function TeamDirectory({ team, meEmail, admin }: { team: TeamMember[]; me
                       </div>
                     </td>
                     <td className="hidden max-w-[220px] truncate px-3 py-2.5 text-muted sm:table-cell">{m.email}</td>
-                    <td className="px-3 py-2.5"><div className="flex flex-wrap items-center gap-1"><RolePill role={m.role} />{(m.role === "admin" || m.fleet_access) && <span className="pill bg-brand-50 text-brand">Fleet</span>}</div></td>
+                    <td className="px-3 py-2.5"><div className="flex flex-wrap items-center gap-1"><RolePill role={m.role} />{(m.role === "admin" || m.fleet_access) && <span className="pill bg-brand-50 text-brand">Fleet</span>}{(m.role === "admin" || (m.role === "manager" && m.can_delete)) && <span className="pill bg-red-50 text-red-800">Delete</span>}</div></td>
                     <td className="px-3 py-2.5"><span className={`pill ${STATUS[m.status]}`}>{STATUS_LABEL[m.status]}</span></td>
                     <td className="hidden px-3 py-2.5 text-muted md:table-cell">{m.phone ?? "—"}</td>
                     <td className="hidden px-3 py-2.5 text-muted lg:table-cell" title="Available once admin auth key is configured">—</td>

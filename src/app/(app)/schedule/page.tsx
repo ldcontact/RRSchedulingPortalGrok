@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Icon } from "@/components/icons";
+import { Banner } from "@/components/ui";
 import { isStaff, requireMember } from "@/lib/auth";
 import { fleetScope } from "@/lib/geotab/access";
 import { findConflicts, getRepo } from "@/lib/data/repo";
@@ -26,8 +28,12 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
   const staff = isStaff(user.role);
   const rows = (staff ? people.filter((p) => p.role === "tech" || jobs.some((j) => j.assignees.some((a) => a.id === p.id))) : people.filter((p) => p.id === user.id))
     .filter((p) => !tech || p.id === tech);
+  const ok = typeof sp.ok === "string" ? sp.ok : null;
   return (
-    <ScheduleBoard view={view} date={date} start={start} days={days} tech={tech} today={todayKey()} staff={staff}
-      people={staff ? people : []} rows={rows} jobs={jobs} conflicted={[...conflicted]} fleet={fleetScope(user) === "all"} />
+    <>
+      {ok && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{ok}</Banner></div>}
+      <ScheduleBoard view={view} date={date} start={start} days={days} tech={tech} today={todayKey()} staff={staff}
+        people={staff ? people : []} rows={rows} jobs={jobs} conflicted={[...conflicted]} fleet={fleetScope(user) === "all"} />
+    </>
   );
 }

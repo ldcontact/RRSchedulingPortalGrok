@@ -15,7 +15,7 @@ async function json(res: Response) {
 }
 
 describe("MCP handler (Streamable HTTP)", () => {
-  const user = { id: "00000000-0000-4000-8000-000000000001", email: "luke@example.com", name: "Luke", role: "admin" as const, color: "#000", active: true, fleet_access: false };
+  const user = { id: "00000000-0000-4000-8000-000000000001", email: "luke@example.com", name: "Luke", role: "admin" as const, color: "#000", active: true, fleet_access: false, can_delete: false };
   const handler = buildMcpHandler(async () => ({ user, repo: { counts: vi.fn() } as unknown as Repo, portal: "https://portal.test" }));
 
   it("lists exactly the 13 read-only Phase 1 tools", async () => {
