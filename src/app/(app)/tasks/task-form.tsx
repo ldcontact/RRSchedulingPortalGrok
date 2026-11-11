@@ -1,4 +1,5 @@
 import { SubmitButton } from "@/components/submit-button";
+import { Avatar } from "@/components/ui";
 import { TASK_PRIORITIES, TASK_PRIORITY_LABEL, TASK_STATUSES, TASK_STATUS_LABEL, ticketNo, type Person, type ProjectPick, type TaskView } from "@/lib/types";
 import { createTaskAction, updateTaskAction } from "./actions";
 
@@ -19,7 +20,7 @@ export function TaskForm({
   customers: TaskFormOption[];
   requests: TaskFormOption[];
   returnTo: string;
-  defaults?: { assignee_id?: string; project_id?: string; customer_id?: string; service_request_id?: string };
+  defaults?: { assignee_ids?: string[]; project_id?: string; customer_id?: string; service_request_id?: string };
 }) {
   const action = task ? updateTaskAction.bind(null, task.id) : createTaskAction;
   return (
@@ -33,14 +34,24 @@ export function TaskForm({
         <span className="mb-1 block text-[12.5px] font-semibold">Details <span className="font-normal text-muted">(optional)</span></span>
         <textarea name="description" defaultValue={task?.description ?? ""} rows={4} className="input w-full" maxLength={5000} />
       </label>
+      <fieldset className="block">
+        <legend className="mb-1 text-[12.5px] font-semibold">Assignees</legend>
+        <p className="mb-2 text-xs text-muted">Select everyone who should work this task. Assignees and the creator get an email when something changes, except the person who made the change.</p>
+        <div className="flex max-h-48 flex-col gap-0.5 overflow-auto rounded-lg border border-line p-1.5" data-testid="task-assignees">
+          {people.map((p) => {
+            const checked = (task?.assignee_ids ?? defaults?.assignee_ids ?? []).includes(p.id);
+            return (
+              <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-canvas has-[:checked]:bg-brand-50">
+                <input type="checkbox" name="assignees" value={p.id} defaultChecked={checked} className="accent-brand" />
+                <Avatar name={p.full_name} color={p.color} size="sm" src={p.avatar_url} />
+                <span className="min-w-0 truncate font-medium">{p.full_name}</span>
+              </label>
+            );
+          })}
+          {people.length === 0 && <div className="px-2 py-1.5 text-sm text-muted">No teammates to assign.</div>}
+        </div>
+      </fieldset>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block">
-          <span className="mb-1 block text-[12.5px] font-semibold">Assignee</span>
-          <select name="assignee_id" defaultValue={task?.assignee_id ?? defaults?.assignee_id ?? ""} className="input w-full" aria-label="Assignee">
-            <option value="">Unassigned</option>
-            {people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </select>
-        </label>
         <label className="block">
           <span className="mb-1 block text-[12.5px] font-semibold">Due date</span>
           <input type="date" name="due_date" defaultValue={task?.due_date ?? ""} className="input w-full" />

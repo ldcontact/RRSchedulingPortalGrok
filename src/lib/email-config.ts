@@ -44,6 +44,12 @@ export type SendEmailInput = {
   text: string;
   html?: string;
   replyTo?: string;
+  /** RFC Message-ID for this message, including angle brackets. */
+  messageId?: string;
+  /** In-Reply-To header (root Message-ID) so later mail threads in Gmail. */
+  inReplyTo?: string;
+  /** References header; usually the same as inReplyTo for this app. */
+  references?: string;
 };
 
 export type SendEmailResult = {
@@ -257,6 +263,10 @@ export function sanitizeGmailError(err: unknown): Error {
   return new Error(label ? `Gmail API ${label}: ${clean}` : `Gmail API: ${clean}`);
 }
 
+export function rfc2822Date(d = new Date()): string {
+  return d.toUTCString().replace(/GMT$/, "+0000");
+}
+
 export function buildRfc2822Message(input: {
   from: string;
   to: string[];
@@ -264,13 +274,21 @@ export function buildRfc2822Message(input: {
   text: string;
   html?: string;
   replyTo?: string;
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string;
+  date?: Date;
 }): string {
   const headers = [
     `From: ${input.from}`,
     `To: ${input.to.join(", ")}`,
     `Subject: ${input.subject}`,
-    "MIME-Version: 1.0",
+    `Date: ${rfc2822Date(input.date)}`,
   ];
+  if (input.messageId) headers.push(`Message-ID: ${input.messageId}`);
+  if (input.inReplyTo) headers.push(`In-Reply-To: ${input.inReplyTo}`);
+  if (input.references || input.inReplyTo) headers.push(`References: ${input.references || input.inReplyTo}`);
+  headers.push("MIME-Version: 1.0");
   if (input.replyTo) headers.push(`Reply-To: ${input.replyTo}`);
   if (input.html?.trim()) {
     const boundary = `rr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;

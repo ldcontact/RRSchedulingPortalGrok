@@ -55,6 +55,9 @@ async function sendViaGmailApi(cfg: GmailApiConfig, input: SendEmailInput, to: s
       text: input.text,
       html: input.html,
       replyTo: input.replyTo,
+      messageId: input.messageId,
+      inReplyTo: input.inReplyTo,
+      references: input.references,
     }));
     const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
       method: "POST",
@@ -96,6 +99,9 @@ async function sendViaSmtp(input: SendEmailInput, to: string[]): Promise<SendEma
       text: input.text,
       html: input.html,
       replyTo: input.replyTo,
+      messageId: input.messageId,
+      inReplyTo: input.inReplyTo,
+      references: input.references,
     });
     return {
       messageId: info.messageId ?? "",

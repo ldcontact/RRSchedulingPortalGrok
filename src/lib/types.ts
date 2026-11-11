@@ -244,24 +244,38 @@ export type Task = {
   status: TaskStatus;
   priority: TaskPriority;
   due_date: string | null;
-  assignee_id: string | null;
+  assignee_ids: string[];
   created_by: string;
   project_id: string | null;
   customer_id: string | null;
   service_request_id: string | null;
   completed_at: string | null;
+  /** RFC Message-ID of the first notification, used to thread later emails. */
+  email_message_id: string | null;
   created_at: string;
   updated_at: string;
 };
-export type TaskInput = Pick<Task, "title" | "description" | "status" | "priority" | "due_date" | "assignee_id" | "project_id" | "customer_id" | "service_request_id">;
+export type TaskInput = Pick<Task, "title" | "description" | "status" | "priority" | "due_date" | "assignee_ids" | "project_id" | "customer_id" | "service_request_id">;
 export type TaskPatch = Partial<TaskInput>;
 export type TaskView = Task & {
-  assignee: Person | null;
+  assignees: Person[];
   creator: Person;
   project_name: string | null;
   customer_name: string | null;
   service_request_number: number | null;
   service_request_summary: string | null;
+};
+export type TaskComment = {
+  id: string;
+  task_id: string;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+};
+export type TaskCommentView = TaskComment & {
+  author_name: string;
+  author_color: string;
+  author_avatar_url?: string | null;
 };
 export type TaskTab = "mine" | "all";
 export type TaskPageFilter = {

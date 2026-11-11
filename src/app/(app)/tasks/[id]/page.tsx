@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner, PageHeader } from "@/components/ui";
+import { AvatarStack } from "@/components/status";
 import { DeleteConfirmDialog } from "@/components/delete-confirm";
 import { Modal } from "@/components/modal";
 import { SubmitButton } from "@/components/submit-button";
@@ -13,7 +14,7 @@ import { getRepo } from "@/lib/data/repo";
 import { fmtDateTime, fmtDay, todayKey } from "@/lib/time";
 import { canEditTask, canUpdateTaskStatus, isTaskOverdue } from "@/lib/tasks";
 import { ticketNo } from "@/lib/types";
-import { deleteTaskAction, setTaskStatusAction } from "../actions";
+import { addTaskCommentAction, deleteTaskAction, setTaskStatusAction } from "../actions";
 import { TaskForm, requestLabel } from "../task-form";
 
 export const metadata: Metadata = { title: "Task" };
@@ -26,6 +27,7 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
   const repo = await getRepo();
   const task = await repo.getTask(id);
   if (!task) notFound();
+  const comments = await repo.listTaskComments(id);
   const staff = isStaff(user.role);
   const canEdit = canEditTask(user);
   const canStatus = canUpdateTaskStatus(user, task);
@@ -81,8 +83,8 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
         </div>
         <div className="card min-w-0 p-5 text-sm">
           <dl className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-3 gap-y-2.5">
-            <dt className="text-muted">Assignee</dt>
-            <dd className="min-w-0">{task.assignee ? <span className="inline-flex items-center gap-2"><Avatar name={task.assignee.full_name} color={task.assignee.color} size="sm" src={task.assignee.avatar_url} />{task.assignee.full_name}</span> : "Unassigned"}</dd>
+            <dt className="text-muted">Assignees</dt>
+            <dd className="min-w-0" data-testid="task-detail-assignees">{task.assignees.length ? <span className="flex flex-col gap-2"><AvatarStack people={task.assignees} max={6} /><span>{task.assignees.map((p) => p.full_name).join(", ")}</span></span> : "Unassigned"}</dd>
             <dt className="text-muted">Due</dt>
             <dd className={overdue ? "font-semibold text-red-800" : ""}>{task.due_date ? fmtDay(task.due_date, { weekday: "long", month: "short", day: "numeric" }) : "No due date"}</dd>
             <dt className="text-muted">Created by</dt>
@@ -95,6 +97,26 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
             {task.service_request_id && <><dt className="text-muted">Ticket</dt><dd className="min-w-0"><Link href={`/service-requests/${task.service_request_id}`} className="font-semibold text-brand hover:underline">{task.service_request_number != null ? ticketNo(task.service_request_number) : "Service request"}{task.service_request_summary ? ` · ${task.service_request_summary}` : ""}</Link></dd></>}
           </dl>
         </div>
+      </div>
+
+      <div className="card mt-4" data-testid="task-comments">
+        <div className="card-hd"><h3 className="font-semibold">Comments</h3><span className="text-xs text-muted">{comments.length ? `${comments.length} in the thread` : "Everyone on the task is notified"}</span></div>
+        <ol className="divide-y divide-line">
+          {comments.map((n) => (
+            <li key={n.id} className="flex gap-2.5 px-5 py-3 text-sm">
+              <Avatar name={n.author_name} color={n.author_color} size="sm" src={n.author_avatar_url} />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-muted">{n.author_name} · {fmtDateTime(n.created_at)}</div>
+                <div className="whitespace-pre-wrap">{n.body}</div>
+              </div>
+            </li>
+          ))}
+          {!comments.length && <li className="px-5 py-4 text-sm text-muted">No comments yet. Add a note and everyone involved will get an email.</li>}
+        </ol>
+        <form action={addTaskCommentAction.bind(null, task.id)} className="flex gap-2 border-t border-line p-4">
+          <input name="body" required className="input" placeholder="Add a comment…" aria-label="Comment" maxLength={5000} />
+          <SubmitButton className="btn btn-primary">Add comment</SubmitButton>
+        </form>
       </div>
 
       {showEdit && (

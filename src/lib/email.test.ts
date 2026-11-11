@@ -209,6 +209,22 @@ describe("buildRfc2822Message / toBase64Url", () => {
     const encoded = toBase64Url(plain);
     expect(encoded).not.toMatch(/[+/=]/);
   });
+
+  it("sets Message-ID, In-Reply-To, and References for a threaded reply", () => {
+    const raw = buildRfc2822Message({
+      from: "A <a@x.com>",
+      to: ["b@x.com"],
+      subject: "Task: Hello",
+      text: "Updated",
+      messageId: "<reply@x.com>",
+      inReplyTo: "<root@x.com>",
+      references: "<root@x.com>",
+    });
+    expect(raw).toContain("Message-ID: <reply@x.com>");
+    expect(raw).toContain("In-Reply-To: <root@x.com>");
+    expect(raw).toContain("References: <root@x.com>");
+    expect(raw).toContain("Date: ");
+  });
 });
 
 describe("sanitizeGmailError", () => {

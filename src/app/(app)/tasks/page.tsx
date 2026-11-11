@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
-import { Avatar, Banner, PageHeader } from "@/components/ui";
+import { Banner, PageHeader } from "@/components/ui";
+import { AvatarStack } from "@/components/status";
 import { Modal } from "@/components/modal";
 import { Pager, pageParam } from "@/components/pager";
 import { TaskPriorityPill, TaskStatusPill } from "@/components/status";
@@ -58,11 +59,11 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
   const href = (extra: Record<string, string> = {}, p = 1) => `/tasks${qs(extra, p) ? `?${qs(extra, p)}` : ""}`;
   const showNew = str("new") === "1";
   const filtered = !!(q || due || (tab === "all" && assignee) || (status && status !== "active"));
-  const defaults = { assignee_id: str("assignee_id") || user.id, project_id: str("project_id"), customer_id: str("customer_id") };
+  const defaults = { assignee_ids: [str("assignee_id") || user.id].filter(Boolean), project_id: str("project_id"), customer_id: str("customer_id") };
   return (
     <>
       <PageHeader title="Tasks"
-        sub={tab === "mine" ? "Tasks assigned to you, earliest due date first." : "Every task the team can see, earliest due date first."}
+        sub={tab === "mine" ? "Tasks you are assigned to, earliest due date first." : "Every task the team can see, earliest due date first."}
         actions={<Link href={href({ new: "1" })} scroll={false} className="btn btn-primary" data-testid="new-task"><Icon name="plus" />Add task</Link>} />
       {str("ok") && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{str("ok")}</Banner></div>}
       {str("error") && <div className="mb-3"><Banner tone="error"><Icon name="alert" />{str("error")}</Banner></div>}
@@ -113,7 +114,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
       <div className="mt-4"><Pager page={page} size={size} total={total} href={(p) => href({}, p)} label="tasks" /></div>
 
       {showNew && (
-        <Modal title="Add task" sub="Assign it to a teammate and they will get an email with a link." closeHref={href()}>
+        <Modal title="Add task" sub="Assign teammates. Everyone involved gets an email with a link, in one thread per task." closeHref={href()}>
           <TaskForm people={people} projects={projects} customers={customerPage.items.map((c) => ({ id: c.id, label: c.name }))} requests={requests} returnTo={href()} defaults={defaults} />
         </Modal>
       )}
@@ -139,7 +140,7 @@ function TaskRow({ t }: { t: TaskView }) {
           {t.service_request_number != null && <span className="truncate">· {ticketNo(t.service_request_number)}</span>}
         </div>
       </div>
-      {t.assignee ? <span className="hidden shrink-0 sm:inline"><Avatar name={t.assignee.full_name} color={t.assignee.color} size="sm" src={t.assignee.avatar_url} title={t.assignee.full_name} /></span> : <span className="hidden shrink-0 text-[11px] text-muted sm:inline">Unassigned</span>}
+      <span className="shrink-0" data-testid={`task-assignees-${t.id}`}><AvatarStack people={t.assignees} max={3} /></span>
     </Link>
   );
 }

@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
-import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskView } from "@/lib/types";
+import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskComment, TaskCommentView, TaskView } from "@/lib/types";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
@@ -29,7 +29,7 @@ type MessageRow = Omit<Message, "sender_name" | "sender_color">;
 type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[] };
 type SREventRow = Omit<SREvent, "actor_name" | "actor_color">;
 type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[] };
-type Tasks = { tasks: Task[] };
+type Tasks = { tasks: Task[]; task_comments: TaskComment[] };
 type MockProfile = Profile & { deleted_at?: string | null };
 type AuditRow = { id: string; actor_id: string; action: string; target_email: string | null; target_profile_id: string | null; detail: Record<string, unknown>; created_at: string };
 type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[]; fleet_vehicles: FleetVehicleRow[] } & P2 & SR & Tasks;
@@ -103,7 +103,7 @@ function seed(): DB {
   const maria = profiles.find((x) => x.id === "u-manager");
   if (maria) maria.fleet_access = true; // operations manager — used for manager fleet demos
   const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m }));
-  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [] } as DB;
+  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [], task_comments: [] } as DB;
   seedServiceRequests(db);
   seedTasks(db);
   return db;
@@ -333,38 +333,48 @@ function seedTasks(db: DB) {
   const now = (dayOffset: number, h = 9) => zonedToUtc(addDays(T, dayOffset), h * 60);
   const task = (id: string, title: string, over: Partial<Task>): Task => ({
     id, title, description: null, status: "open", priority: "normal", due_date: null,
-    assignee_id: null, created_by: "u-admin", project_id: null, customer_id: null, service_request_id: null,
-    completed_at: null, created_at: now(-2), updated_at: now(-2), ...over,
+    assignee_ids: [], created_by: "u-admin", project_id: null, customer_id: null, service_request_id: null,
+    completed_at: null, email_message_id: null, created_at: now(-2), updated_at: now(-2), ...over,
   });
   db.tasks = [
     task("t1", "Call ComEd about Lakeview rebate paperwork", {
       description: "They are missing the final invoice for the office retrofit. Ask for a status and forward anything they need.",
-      priority: "high", due_date: addDays(T, -1), assignee_id: "u-admin", created_by: "u-manager",
+      priority: "high", due_date: addDays(T, -1), assignee_ids: ["u-admin", "u-manager"], created_by: "u-manager",
       project_id: "p1", customer_id: "c1", created_at: now(-3),
     }),
     task("t2", "Order occupancy sensors for Lakeview", {
       description: "Four sensors for the break room and restrooms. Use the usual supplier.",
-      status: "in_progress", due_date: T, assignee_id: "u-manager", created_by: "u-admin",
+      status: "in_progress", due_date: T, assignee_ids: ["u-manager", "u-tech1", "u-tech2"], created_by: "u-admin",
       project_id: "p1", customer_id: "c1", created_at: now(-2, 10),
     }),
     task("t3", "Send Prairie Bean thermostat schedule PDF", {
       description: "Confirm both new stats are on the 6a–7p weekday schedule and email Megan the one-pager.",
-      due_date: addDays(T, 1), assignee_id: "u-tech3", created_by: "u-manager",
+      due_date: addDays(T, 1), assignee_ids: ["u-tech3"], created_by: "u-manager",
       project_id: "p3", customer_id: "c3", created_at: now(-1, 14),
     }),
     task("t4", "Follow up on Golf Road warranty ticket", {
       description: "Check whether the high-bay in bay 2 is still cycling after last week's visit.",
-      priority: "high", due_date: addDays(T, 5), assignee_id: "u-tech1", created_by: "u-admin",
+      priority: "high", due_date: addDays(T, 5), assignee_ids: ["u-tech1", "u-admin"], created_by: "u-admin",
       service_request_id: "sr4", customer_id: "c2", created_at: now(-1, 11),
     }),
     task("t5", "Restock van LED panels", {
       description: "Two 2x4 40W flats for Friday afternoon at Lakeview.",
-      priority: "low", assignee_id: "u-tech2", created_by: "u-tech2", created_at: now(0, 8),
+      priority: "low", assignee_ids: ["u-tech2"], created_by: "u-tech2", created_at: now(0, 8),
     }),
     task("t6", "Review Lakeview completion photos", {
-      status: "done", due_date: addDays(T, -7), assignee_id: "u-admin", created_by: "u-manager",
+      status: "done", due_date: addDays(T, -7), assignee_ids: ["u-admin", "u-manager"], created_by: "u-manager",
       project_id: "p1", customer_id: "c1", completed_at: now(-4, 16), created_at: now(-8), updated_at: now(-4, 16),
     }),
+  ];
+  seedTaskComments(db, now);
+}
+
+function seedTaskComments(db: DB, now: (dayOffset: number, h?: number) => string) {
+  db.task_comments = [
+    { id: "tc1", task_id: "t2", author_id: "u-admin", body: "Ordered from City Electric. The four sensors should land Thursday.", created_at: now(-1, 11) },
+    { id: "tc2", task_id: "t2", author_id: "u-manager", body: "Carlos, can you confirm the wall boxes in the break room will take the same sensors we used at Prairie Bean?", created_at: now(0, 8) },
+    { id: "tc3", task_id: "t2", author_id: "u-tech1", body: "Yes — same 0–10V Lutron. I'll pick them up on the way to Lakeview.", created_at: now(0, 9) },
+    { id: "tc4", task_id: "t1", author_id: "u-manager", body: "ComEd asked for the final invoice and the signed COI. I uploaded both to the project folder.", created_at: now(-2, 15) },
   ];
 }
 
@@ -377,6 +387,15 @@ function load(): DB {
   for (const j of db.jobs) { j.kind ??= "install"; if (j.service_request_id === undefined) j.service_request_id = null; }
   for (const p of db.projects) p.warranty_months ??= DEFAULT_WARRANTY_MONTHS;
   if (!db.service_requests) { db.service_requests = []; db.sr_events = []; seedServiceRequests(db); save(db); } // upgrade an older mock DB
+  if (db.tasks?.some((t) => !Array.isArray((t as Task & { assignee_id?: string }).assignee_ids))) {
+    db.tasks = db.tasks.map((t) => {
+      const raw = t as Task & { assignee_id?: string | null };
+      if (Array.isArray(raw.assignee_ids)) return raw;
+      const { assignee_id, ...rest } = raw;
+      return { ...rest, assignee_ids: assignee_id ? [assignee_id] : [] };
+    });
+    save(db);
+  }
   let fleetTouched = false;
   if (!db.fleet_vehicles) { db.fleet_vehicles = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m })); fleetTouched = true; }
   for (const prof of db.profiles) {
@@ -400,6 +419,15 @@ function load(): DB {
   }
   if (geoTouched) save(db);
   if (!db.tasks) { db.tasks = []; seedTasks(db); save(db); }
+  if (db.tasks?.some((row) => !("email_message_id" in row))) {
+    db.tasks = db.tasks.map((row) => ({ ...row, email_message_id: row.email_message_id ?? null }));
+    save(db);
+  }
+  if (!db.task_comments) {
+    db.task_comments = [];
+    if (db.tasks.some((row) => row.id === "t2")) seedTaskComments(db, (d, h = 9) => zonedToUtc(addDays(todayKey(), d), h * 60));
+    save(db);
+  }
   return db;
 }
 function save(db: DB) { writeFileSync(FILE, JSON.stringify(db, null, 2)); }
@@ -447,8 +475,17 @@ const labelOf = (db: DB, id: string | null) => authorLabel(id, profileOf(db, id)
 const colorOf = (db: DB, id: string | null) => authorColor(profileOf(db, id));
 
 
+function viewTaskComment(db: DB, c: TaskComment): TaskCommentView {
+  const author = c.author_id ? profileOf(db, c.author_id) : null;
+  return {
+    ...c,
+    author_name: authorLabel(c.author_id, author),
+    author_color: authorColor(author),
+    author_avatar_url: author ? resolveAvatarUrl(author, author.avatar_source === "upload" && author.avatar_path ? `/api/mock-photo/${author.avatar_path}` : null) : null,
+  };
+}
+
 function viewTask(db: DB, t: Task): TaskView {
-  const assignee = t.assignee_id ? profileOf(db, t.assignee_id) : null;
   const creator = profileOf(db, t.created_by);
   const project = t.project_id ? db.projects.find((p) => p.id === t.project_id) : null;
   const customer = t.customer_id ? db.customers.find((c) => c.id === t.customer_id) : null;
@@ -459,7 +496,8 @@ function viewTask(db: DB, t: Task): TaskView {
   } : null;
   return {
     ...t,
-    assignee: person(assignee),
+    assignee_ids: t.assignee_ids ?? [],
+    assignees: (t.assignee_ids ?? []).map((id) => person(profileOf(db, id))).filter((p): p is NonNullable<typeof p> => !!p),
     creator: person(creator) ?? { id: t.created_by, full_name: "Unknown", color: "#64748b" },
     project_name: project?.name ?? null,
     customer_name: customer?.name ?? null,
@@ -1070,12 +1108,13 @@ export const mockRepo: Repo = {
         status: parseTaskStatus(input.status) ?? "open",
         priority: parseTaskPriority(input.priority) ?? "normal",
         due_date: input.due_date || null,
-        assignee_id: input.assignee_id || null,
+        assignee_ids: input.assignee_ids ?? [],
         created_by: w.uid,
         project_id: input.project_id || null,
         customer_id: input.customer_id || null,
         service_request_id: input.service_request_id || null,
         completed_at: completedAtFor(parseTaskStatus(input.status) ?? "open", null),
+        email_message_id: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -1101,13 +1140,13 @@ export const mockRepo: Repo = {
         if (patch.description !== undefined) t.description = patch.description?.trim() ? patch.description.trim() : null;
         if (patch.priority !== undefined) t.priority = parseTaskPriority(patch.priority) ?? t.priority;
         if (patch.due_date !== undefined) t.due_date = patch.due_date || null;
-        if (patch.assignee_id !== undefined) t.assignee_id = patch.assignee_id || null;
+        if (patch.assignee_ids !== undefined) t.assignee_ids = patch.assignee_ids;
         if (patch.project_id !== undefined) t.project_id = patch.project_id || null;
         if (patch.customer_id !== undefined) t.customer_id = patch.customer_id || null;
         if (patch.service_request_id !== undefined) t.service_request_id = patch.service_request_id || null;
       } else if (
         patch.title !== undefined || patch.description !== undefined || patch.priority !== undefined
-        || patch.due_date !== undefined || patch.assignee_id !== undefined || patch.project_id !== undefined
+        || patch.due_date !== undefined || patch.assignee_ids !== undefined || patch.project_id !== undefined
         || patch.customer_id !== undefined || patch.service_request_id !== undefined
       ) {
         throw new Error("techs can only update task status");
@@ -1124,7 +1163,39 @@ export const mockRepo: Repo = {
   },
   async deleteTask(id) {
     requireDeleteMock(await who());
-    mutate((db) => { db.tasks = db.tasks.filter((t) => t.id !== id); });
+    mutate((db) => {
+      db.tasks = db.tasks.filter((t) => t.id !== id);
+      db.task_comments = (db.task_comments ?? []).filter((c) => c.task_id !== id);
+    });
+  },
+  async listTaskComments(taskId) {
+    const w = await who();
+    const db = load();
+    const t = db.tasks.find((x) => x.id === taskId);
+    if (!t || !canViewTask({ id: w.uid, role: w.role }, t)) return [];
+    return (db.task_comments ?? [])
+      .filter((c) => c.task_id === taskId)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((c) => viewTaskComment(db, c));
+  },
+  async addTaskComment(taskId, body) {
+    const w = await who();
+    const text = body.trim();
+    if (!text) throw new Error("A comment is required.");
+    const existing = load().tasks.find((x) => x.id === taskId);
+    if (!existing || !canViewTask({ id: w.uid, role: w.role }, existing)) throw new Error("Task not found.");
+    return mutate((db) => {
+      const row: TaskComment = { id: `tc-${randomUUID().slice(0, 8)}`, task_id: taskId, author_id: w.uid, body: text, created_at: new Date().toISOString() };
+      db.task_comments = db.task_comments ?? [];
+      db.task_comments.push(row);
+      return viewTaskComment(db, row);
+    });
+  },
+  async setTaskEmailMessageId(taskId, messageId) {
+    mutate((db) => {
+      const t = db.tasks.find((x) => x.id === taskId);
+      if (t && !t.email_message_id) t.email_message_id = messageId;
+    });
   },
   async setCustomerGeocode(id, patch) {
     mutate((db) => { const c = db.customers.find((x) => x.id === id); if (c) Object.assign(c, patch); });

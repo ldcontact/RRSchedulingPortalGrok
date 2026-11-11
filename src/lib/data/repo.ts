@@ -2,7 +2,7 @@ import type {
   Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, CustomerPageFilter, CustomerRow, Paged, ProjectPage, ProjectPageFilter, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
   Milestone, Note, Person, Photo, PhotoKind, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
   ServiceRequest, ServiceRequestInput, ServiceRequestPatch, ServiceRequestView, SREvent, SREventKind, SRPage, SRPageFilter,
-  FleetVehicleRow, GeocodeFields, Task, TaskInput, TaskPage, TaskPageFilter, TaskPatch, TaskView,
+  FleetVehicleRow, GeocodeFields, Task, TaskCommentView, TaskInput, TaskPage, TaskPageFilter, TaskPatch, TaskView,
 } from "@/lib/types";
 
 /**
@@ -109,6 +109,9 @@ export interface Repo {
   createTask(input: TaskInput): Promise<Task>;
   updateTask(id: string, patch: TaskPatch): Promise<void>;
   deleteTask(id: string): Promise<void>;
+  listTaskComments(taskId: string): Promise<TaskCommentView[]>;
+  addTaskComment(taskId: string, body: string): Promise<TaskCommentView>;
+  setTaskEmailMessageId(taskId: string, messageId: string): Promise<void>;
 }
 
 /** Jobs in `jobs` (not cancelled) that overlap [starts, ends) for any of `people`, excluding `exceptJob`. */
