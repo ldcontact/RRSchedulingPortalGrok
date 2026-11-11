@@ -147,8 +147,16 @@ link is opened on a different device or browser than the one that requested it. 
 (If you leave the defaults, `/auth/callback` still handles the code-based links in the same browser.)
 
 **Sending email for real:** Supabase's built-in mailer is rate-limited (a few emails per hour) and meant for testing.
-For a real team, set **Authentication → Emails → SMTP Settings** to a provider such as Resend, Postmark, SendGrid, or a
-Gmail/Workspace SMTP app password.
+For a real team, set **Authentication → Emails → SMTP Settings** to Gmail / Google Workspace:
+
+* **Host:** `smtp.gmail.com`
+* **Port:** `465` (SSL)
+* **Username / Sender email:** the dedicated mailbox (e.g. `scheduler@retrofitrebates.com`)
+* **Password:** a Google Workspace **app password** for that mailbox (16 characters; 2-Step Verification required)
+* **Sender name:** `Retrofit Rebates Scheduler`
+* **Minimum interval between emails:** `60` seconds (per recipient; safe default for a small team)
+
+The portal also sends its own mail (admin test on the Team page) with the `SMTP_*` / `EMAIL_FROM` env vars below. Customer emails are still log-only until that hook is wired up.
 
 **Identity linking:** this is on by default. Someone invited at `maria@gmail.com` can set a password from the invite
 email **and** use *Sign in with Google* with the same Gmail address; both reach the same account.
@@ -163,6 +171,11 @@ email **and** use *Sign in with Google* with the same Gmail address; both reach 
 | `NEXT_PUBLIC_SITE_URL` | server | public URL of the app, e.g. `https://rr-scheduler.vercel.app` (used in email links) |
 | `NEXT_PUBLIC_TZ` | browser + server | optional business time zone for the schedule (default `America/Chicago`). Times are stored in UTC; Vercel runs in UTC, so this matters |
 | `NEXT_PUBLIC_RR_MOCK_MODE` | dev only | `1` = mock mode (no Supabase). Leave unset in production. |
+| `SMTP_HOST` | **server only** | SMTP host. Default `smtp.gmail.com`. |
+| `SMTP_PORT` | **server only** | SMTP port. Default `465` (SSL). Use `587` for STARTTLS. |
+| `SMTP_USER` | **server only** | Sender mailbox, e.g. `scheduler@retrofitrebates.com`. |
+| `SMTP_PASSWORD` | **server only** | Google Workspace app password. On Vercel: Production env, mark Sensitive / encrypted. **Never** expose it to the browser or commit it. |
+| `EMAIL_FROM` | **server only** | From display name (`Retrofit Rebates Scheduler`), a bare mailbox, or a full `Name <email>` value. Defaults to `Retrofit Rebates Scheduler <SMTP_USER>`. |
 
 ## 6. Deploy to Vercel
 
@@ -199,7 +212,8 @@ src/lib/supabase/            @supabase/ssr clients (server, browser, proxy) + se
 src/app/login, forgot-password, account/password, auth/{callback,confirm,signout}, not-invited
 src/app/(app)/               signed-in app: home, customers, projects, jobs (visits), schedule, team, account
 src/lib/time.ts              business-time-zone helpers (UTC <-> local wall clock, DST-safe)
-src/lib/messaging.ts         outbound message hook (log-only; plug in Twilio/Resend here)
+src/lib/email.ts             server-only SMTP sender (Gmail Workspace). Admin test on Team; not used for customer mail yet
+src/lib/messaging.ts         outbound customer-message hook (log-only; plug in Twilio or src/lib/email.ts later)
 src/components/photos.tsx    client-side resize + upload, photo grid/lightbox
 supabase/migrations/         schema, triggers, RLS, storage bucket + policies
 public/sw.js, app/manifest.ts  PWA

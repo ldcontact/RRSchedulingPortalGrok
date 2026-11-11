@@ -6,8 +6,9 @@ import type { Channel } from "@/lib/types";
  * nothing is actually sent. To go live later, implement a provider below and
  * select it with MESSAGING_PROVIDER, e.g.:
  *   - text:  Twilio  (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM)
- *   - email: Resend  (RESEND_API_KEY, RESEND_FROM)
+ *   - email: src/lib/email.ts (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM)
  * The caller always records the message in the log regardless of provider.
+ * Do not wire sendCustomerMessage to SMTP until outbound customer email is explicitly enabled.
  */
 export type Outbound = { channel: Channel; to: { phone?: string | null; email?: string | null; name?: string }; subject?: string | null; body: string };
 export type SendResult = { delivered: boolean; provider: string; detail?: string };

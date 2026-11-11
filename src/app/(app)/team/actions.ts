@@ -14,6 +14,7 @@ import {
   validateAdminPassword,
 } from "@/lib/admin-users";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendEmail, smtpConfigured, smtpMissingMessage } from "@/lib/email";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const back = (msg: string, tone: "ok" | "error" = "ok"): never => redirect(`/team?${tone}=${encodeURIComponent(msg)}`);
@@ -208,5 +209,30 @@ export async function manageMemberAvatar(fd: FormData): Promise<{ error?: string
     return { error: "Nothing to update." };
   } catch (e) {
     return { error: (e as Error).message };
+  }
+}
+
+/** Admin-only: send one test message to the signed-in admin. Does not email customers. */
+export async function sendSelfTestEmail() {
+  const me = await requireRole("admin");
+  if (!me.email) back("Your account has no email address.", "error");
+  if (MOCK_MODE) {
+    back(`Dev mock mode: test email to ${me.email} simulated (not sent).`);
+  }
+  if (!smtpConfigured()) back(smtpMissingMessage(), "error");
+  try {
+    const result = await sendEmail({
+      to: me.email,
+      subject: "RR Scheduler test email",
+      text: "This is a test from RR Scheduler. The portal can now send email from this mailbox.",
+    });
+    const id = result.messageId ? ` Message ID: ${result.messageId}` : "";
+    const rejected = result.rejected.length ? ` Not accepted: ${result.rejected.join(", ")}.` : "";
+    if (result.rejected.includes(me.email) || (result.rejected.length && !result.accepted.length)) {
+      back(`The mail server did not accept ${me.email}.${rejected}${id}`, "error");
+    }
+    back(`Test email sent to ${me.email}.${id}${rejected}`);
+  } catch (e) {
+    back((e as Error).message, "error");
   }
 }

@@ -6,7 +6,8 @@ import { TeamDirectory } from "@/components/team-directory";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { ROLE_LABEL, ROLES } from "@/lib/types";
-import { inviteMember } from "./actions";
+import { inviteMember, sendSelfTestEmail } from "./actions";
+import { smtpConfigured } from "@/lib/email";
 
 export const metadata: Metadata = { title: "Team" };
 
@@ -19,6 +20,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
   let team = await (await getRepo()).listTeam();
   if (!admin) team = team.filter((m) => m.status !== "invited"); // matches RLS: only admins see the invite list
   const active = team.filter((m) => m.status === "active").length;
+  const emailReady = smtpConfigured();
 
   return (
     <>
@@ -40,6 +42,20 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
             <label className="flex items-center gap-2 text-sm sm:col-span-2 lg:col-span-3"><input type="checkbox" name="send_email" defaultChecked className="accent-brand" />Email them an invite link (to set a password). They can also just use Sign in with Google.</label>
             <div className="sm:col-span-2 lg:col-span-3 text-xs text-muted">After they appear on the list, open Manage to add a profile photo (or use their Google photo once they sign in).</div>
             <div className="sm:col-span-2 lg:col-span-3"><SubmitButton pendingText="Inviting…"><Icon name="send" className="size-4" />Add to team</SubmitButton></div>
+          </div>
+        </form>
+      )}
+
+      {admin && (
+        <form action={sendSelfTestEmail} className="card mb-5">
+          <div className="card-hd"><h3 className="font-semibold">Test outbound email</h3><span className="text-xs text-muted">Sends only to you</span></div>
+          <div className="grid gap-3 p-5">
+            <p className="text-sm text-muted">Confirm that the portal can send from the scheduler mailbox. The test goes to <span className="font-medium text-ink">{me.email}</span> only. Customer emails are not sent automatically yet.</p>
+            {emailReady ? (
+              <div><SubmitButton pendingText="Sending…"><Icon name="send" className="size-4" />Send a test email to me</SubmitButton></div>
+            ) : (
+              <Banner tone="warn"><Icon name="shield" />Outbound email is not configured yet. Set SMTP_USER and SMTP_PASSWORD in the server environment, then try again.</Banner>
+            )}
           </div>
         </form>
       )}
