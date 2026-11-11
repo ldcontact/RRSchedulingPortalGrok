@@ -1,7 +1,13 @@
-import type { FleetStatus, FleetVehicle } from "@/lib/geotab/types";
+import { fmtDateTime, fmtMonthDay } from "@/lib/time";
+import type { FleetVehicle } from "@/lib/geotab/types";
 
-export const STATUS_LABEL: Record<FleetStatus, string> = { driving: "Driving", stopped: "Stopped", offline: "Offline" };
-export const STATUS_PILL: Record<FleetStatus, string> = {
+export const STATUS_LABEL: Record<FleetVehicle["status"], string> = {
+  driving: "Driving",
+  stopped: "Stopped",
+  offline: "Offline",
+};
+
+export const STATUS_PILL: Record<FleetVehicle["status"], string> = {
   driving: "bg-teal-50 text-teal-800",
   stopped: "bg-violet-50 text-violet-800",
   offline: "bg-slate-100 text-slate-600",
@@ -17,7 +23,10 @@ export function driverLabel(v: FleetVehicle) {
 
 export function statusDetail(v: FleetVehicle) {
   if (v.status === "driving" && v.speedMph != null) return `${v.speedMph} mph`;
+  if (v.status === "stopped" && v.parkedSince) return `Parked since ${fmtDateTime(v.parkedSince)}`;
   if (v.status === "stopped" && v.stoppedForLabel) return `Stopped ${v.stoppedForLabel}`;
-  if (v.status === "offline") return "Last seen";
+  if (v.status === "offline") {
+    return v.lastUpdate ? `Offline · last seen ${fmtMonthDay(v.lastUpdate)}` : "Offline";
+  }
   return STATUS_LABEL[v.status];
 }

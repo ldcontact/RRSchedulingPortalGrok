@@ -30,6 +30,30 @@ export function parseDurationLabel(raw: unknown): string | null {
   return "just now";
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function parseDurationMs(raw: unknown): number | null {
+  const s = str(raw);
+  if (!s) return null;
+  const m = s.match(/^(?:(\d+)\.)?(\d+):(\d+):(\d+)/);
+  if (!m) return null;
+  const days = Number(m[1] ?? 0);
+  const hours = Number(m[2]);
+  const minutes = Number(m[3]);
+  const seconds = Number(m[4]);
+  return (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000;
+}
+
+/** ISO instant the vehicle entered the stopped state, only when that duration is over 24 hours. */
+export function parkedSinceIso(lastUpdate: string | null, durationRaw: unknown): string | null {
+  const ms = parseDurationMs(durationRaw);
+  if (ms == null || ms <= DAY_MS) return null;
+  if (!lastUpdate) return null;
+  const end = Date.parse(lastUpdate);
+  if (!Number.isFinite(end)) return null;
+  return new Date(end - ms).toISOString();
+}
+
 export function vehicleStatus(info: Dict): FleetStatus {
   if (info.isDeviceCommunicating === false) return "offline";
   if (info.isDriving === true) return "driving";

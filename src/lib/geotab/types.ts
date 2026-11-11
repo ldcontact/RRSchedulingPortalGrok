@@ -48,6 +48,8 @@ export type FleetVehicle = {
   lastUpdate: string | null;
   isDeviceCommunicating: boolean;
   stoppedForLabel: string | null;
+  /** Set when the vehicle has been stopped for more than 24 hours. */
+  parkedSince: string | null;
   geotabDriverName: string | null;
   profile: FleetPerson | null;
   nearestVisit: FleetNearestVisit | null;

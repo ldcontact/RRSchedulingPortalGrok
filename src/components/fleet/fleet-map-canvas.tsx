@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { FleetLocationsResponse, FleetVehicle } from "@/lib/geotab/types";
+import { autoFitPoints, CHICAGO_BOUNDS, isMappablePoint } from "@/lib/geotab/region";
 
 const OSM = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
@@ -78,13 +79,14 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
       layers.clearLayers();
       const bounds = L.latLngBounds([]);
       for (const v of data.visits) {
+        if (!isMappablePoint(v.latitude, v.longitude)) continue;
         const m = L.circleMarker([v.latitude, v.longitude], {
           radius: 8, color: "#fff", weight: 2, fillColor: "#d97706", fillOpacity: 1,
         }).bindPopup(`<strong>${escapeHtml(v.customerName)}</strong><br/>${escapeHtml(v.title)}`, { autoPan: false });
         m.addTo(layers);
-        bounds.extend([v.latitude, v.longitude]);
       }
       for (const v of data.vehicles) {
+        if (!isMappablePoint(v.latitude, v.longitude)) continue;
         const color = STATUS_COLOR[v.status];
         const selected = v.id === selectedId;
         const marker = L.circleMarker([v.latitude, v.longitude], {
@@ -98,14 +100,23 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
         marker.bindPopup(`<strong>${escapeHtml(v.label || v.name)}</strong><br/>${escapeHtml(who)}`, { autoPan: false });
         marker.on("click", () => onSelectRef.current?.(v.id));
         marker.addTo(layers);
-        bounds.extend([v.latitude, v.longitude]);
         if (selected) marker.openPopup();
       }
+      const fit = autoFitPoints(data.vehicles, data.visits, data.asOf);
+      for (const p of fit) bounds.extend([p.latitude, p.longitude]);
       if (selectedId) {
         const sel = data.vehicles.find((v) => v.id === selectedId);
-        if (sel) map.setView([sel.latitude, sel.longitude], Math.max(map.getZoom(), 14), { animate: true });
+        if (sel && isMappablePoint(sel.latitude, sel.longitude)) {
+          map.setView([sel.latitude, sel.longitude], Math.max(map.getZoom(), 14), { animate: true });
+        } else if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [padding, padding], maxZoom: 14 });
+        } else {
+          map.fitBounds(CHICAGO_BOUNDS, { padding: [padding, padding], maxZoom: 14 });
+        }
       } else if (bounds.isValid()) {
         map.fitBounds(bounds, { padding: [padding, padding], maxZoom: 14 });
+      } else {
+        map.fitBounds(CHICAGO_BOUNDS, { padding: [padding, padding], maxZoom: 14 });
       }
       requestAnimationFrame(() => map.invalidateSize());
     })();

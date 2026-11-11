@@ -53,6 +53,12 @@ export const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-US"
 export const fmtRange = (a: string, b: string) => `${fmtTime(a)}–${fmtTime(b)}`;
 export const fmtWhen = (iso: string) => `${fmtDay(dayKey(iso))} · ${fmtTime(iso)}`;
 export const fmtDateTime = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+/** Month + day in the business zone, with year only when it is not the current year (e.g. "Apr 29"). */
+export function fmtMonthDay(iso: string): string {
+  const d = new Date(iso);
+  const md = d.toLocaleDateString("en-US", { timeZone: TZ, month: "short", day: "numeric" });
+  return parts(d).y === parts(new Date()).y ? md : `${md}, ${parts(d).y}`;
+}
 export const fmtMinutes = (m: number) => { const h = Math.floor(m / 60), mm = m % 60; return `${((h + 11) % 12) + 1}${mm ? ":" + pad(mm) : ""}${h < 12 ? "am" : "pm"}`; };
 export const overlaps = (a1: string, a2: string, b1: string, b2: string) => a1 < b2 && b1 < a2;
 export const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });

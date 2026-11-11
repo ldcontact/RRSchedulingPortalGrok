@@ -1,5 +1,5 @@
 import { etaMinutes, formatDistance, haversineMeters, isArrived } from "./distance";
-import { parseDurationLabel, snapshotSpeedMph } from "./parse";
+import { parkedSinceIso, parseDurationLabel, snapshotSpeedMph } from "./parse";
 import { sampleVisitPins } from "./sample";
 import type { FleetLocationsResponse, FleetMapping, FleetNearestVisit, FleetPerson, FleetVehicle, FleetVisitPin, GeotabVehicleSnapshot } from "./types";
 
@@ -38,6 +38,7 @@ export function assembleLocations(input: AssembleInput): FleetLocationsResponse 
       lastUpdate: s.lastUpdate,
       isDeviceCommunicating: s.isDeviceCommunicating,
       stoppedForLabel: s.status === "stopped" ? parseDurationLabel(s.currentStateDuration) : null,
+      parkedSince: s.status === "stopped" ? parkedSinceIso(s.lastUpdate, s.currentStateDuration) : null,
       geotabDriverName: s.geotabDriverName,
       profile,
       nearestVisit: nearestVisit(s, profile?.id, visits, speedMph),

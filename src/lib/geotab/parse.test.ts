@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { entityId, isInvalidUserError, mergeDeviceSnapshots, parseDurationLabel, resolveGeotabServer, snapshotSpeedMph, vehicleStatus } from "./parse";
+import { entityId, isInvalidUserError, mergeDeviceSnapshots, parkedSinceIso, parseDurationLabel, parseDurationMs, resolveGeotabServer, snapshotSpeedMph, vehicleStatus } from "./parse";
 
 describe("mergeDeviceSnapshots", () => {
   const devices = [{ id: "b1", name: "Truck 1 – Ford Transit" }, { id: "b2", name: "Truck 2" }];
@@ -36,5 +36,18 @@ describe("helpers", () => {
     expect(isInvalidUserError({ message: "Invalid session @ abc" })).toBe(true);
     expect(isInvalidUserError({ message: "rate limit" })).toBe(false);
     expect(vehicleStatus({ isDriving: true, isDeviceCommunicating: true })).toBe("driving");
+  });
+});
+
+describe("stopped duration", () => {
+  it("keeps short labels under 24 hours and exposes parked-since for longer stops", () => {
+    expect(parseDurationLabel("00:36:00")).toBe("36 min");
+    expect(parseDurationLabel("1.02:15:00")).toBe("26 hr 15 min");
+    expect(parseDurationMs("00:36:00")).toBe(36 * 60 * 1000);
+    expect(parseDurationMs("1.02:15:00")).toBe(((24 + 2) * 60 + 15) * 60 * 1000);
+    expect(parkedSinceIso("2026-11-11T16:16:00.000Z", "00:36:00")).toBeNull();
+    expect(parkedSinceIso("2026-11-11T12:26:16.134Z", "12.18:00:00")).toBe("2026-10-29T18:26:16.134Z");
+    expect(parkedSinceIso("2026-11-11T16:16:00.000Z", "1.00:00:00")).toBeNull(); // exactly 24 h stays as a short label
+    expect(parkedSinceIso("2026-11-11T16:16:00.000Z", "1.00:00:01")).toBe("2026-11-10T16:15:59.000Z");
   });
 });
