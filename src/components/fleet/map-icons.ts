@@ -9,6 +9,13 @@ export const VEHICLE_FILL: Record<FleetStatus, string> = {
 
 export const JOB_SITE_FILL = "#d97706";
 
+/** Shared list-dot / legend fill for a vehicle status. Offline is slightly muted. */
+export function vehicleStatusDotStyle(status: FleetStatus): { backgroundColor: string; opacity?: number } {
+  return status === "offline"
+    ? { backgroundColor: VEHICLE_FILL.offline, opacity: 0.75 }
+    : { backgroundColor: VEHICLE_FILL[status] };
+}
+
 export const VEHICLE_ICON_SIZE = 28;
 export const VEHICLE_ICON_SIZE_SELECTED = 34;
 export const JOB_SITE_ICON_SIZE: [number, number] = [28, 36];

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui";
 import { FleetMapCanvas } from "./fleet-map";
 import { SampleBadge } from "./sample-badge";
+import { vehicleStatusDotStyle } from "./map-icons";
 import { driverLabel, statusDetail, vehicleTitle } from "./status";
 import { useFleetLocations } from "./use-fleet-locations";
 
@@ -28,6 +29,7 @@ export function CrewCard() {
         {crew.map((v) => (
           <div key={v.id} className="flex min-w-0 items-center gap-3 px-4 py-2.5">
             {v.profile && <Avatar name={v.profile.full_name} color={v.profile.color} src={v.profile.avatar_url} />}
+            <span className="size-2.5 shrink-0 rounded-full" style={vehicleStatusDotStyle(v.status)} data-testid="fleet-status-dot" data-status={v.status} />
             <div className="min-w-0 flex-1">
               <div className="truncate font-semibold">{driverLabel(v)} <span className="font-normal text-muted">· {vehicleTitle(v)}</span></div>
               <div className="truncate text-[12.5px] text-muted">

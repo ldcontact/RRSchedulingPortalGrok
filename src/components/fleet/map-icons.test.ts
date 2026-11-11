@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasHeading, jobSiteIconHtml, JOB_SITE_FILL, vehicleIconHtml, VEHICLE_FILL } from "./map-icons";
+import { hasHeading, jobSiteIconHtml, JOB_SITE_FILL, vehicleIconHtml, VEHICLE_FILL, vehicleStatusDotStyle } from "./map-icons";
 
 describe("fleet map icons", () => {
   it("uses a green vehicle when driving and a slate vehicle when stopped", () => {
@@ -39,5 +39,11 @@ describe("fleet map icons", () => {
     expect(site).toContain("<svg");
     expect(site).toContain(JOB_SITE_FILL);
     expect(site).toContain("fleet-jobsite-icon");
+  });
+
+  it("exposes the same status colors for list dots as the map icons", () => {
+    expect(vehicleStatusDotStyle("driving")).toEqual({ backgroundColor: VEHICLE_FILL.driving });
+    expect(vehicleStatusDotStyle("stopped")).toEqual({ backgroundColor: VEHICLE_FILL.stopped });
+    expect(vehicleStatusDotStyle("offline")).toEqual({ backgroundColor: VEHICLE_FILL.offline, opacity: 0.75 });
   });
 });

@@ -10,6 +10,7 @@ import type { FleetVehicle } from "@/lib/geotab/types";
 import { FleetMapCanvas } from "./fleet-map";
 import { SampleBadge } from "./sample-badge";
 import { suggestFleetAssignee } from "@/lib/geotab/suggest";
+import { vehicleStatusDotStyle } from "./map-icons";
 import { driverLabel, statusDetail, STATUS_LABEL, STATUS_PILL, vehicleTitle } from "./status";
 import { useFleetLocations } from "./use-fleet-locations";
 
@@ -53,7 +54,7 @@ function VehicleRow({ v, selected, onSelect, admin, team, mapping }: { v: FleetV
   return (
     <div className={`px-4 py-3 ${selected ? "bg-brand-50/60" : "hover:bg-[#fafbf9]"}`}>
       <button type="button" onClick={onSelect} className="flex w-full min-w-0 items-start gap-3 text-left">
-        <span className={`mt-1 size-2.5 shrink-0 rounded-full ${v.status === "driving" ? "bg-teal-600" : v.status === "stopped" ? "bg-violet-600" : "bg-slate-400"}`} />
+        <span className="mt-1 size-2.5 shrink-0 rounded-full" style={vehicleStatusDotStyle(v.status)} data-testid="fleet-status-dot" data-status={v.status} />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 truncate font-semibold">{vehicleTitle(v)}</span>
