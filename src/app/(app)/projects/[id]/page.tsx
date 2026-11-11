@@ -14,6 +14,7 @@ import { DEFAULT_WARRANTY_MONTHS, type Person } from "@/lib/types";
 import { addMilestone, deleteMilestone, markTimelineApproved, sendTimeline, setProjectStatus, toggleMilestone, updateMilestone } from "../actions";
 import { MilestoneRow } from "./milestone-row";
 import { PhotoRequirementsEditor } from "@/components/photo-requirements-editor";
+import { groupCompletionPhotos } from "@/lib/photo-groups";
 
 export async function generateMetadata({ params }: PageProps<"/projects/[id]">): Promise<Metadata> {
   const p = await (await getRepo()).getProject((await params).id).catch(() => null);
@@ -27,11 +28,13 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const repo = await getRepo();
   const p = await repo.getProject(id);
   if (!p) notFound();
-  const [c, contacts, milestones, jobs, photos, messages, notes, requirements] = await Promise.all([
+  const [c, contacts, milestones, jobs, photos, messages, notes, requirements, completionPhotos] = await Promise.all([
     repo.getCustomer(p.customer_id), repo.listContacts(p.customer_id), repo.listMilestones(id), repo.listJobs({ projectId: id }),
     repo.listPhotos({ projectId: id, kind: "before" }), repo.listMessages({ projectId: id }), repo.listNotes({ projectId: id }),
-    repo.listPhotoRequirements(id),
+    repo.listPhotoRequirements(id), repo.listPhotos({ projectId: id, kind: "completion" }),
   ]);
+  const completionGroups = groupCompletionPhotos(jobs, completionPhotos);
+  const completionTotal = completionGroups.reduce((n, g) => n + g.total, 0);
   const team = new Map<string, Person & { visits: number }>();
   for (const j of jobs) if (j.status !== "cancelled") for (const a of j.assignees) team.set(a.id, { ...a, visits: (team.get(a.id)?.visits ?? 0) + 1 });
   const T = todayKey();
@@ -109,6 +112,24 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <div className="flex flex-col gap-3 p-4">
               <PhotoUploader projectId={p.id} kind="before" label="Add before photos" />
               <PhotoGrid photos={photos} canDelete empty="No before photos yet. Snap the existing fixtures, panels and equipment." />
+            </div>
+          </div>
+
+          <div className="card" data-testid="project-completion-photos">
+            <div className="card-hd"><h3 className="font-semibold">Completion photos</h3><span className="text-xs text-muted" data-testid="project-completion-count">{completionTotal} · from {completionGroups.length} visit{completionGroups.length === 1 ? "" : "s"}</span></div>
+            <div className="flex flex-col gap-4 p-4">
+              {completionGroups.length === 0 && <div className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-muted">No completion photos yet. Techs add them on each visit.</div>}
+              {completionGroups.map((g) => (
+                <section key={g.job.id} className="flex flex-col gap-2" data-testid="project-completion-group">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                    <Link href={`/jobs/${g.job.id}`} className="min-w-0 truncate font-semibold text-brand">{g.job.title}</Link>
+                    <JobKindBadge kind={g.job.kind} size="sm" />
+                    <span className="text-xs text-muted">{fmtDay(dayKey(g.job.starts_at))} · {g.total} photo{g.total === 1 ? "" : "s"}</span>
+                    {g.total > g.photos.length && <Link href={`/jobs/${g.job.id}`} className="ml-auto text-xs font-semibold text-brand" data-testid="project-completion-more">View all {g.total} on the visit</Link>}
+                  </div>
+                  <PhotoGrid photos={g.photos} />
+                </section>
+              ))}
             </div>
           </div>
         </div>
