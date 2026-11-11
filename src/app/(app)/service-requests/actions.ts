@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/auth";
 import { findConflicts, getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDay, fmtRange, parseHHMM, validDay, zonedToUtc } from "@/lib/time";
 import { formatAddress } from "@/lib/project-row";
+import { resolveNewTicketAssignee } from "@/lib/tickets";
 import {
   SR_OPEN, ticketNo, type JobKind, type ProjectPick, type ServiceRequestInput, type SRChannel, type SRPriority, type SRStatus,
 } from "@/lib/types";
@@ -62,7 +63,7 @@ export async function customerPrefill(customerId: string): Promise<CustomerPrefi
 
 export type TicketFormState = { error?: string; values?: Record<string, string> } | undefined;
 export async function createTicket(_: TicketFormState, fd: FormData): Promise<TicketFormState> {
-  await staff();
+  const user = await staff();
   const values = Object.fromEntries([...fd.entries()].map(([k, v]) => [k, String(v)]));
   const channel = s(fd, "channel") as SRChannel, priority = s(fd, "priority") as SRPriority;
   const received = s(fd, "received_at"); // "YYYY-MM-DDTHH:MM" business time
@@ -79,10 +80,18 @@ export async function createTicket(_: TicketFormState, fd: FormData): Promise<Ti
   if (!input.summary) return { error: "Add a short summary, e.g. “Hallway lamp out”.", values };
   if (new Date(input.received_at).getTime() > Date.now() + 5 * 60e3) return { error: "Received time can't be in the future.", values };
   const repo = await getRepo();
+  const explicit = s(fd, "assignee_id");
+  const staffPeople = explicit
+    ? (await repo.listAssignable()).filter((p) => p.role === "admin" || p.role === "manager")
+    : [];
+  const owner = resolveNewTicketAssignee(explicit, { id: user.id, name: user.name }, staffPeople);
+  if ("error" in owner) return { error: owner.error, values };
+  input.assignee_id = owner.id;
   let id: string, number: number;
   try {
     const sr = await repo.createServiceRequest(input);
     id = sr.id; number = sr.number;
+    await repo.addServiceRequestEvent(id, { kind: "assigned", body: `Assigned to ${owner.name}.` });
     if (input.project_id) {
       const p = await repo.getProject(input.project_id);
       await repo.addServiceRequestEvent(id, { kind: "linked", body: `Matched to original project “${p?.name ?? "project"}”.` });

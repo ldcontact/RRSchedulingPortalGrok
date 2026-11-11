@@ -19,3 +19,19 @@ export function visitDefaults(sr: Pick<ServiceRequestView, "warranty_state" | "b
   const kind: JobKind = sr.warranty_state === "out" || sr.billable ? "service" : "warranty";
   return { kind, title: `${kind === "warranty" ? "Warranty" : "Service"} — ${sr.summary}`.slice(0, 120) };
 }
+
+/** Office owner for a new ticket: the person who logged it, unless a staff assignee was explicitly chosen. */
+export function resolveNewTicketAssignee(
+  explicitId: string | null | undefined,
+  creator: { id: string; name: string },
+  staff: { id: string; full_name: string }[] = [],
+): { id: string; name: string } | { error: string } {
+  const chosen = explicitId?.trim() ?? "";
+  if (!chosen) {
+    if (!creator.id) return { error: "Not signed in." };
+    return { id: creator.id, name: creator.name };
+  }
+  const who = staff.find((p) => p.id === chosen);
+  if (!who) return { error: "Pick an admin or manager." };
+  return { id: who.id, name: who.full_name };
+}

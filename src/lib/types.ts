@@ -186,7 +186,10 @@ export type ServiceRequestView = ServiceRequest & {
   assignee_name: string | null; assignee_color: string | null;
 };
 export type ServiceRequestInput = Pick<ServiceRequest, "customer_id" | "project_id" | "site_address" | "site_city" | "site_state" | "site_zip"
-  | "contact_name" | "contact_phone" | "contact_email" | "channel" | "received_at" | "summary" | "description" | "priority">;
+  | "contact_name" | "contact_phone" | "contact_email" | "channel" | "received_at" | "summary" | "description" | "priority"> & {
+  /** Office owner. The create action defaults this to the person who logged the ticket. */
+  assignee_id?: string | null;
+};
 export type ServiceRequestPatch = Partial<Pick<ServiceRequest, "project_id" | "status" | "billable" | "assignee_id" | "converted_project_id" | "resolved_at" | "resolved_by" | "resolved_job_id" | "priority">>;
 export const ticketNo = (n: number) => `SR-${n}`;
 export type SREventKind = "created" | "note" | "status" | "linked" | "unlinked" | "assigned" | "billable" | "scheduled" | "converted" | "resolved" | "closed" | "reopened";

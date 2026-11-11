@@ -748,7 +748,7 @@ export const mockRepo: Repo = {
     if (!input.summary.trim()) throw new Error("summary is required");
     return mutate((db) => {
       const number = Math.max(1000, ...db.service_requests.map((x) => x.number)) + 1;
-      const sr: ServiceRequest = { ...input, id: randomUUID(), number, status: "new", billable: false, assignee_id: null, converted_project_id: null,
+      const sr: ServiceRequest = { ...input, id: randomUUID(), number, status: "new", billable: false, assignee_id: input.assignee_id ?? null, converted_project_id: null,
         resolved_at: null, resolved_by: null, resolved_job_id: null, created_by: w.uid, created_at: now(), updated_at: now() };
       db.service_requests.push(sr);
       db.sr_events.push({ id: randomUUID(), request_id: sr.id, kind: "created", body: `Logged from ${input.channel === "email" ? "an email" : input.channel === "call" ? "a phone call" : "another channel"}.`, actor_id: w.uid, created_at: now() });
