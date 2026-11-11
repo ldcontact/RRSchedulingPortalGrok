@@ -8,14 +8,15 @@ import { JOB_BAR, JobKindBadge, JobStatusPill, KIND_BAR } from "@/components/sta
 import { addDays, dayKey, fmtDay, fmtMinutes, fmtTime, minutesOfDay } from "@/lib/time";
 import type { JobView, Person } from "@/lib/types";
 import { moveJob } from "../jobs/actions";
+import { DispatchMap } from "@/components/fleet/dispatch-map";
 
 export type View = "day" | "week" | "month";
 type Row = Person & { role: string };
 const DAY_START = 6 * 60, DAY_END = 20 * 60, SNAP = 30;
 const UNASSIGNED = "__none";
 
-export function ScheduleBoard(props: { view: View; date: string; start: string; days: number; tech: string; today: string; staff: boolean; people: Row[]; rows: Row[]; jobs: JobView[]; conflicted: string[] }) {
-  const { view, date, start, days, tech, today, staff, people, rows, jobs } = props;
+export function ScheduleBoard(props: { view: View; date: string; start: string; days: number; tech: string; today: string; staff: boolean; people: Row[]; rows: Row[]; jobs: JobView[]; conflicted: string[]; fleet?: boolean }) {
+  const { view, date, start, days, tech, today, staff, people, rows, jobs, fleet } = props;
   const router = useRouter();
   const [pending, startT] = useTransition();
   const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -146,6 +147,8 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
 
       {/* phones + techs: agenda list (tap a visit to open / edit it) */}
       <div className={staff ? "md:hidden" : ""}>{agenda}</div>
+
+      {staff && fleet && view === "day" && <DispatchMap />}
 
       {staff && view === "week" && (
         <div className="card hidden overflow-x-auto md:block" data-testid="week-board">

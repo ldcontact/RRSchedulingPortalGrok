@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { isStaff, requireMember } from "@/lib/auth";
+import { fleetScope } from "@/lib/geotab/access";
 import { findConflicts, getRepo } from "@/lib/data/repo";
 import { addDays, monthStart, todayKey, validDay, weekStart, zonedToUtc } from "@/lib/time";
 import { ScheduleBoard, type View } from "./schedule-board";
@@ -27,6 +28,6 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
     .filter((p) => !tech || p.id === tech);
   return (
     <ScheduleBoard view={view} date={date} start={start} days={days} tech={tech} today={todayKey()} staff={staff}
-      people={staff ? people : []} rows={rows} jobs={jobs} conflicted={[...conflicted]} />
+      people={staff ? people : []} rows={rows} jobs={jobs} conflicted={[...conflicted]} fleet={fleetScope(user) === "all"} />
   );
 }

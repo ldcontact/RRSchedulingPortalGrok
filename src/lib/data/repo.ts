@@ -2,6 +2,7 @@ import type {
   Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, CustomerPageFilter, CustomerRow, Paged, ProjectPage, ProjectPageFilter, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
   Milestone, Note, Person, Photo, PhotoKind, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
   ServiceRequest, ServiceRequestInput, ServiceRequestPatch, ServiceRequestView, SREvent, SREventKind, SRPage, SRPageFilter,
+  FleetVehicleRow,
 } from "@/lib/types";
 
 /**
@@ -85,6 +86,11 @@ export interface Repo {
   addServiceRequestEvent(requestId: string, e: { kind: SREventKind; body: string }): Promise<void>;
   /** Bounded project search for the link picker / suggested original project (never unbounded; max 25). */
   findProjects(f: { q?: string; customerId?: string; limit?: number }): Promise<ProjectPick[]>;
+
+  // ---- fleet (Geotab). Reads are scoped by RLS / mock who(); writes are admin-only.
+  listFleetVehicles(): Promise<FleetVehicleRow[]>;
+  setFleetVehicleMapping(deviceId: string, patch: { label?: string | null; profile_id?: string | null }): Promise<void>;
+  setFleetAccess(profileId: string, access: boolean): Promise<void>;
 }
 
 /** Jobs in `jobs` (not cancelled) that overlap [starts, ends) for any of `people`, excluding `exceptJob`. */
@@ -120,6 +126,7 @@ export function mergeTeam(
       profile_id: p.id, status: p.active ? "active" : "inactive", invited_at: null,
       avatar_source: p.avatar_source ?? "none", avatar_path: p.avatar_path ?? null,
       google_avatar_url: p.google_avatar_url ?? null, avatar_url: p.avatar_url ?? null,
+      fleet_access: !!p.fleet_access,
     });
   }
   for (const i of invites) {
@@ -138,6 +145,7 @@ export function mergeTeam(
       profile_id: null, status: "invited", invited_at: i.invited_at,
       avatar_source: i.avatar_source ?? "none", avatar_path: i.avatar_path ?? null,
       google_avatar_url: null, avatar_url: null,
+      fleet_access: false,
     });
   }
   const order = { admin: 0, manager: 1, tech: 2 } as const;

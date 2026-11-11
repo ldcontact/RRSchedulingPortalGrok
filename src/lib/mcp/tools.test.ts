@@ -7,7 +7,7 @@ const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}
 const ADMIN = U(1), MANAGER = U(2), TECH = U(3), OTHER_TECH = U(4), PROJECT = U(10), CUSTOMER = U(20), JOB = U(30), JOB2 = U(31);
 const PORTAL = "https://portal.test";
 
-const user = (id: string, role: Role | null): SessionUser => ({ id, email: `${role ?? "nobody"}@example.com`, name: `${role ?? "Nobody"} User`, role, color: "#000", active: true });
+const user = (id: string, role: Role | null): SessionUser => ({ id, email: `${role ?? "nobody"}@example.com`, name: `${role ?? "Nobody"} User`, role, color: "#000", active: true, fleet_access: false });
 
 const job = (over: Partial<JobView> = {}): JobView => ({
   id: JOB, project_id: PROJECT, title: "Install LEDs", starts_at: "2026-11-10T14:00:00.000Z", ends_at: "2026-11-10T16:00:00.000Z", status: "scheduled",
@@ -25,8 +25,8 @@ const photo = (over: Partial<Photo>): Photo => ({
   uploaded_by: TECH, uploader_name: "Carlos Tech", uploader_color: "#111", created_at: "2026-11-10T15:00:00Z", url: "https://signed.example/x", ...over,
 });
 const team: TeamMember[] = [
-  { email: "a@x.com", full_name: "Admin", role: "admin", title: null, phone: null, color: "#000", profile_id: ADMIN, status: "active", invited_at: null, avatar_source: "none", avatar_path: null, google_avatar_url: null },
-  { email: "new@x.com", full_name: "Invitee", role: "tech", title: null, phone: null, color: "#000", profile_id: null, status: "invited", invited_at: "2026-11-01T00:00:00Z", avatar_source: "none", avatar_path: null, google_avatar_url: null },
+  { email: "a@x.com", full_name: "Admin", role: "admin", title: null, phone: null, color: "#000", profile_id: ADMIN, status: "active", invited_at: null, avatar_source: "none", avatar_path: null, google_avatar_url: null, fleet_access: false },
+  { email: "new@x.com", full_name: "Invitee", role: "tech", title: null, phone: null, color: "#000", profile_id: null, status: "invited", invited_at: "2026-11-01T00:00:00Z", avatar_source: "none", avatar_path: null, google_avatar_url: null, fleet_access: false },
 ];
 
 function fakeRepo(over: Partial<Repo> = {}) {

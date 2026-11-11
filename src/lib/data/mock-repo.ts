@@ -5,13 +5,15 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
-import type { Contact, Customer, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
+import type { Contact, Customer, FleetVehicleRow, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 import { applyTicketVisits } from "@/lib/tickets";
+import { SAMPLE_DEFAULT_MAP } from "@/lib/geotab/sample";
+import { hasFleetAccess } from "@/lib/geotab/access";
 
 /*
  * DEV MOCK MODE data layer. Persists to .mock-db.json in the project root
@@ -26,7 +28,7 @@ type SREventRow = Omit<SREvent, "actor_name" | "actor_color">;
 type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[] };
 type MockProfile = Profile & { deleted_at?: string | null };
 type AuditRow = { id: string; actor_id: string; action: string; target_email: string | null; target_profile_id: string | null; detail: Record<string, unknown>; created_at: string };
-type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[] } & P2 & SR;
+type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[]; fleet_vehicles: FleetVehicleRow[] } & P2 & SR;
 export const MOCK_UPLOADS = join(process.cwd(), ".mock-uploads");
 const FILE = join(process.cwd(), ".mock-db.json");
 
@@ -35,7 +37,7 @@ const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
 
 function seed(): DB {
   const p = (id: string, email: string, full_name: string, role: Profile["role"], title: string, phone: string, color: string, avatar?: Partial<Pick<Profile, "avatar_source" | "avatar_path" | "google_avatar_url">>): MockProfile =>
-    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null, deleted_at: null });
+    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null, deleted_at: null, fleet_access: false });
   const profiles = [
     p("u-admin", "luke@retrofitrebates.com", "Luke Dlugosz", "admin", "Owner / President", "(847) 555-0100", "#0f766e", { avatar_source: "google", google_avatar_url: "/api/mock-photo/seed/avatar/Luke%20Dlugosz.svg" }),
     p("u-manager", "maria.santos@gmail.com", "Maria Santos", "manager", "Operations Manager", "(847) 555-0101", "#7c3aed", { avatar_source: "upload", avatar_path: "seed/avatar/Maria%20Santos.svg" }),
@@ -75,7 +77,10 @@ function seed(): DB {
     k("c7", "Rosa Delgado", "Owner", "(630) 555-0127", "rosa@itascaprint.example"),
     k("c8", "Ken Yamamoto", "Pharmacist / Owner", "(630) 555-0138", "ken@rosellerx.example"),
   ];
-  const db = { profiles, invites, customers, contacts, admin_audit: [], ...seedPhase2(), service_requests: [], sr_events: [] } as DB;
+  const maria = profiles.find((x) => x.id === "u-manager");
+  if (maria) maria.fleet_access = true; // operations manager — used for manager fleet demos
+  const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m }));
+  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [] } as DB;
   seedServiceRequests(db);
   return db;
 }
@@ -306,6 +311,15 @@ function load(): DB {
   for (const j of db.jobs) { j.kind ??= "install"; if (j.service_request_id === undefined) j.service_request_id = null; }
   for (const p of db.projects) p.warranty_months ??= DEFAULT_WARRANTY_MONTHS;
   if (!db.service_requests) { db.service_requests = []; db.sr_events = []; seedServiceRequests(db); save(db); } // upgrade an older mock DB
+  let fleetTouched = false;
+  if (!db.fleet_vehicles) { db.fleet_vehicles = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m })); fleetTouched = true; }
+  for (const prof of db.profiles) {
+    if (prof.fleet_access === undefined) {
+      prof.fleet_access = prof.id === "u-manager";
+      fleetTouched = true;
+    }
+  }
+  if (fleetTouched) save(db);
   return db;
 }
 function save(db: DB) { writeFileSync(FILE, JSON.stringify(db, null, 2)); }
@@ -320,9 +334,10 @@ async function who() {
   const me = db.profiles.find((p) => p.id === uid);
   const role = me?.active ? me.role : null;
   const staff = role === "admin" || role === "manager";
+  const fleetAccess = hasFleetAccess({ role, fleet_access: me?.fleet_access });
   const myJobs = new Set(db.assignments.filter((a) => a.profile_id === uid).map((a) => a.job_id));
   const myProjects = new Set(db.jobs.filter((j) => myJobs.has(j.id)).map((j) => j.project_id));
-  return { uid, role, staff, canJob: (id: string) => staff || myJobs.has(id), canProject: (id: string) => staff || myProjects.has(id) };
+  return { uid, role, staff, fleetAccess, canJob: (id: string) => staff || myJobs.has(id), canProject: (id: string) => staff || myProjects.has(id) };
 }
 function requireStaffMock(w: { staff: boolean }) { if (!w.staff) throw new Error("permission denied (mock RLS)"); }
 
@@ -390,7 +405,7 @@ export const mockRepo: Repo = {
       avatar_url: resolveAvatarUrl(m, m.avatar_source === "upload" && m.avatar_path ? `/api/mock-photo/${m.avatar_path}` : null),
     }));
   },
-  async getProfile(id) { return load().profiles.find((p) => p.id === id) ?? null; },
+  async getProfile(id) { const row = load().profiles.find((p) => p.id === id); return row ? { ...row, fleet_access: !!row.fleet_access } : null; },
   async upsertInvite(input) {
     mutate((db) => {
       const email = input.email.toLowerCase();
@@ -797,6 +812,35 @@ export const mockRepo: Repo = {
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, limit)
       .map((p): ProjectPick => ({ id: p.id, name: p.name, type: p.type, status: p.status, customer_id: p.customer_id, customer_name: cname(p.customer_id),
         completed_at: projectDates(db.jobs.filter((j) => j.project_id === p.id)).completed_date, warranty_months: p.warranty_months ?? DEFAULT_WARRANTY_MONTHS }));
+  },
+
+  async listFleetVehicles() {
+    const w = await who();
+    if (!w.fleetAccess) return [];
+    const rows = load().fleet_vehicles ?? [];
+    if (w.role === "tech") return rows.filter((r) => r.profile_id === w.uid);
+    return rows;
+  },
+  async setFleetVehicleMapping(deviceId, patch) {
+    const w = await who();
+    if (w.role !== "admin") throw new Error("permission denied (mock RLS)");
+    mutate((db) => {
+      const existing = db.fleet_vehicles.find((r) => r.geotab_device_id === deviceId);
+      if (existing) {
+        if (patch.label !== undefined) existing.label = patch.label;
+        if (patch.profile_id !== undefined) existing.profile_id = patch.profile_id;
+      } else {
+        db.fleet_vehicles.push({ geotab_device_id: deviceId, label: patch.label ?? null, profile_id: patch.profile_id ?? null });
+      }
+    });
+  },
+  async setFleetAccess(profileId, access) {
+    const w = await who();
+    if (w.role !== "admin") throw new Error("permission denied (mock RLS)");
+    mutate((db) => {
+      const prof = db.profiles.find((x) => x.id === profileId);
+      if (prof && !prof.deleted_at) prof.fleet_access = access;
+    });
   },
 };
 

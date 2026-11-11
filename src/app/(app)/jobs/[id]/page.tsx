@@ -7,6 +7,8 @@ import { JobKindBadge, JobStatusPill, TypeTag } from "@/components/status";
 import { PhotoGrid, PhotoUploader } from "@/components/photos";
 import { SubmitButton } from "@/components/submit-button";
 import { isStaff, requireMember } from "@/lib/auth";
+import { hasFleetAccess } from "@/lib/geotab/access";
+import { AssignedTruckCard } from "@/components/fleet/assigned-truck-card";
 import { getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDateTime, fmtDay, fmtRange } from "@/lib/time";
 import { ticketNo } from "@/lib/types";
@@ -88,6 +90,8 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
               {contact?.phone && <a href={`sms:${contact.phone.replace(/[^\d+]/g, "")}`} className="btn flex-1 sm:flex-none"><Icon name="text" />Text</a>}
             </div>
           </div>
+
+          {hasFleetAccess(user) && <AssignedTruckCard jobId={job.id} assigneeIds={job.assignees.map((a) => a.id)} />}
 
           {(mine || staff) && job.status === "scheduled" && (
             <form action={startJob.bind(null, id)}><SubmitButton className="btn btn-accent w-full py-3 text-base" pendingText="Starting…"><Icon name="play" />Start job</SubmitButton></form>

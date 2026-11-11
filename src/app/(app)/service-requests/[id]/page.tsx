@@ -7,6 +7,8 @@ import { AvatarStack, JobKindBadge, JobStatusPill, PriorityPill, ProjectStatusPi
 import { Modal } from "@/components/modal";
 import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
+import { hasFleetAccess } from "@/lib/geotab/access";
+import { AssignedTruckCard } from "@/components/fleet/assigned-truck-card";
 import { getRepo } from "@/lib/data/repo";
 import { ageText, formatAddress } from "@/lib/project-row";
 import { fmtDate, fmtReceived, visitDefaults } from "@/lib/tickets";
@@ -28,7 +30,7 @@ const EV_ICON: Record<SREvent["kind"], string> = {
 };
 
 export default async function ServiceRequestPage({ params, searchParams }: PageProps<"/service-requests/[id]">) {
-  await requireRole("admin", "manager");
+  const user = await requireRole("admin", "manager");
   const { id } = await params;
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string).trim() : "");
@@ -111,6 +113,13 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
               ))}
             </div>
           </div>
+
+          {hasFleetAccess(user) && (visits.find((j) => j.status === "in_progress" || j.status === "scheduled") ?? visits[0]) && (
+            <AssignedTruckCard
+              jobId={(visits.find((j) => j.status === "in_progress" || j.status === "scheduled") ?? visits[0]).id}
+              assigneeIds={(visits.find((j) => j.status === "in_progress" || j.status === "scheduled") ?? visits[0]).assignees.map((a) => a.id)}
+            />
+          )}
 
           <div className="card" data-testid="ticket-history">
             <div className="card-hd"><h3 className="font-semibold">History</h3><span className="text-xs text-muted">Ticket timeline</span></div>

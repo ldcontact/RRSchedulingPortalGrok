@@ -3,6 +3,8 @@ import { Icon } from "@/components/icons";
 import { Banner } from "@/components/ui";
 import { AvatarStack, JobStatusPill, JobKindBadge } from "@/components/status";
 import { isStaff, requireMember } from "@/lib/auth";
+import { fleetScope } from "@/lib/geotab/access";
+import { CrewCard } from "@/components/fleet/crew-card";
 import { getRepo } from "@/lib/data/repo";
 import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
 import { ComingUpList } from "@/components/coming-up-list";
@@ -118,6 +120,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           </div>
         </div>
       </div>
+      {fleetScope(user) === "all" && <div className="mt-4"><CrewCard /></div>}
       <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stat(c.customers, "Customers", "users", "/customers", "bg-brand-50 text-brand")}
         {stat(c.team, "Active team members", "hardhat", "/team", "bg-violet-100 text-violet-700")}

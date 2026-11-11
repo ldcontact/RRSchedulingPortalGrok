@@ -20,6 +20,8 @@ export type Profile = {
   /** Resolved display URL (signed upload or Google); set by repos, not stored. */
   avatar_url?: string | null;
   deleted_at?: string | null;
+  /** Admin-granted Geotab access. Admins always have access even when this is false. */
+  fleet_access: boolean;
 };
 
 export type Invite = {
@@ -49,6 +51,8 @@ export type TeamMember = {
   avatar_path: string | null;
   google_avatar_url: string | null;
   avatar_url?: string | null;
+  /** Raw flag; invited members are false until they have a profile. */
+  fleet_access: boolean;
 };
 
 export type Customer = {
@@ -88,7 +92,7 @@ export type ContactInput = Omit<Contact, "id" | "customer_id">;
 
 export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: AvatarSource; avatar_path?: string | null };
 
-export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean; avatar_url?: string | null; avatar_source?: AvatarSource; google_avatar_url?: string | null };
+export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean; avatar_url?: string | null; avatar_source?: AvatarSource; google_avatar_url?: string | null; fleet_access: boolean };
 
 // ---------------------------------------------------------------- phase 2
 export type ProjectType = "lighting" | "hvac" | "lighting_hvac" | "other";
@@ -211,3 +215,6 @@ export type ProjectPick = {
   id: string; name: string; type: ProjectType; status: ProjectStatus; customer_id: string; customer_name: string;
   completed_at: string | null; warranty_months: number;
 };
+
+/** Geotab device ↔ team-member mapping (public.fleet_vehicles). */
+export type FleetVehicleRow = { geotab_device_id: string; label: string | null; profile_id: string | null };

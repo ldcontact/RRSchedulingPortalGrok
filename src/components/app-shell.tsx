@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Icon } from "./icons";
 import { Avatar, Logo, MockBadge } from "./ui";
+import { hasFleetAccess } from "@/lib/geotab/access";
 import { ROLE_LABEL, type Role, type SessionUser } from "@/lib/types";
 
 type NavItem = { href: string; label: string; icon: string; soon?: boolean; short?: string };
@@ -29,9 +30,21 @@ NAV.manager = NAV.admin;
 export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { user: SessionUser & { role: Role }; mock: boolean; roleSwitcher?: ReactNode; badges?: Record<string, number>; children: ReactNode }) {
   const path = usePathname();
   const tech = user.role === "tech";
-  const items = NAV[user.role];
+  const fleet = hasFleetAccess(user);
+  const fleetItem: NavItem = { href: "/fleet", label: "Fleet", icon: "truck" };
+  let items = [...NAV[user.role]];
+  if (fleet) {
+    if (tech) {
+      const acc = items.findIndex((i) => i.href === "/account");
+      items = acc >= 0 ? [...items.slice(0, acc), fleetItem, ...items.slice(acc)] : [...items, fleetItem];
+    } else {
+      const team = items.findIndex((i) => i.href === "/team");
+      items = team >= 0 ? [...items.slice(0, team), fleetItem, ...items.slice(team)] : [...items, fleetItem];
+    }
+  }
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
-  const bottom: NavItem[] = tech ? items : [...items.filter((i) => i.href !== "/team"), { href: "/account", label: "More", icon: "user" }];
+  // Staff bottom nav stays at 6 items (Fleet is desktop-sidebar + "Where's my crew"). Techs with access get Fleet in their shorter nav.
+  const bottom: NavItem[] = tech ? items : [...items.filter((i) => i.href !== "/team" && i.href !== "/fleet"), { href: "/account", label: "More", icon: "user" }];
   const bottomActive = (href: string) => active(href) || (href === "/account" && path.startsWith("/team"));
 
   return (

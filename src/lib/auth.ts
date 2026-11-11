@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { MOCK_MODE, assertMockAllowed } from "@/lib/env";
 import type { User } from "@supabase/supabase-js";
 import type { UserDb } from "@/lib/data/supabase-repo";
+import { hasFleetAccess } from "@/lib/geotab/access";
 import type { Role, SessionUser } from "@/lib/types";
 
 export const MOCK_COOKIE = "rr_mock_uid";
@@ -23,6 +24,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       id: p.id, email: p.email, name: p.full_name, role: p.active ? p.role : null, color: p.color, active: p.active,
       avatar_source: p.avatar_source, google_avatar_url: p.google_avatar_url,
       avatar_url: resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null),
+      fleet_access: !!p.fleet_access,
     };
   }
   const { createClient } = await import("@/lib/supabase/server");
@@ -35,7 +37,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 /** Profile + role for an already-verified auth user, read through that user's own (RLS) client. */
 async function sessionFromClient(supabase: UserDb, user: User): Promise<SessionUser | null> {
   const { resolveAvatarUrl } = await import("@/lib/avatar");
-  const { data: p } = await supabase.from("profiles").select("full_name, role, color, active, deleted_at, avatar_source, avatar_path, google_avatar_url").eq("id", user.id).maybeSingle();
+  const { data: p } = await supabase.from("profiles").select("full_name, role, color, active, deleted_at, avatar_source, avatar_path, google_avatar_url, fleet_access").eq("id", user.id).maybeSingle();
   if (p?.deleted_at) return null;
   let avatar_url: string | null = null;
   if (p?.avatar_source === "upload" && p.avatar_path) {
@@ -55,6 +57,7 @@ async function sessionFromClient(supabase: UserDb, user: User): Promise<SessionU
     avatar_source: p?.avatar_source,
     google_avatar_url: p?.google_avatar_url,
     avatar_url,
+    fleet_access: !!(p as { fleet_access?: boolean } | null)?.fleet_access,
   };
 }
 
@@ -87,3 +90,11 @@ export async function requireRole(...roles: Role[]) {
 }
 
 export const isStaff = (r: Role | null | undefined) => r === "admin" || r === "manager";
+
+
+/** Require Geotab/fleet access (admin, or fleet_access). */
+export async function requireFleetAccess() {
+  const u = await requireMember();
+  if (!hasFleetAccess(u)) redirect("/?denied=1");
+  return u;
+}

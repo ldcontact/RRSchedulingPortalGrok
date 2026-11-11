@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
-import type { AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
+import type { FleetVehicleRow,  AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
@@ -214,7 +214,8 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const { data, error } = await s.from("profiles").select("*").eq("id", id).maybeSingle();
       fail(error);
       if (!data) return null;
-      return withAvatarUrl(s, data as Profile);
+      const profile = await withAvatarUrl(s, data as Profile);
+      return { ...profile, fleet_access: !!profile.fleet_access };
     },
     async upsertInvite(input) {
       const row = {
@@ -671,6 +672,19 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       }
       const { data, error } = await q; fail(error);
       return ((data ?? []) as unknown as PickRaw[]).map(toPick);
+    },
+
+    async listFleetVehicles() {
+      const { data, error } = await (await db()).from("fleet_vehicles").select("geotab_device_id, label, profile_id");
+      fail(error);
+      return (data ?? []) as FleetVehicleRow[];
+    },
+    async setFleetVehicleMapping(deviceId, patch) {
+      const row = { geotab_device_id: deviceId, updated_at: new Date().toISOString(), ...patch };
+      fail((await (await db()).from("fleet_vehicles").upsert(row)).error);
+    },
+    async setFleetAccess(profileId, access) {
+      fail((await (await db()).from("profiles").update({ fleet_access: access }).eq("id", profileId).is("deleted_at", null)).error);
     },
   };
 }
