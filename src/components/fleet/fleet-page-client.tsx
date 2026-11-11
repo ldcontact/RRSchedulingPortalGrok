@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icons";
@@ -31,11 +31,13 @@ import {
   type JobFilterKey,
   type VehicleFilterKey,
 } from "./filters";
+import { createPreviewController, type PreviewTarget } from "./preview";
 
 export function FleetPageClient({ admin, team, mappings }: { admin: boolean; team: TeamMember[]; mappings: FleetVehicleRow[] }) {
   const { data, error, loading } = useFleetLocations();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedVisitId, setSelectedVisitId] = useState<string | null>(null);
+  const [previewState, setPreviewState] = useState<{ target: PreviewTarget; at: string }>({ target: null, at: "" });
   const mapByDevice = useMemo(() => new Map(mappings.map((m) => [m.geotab_device_id, m])), [mappings]);
   const router = useRouter();
   const pathname = usePathname();
@@ -61,13 +63,49 @@ export function FleetPageClient({ admin, team, mappings }: { admin: boolean; tea
   }, [data, types, vehicleFilters]);
 
   const viewKey = `${types.join(",")}|${vehicleFilters.join(",")}`;
+  const [previewCtl] = useState(() => {
+    let at = "";
+    const inner = createPreviewController((target) => setPreviewState({ target, at }));
+    return {
+      enter(target: Exclude<PreviewTarget, null>, key: string) {
+        at = key;
+        inner.enter(target);
+      },
+      leave(key: string) {
+        at = key;
+        inner.leave();
+      },
+      cancel: inner.cancel,
+    };
+  });
+  const preview = previewState.at === viewKey ? previewState.target : null;
+
+  useEffect(() => () => previewCtl.cancel(), [previewCtl]);
+
+  function isHoverPointer(e: ReactPointerEvent) {
+    return e.pointerType === "mouse" || e.pointerType === "pen";
+  }
+  function onPreviewEnter(target: Exclude<PreviewTarget, null>) {
+    return (e: ReactPointerEvent) => {
+      if (!isHoverPointer(e)) return;
+      previewCtl.enter(target, viewKey);
+    };
+  }
+  function onPreviewLeave(e: ReactPointerEvent) {
+    if (!isHoverPointer(e)) return;
+    previewCtl.leave(viewKey);
+  }
 
   function selectVehicle(id: string) {
+    previewCtl.cancel();
+    setPreviewState({ target: null, at: viewKey });
     setSelectedVisitId(null);
     setSelectedId(id);
     scrollToMap();
   }
   function selectVisit(id: string) {
+    previewCtl.cancel();
+    setPreviewState({ target: null, at: viewKey });
     setSelectedId(null);
     setSelectedVisitId(id);
     scrollToMap();
@@ -126,6 +164,8 @@ export function FleetPageClient({ admin, team, mappings }: { admin: boolean; tea
               onSelect={selectVehicle}
               selectedVisitId={selectedVisitId}
               onSelectVisit={selectVisit}
+              previewVehicleId={preview?.kind === "vehicle" ? preview.id : null}
+              previewVisitId={preview?.kind === "visit" ? preview.id : null}
               viewKey={viewKey}
               className="h-full"
             />
@@ -140,11 +180,20 @@ export function FleetPageClient({ admin, team, mappings }: { admin: boolean; tea
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" data-testid="fleet-vehicle-list">
           {!filtered?.vehicles.length && <div className="card p-5 text-sm text-muted md:col-span-2 xl:col-span-3">{loading ? "Loading…" : "No vehicles to show."}</div>}
-          {filtered?.vehicles.map((v) => (
-            <div key={v.id} className={`card min-w-0 ${selectedId === v.id ? "ring-2 ring-brand/40" : ""}`}>
-              <VehicleRow v={v} selected={v.id === selectedId} onSelect={() => selectVehicle(v.id)} admin={admin} team={team} mapping={mapByDevice.get(v.id)} />
-            </div>
-          ))}
+          {filtered?.vehicles.map((v) => {
+            const highlighted = selectedId === v.id || (preview?.kind === "vehicle" && preview.id === v.id);
+            return (
+              <div
+                key={v.id}
+                data-testid={`fleet-vehicle-card-${v.id}`}
+                onPointerEnter={onPreviewEnter({ kind: "vehicle", id: v.id })}
+                onPointerLeave={onPreviewLeave}
+                className={`card min-w-0 ${highlighted ? "ring-2 ring-brand/40" : ""}`}
+              >
+                <VehicleRow v={v} selected={highlighted} onSelect={() => selectVehicle(v.id)} admin={admin} team={team} mapping={mapByDevice.get(v.id)} />
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -155,9 +204,19 @@ export function FleetPageClient({ admin, team, mappings }: { admin: boolean; tea
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2" data-testid="fleet-job-list">
           {!filtered?.visits.length && <div className="card p-5 text-sm text-muted md:col-span-2">{loading && !data ? "Loading…" : "No job sites to show."}</div>}
-          {filtered?.visits.map((v) => (
-            <JobRow key={v.jobId} v={v} selected={v.jobId === selectedVisitId} onSelect={() => selectVisit(v.jobId)} />
-          ))}
+          {filtered?.visits.map((v) => {
+            const highlighted = selectedVisitId === v.jobId || (preview?.kind === "visit" && preview.id === v.jobId);
+            return (
+              <JobRow
+                key={v.jobId}
+                v={v}
+                selected={highlighted}
+                onSelect={() => selectVisit(v.jobId)}
+                onPointerEnter={onPreviewEnter({ kind: "visit", id: v.jobId })}
+                onPointerLeave={onPreviewLeave}
+              />
+            );
+          })}
         </div>
       </section>
     </div>
@@ -231,9 +290,9 @@ function VehicleRow({ v, selected, onSelect, admin, team, mapping }: { v: FleetV
   );
 }
 
-function JobRow({ v, selected, onSelect }: { v: FleetVisitPin; selected: boolean; onSelect: () => void }) {
+function JobRow({ v, selected, onSelect, onPointerEnter, onPointerLeave }: { v: FleetVisitPin; selected: boolean; onSelect: () => void; onPointerEnter?: (e: ReactPointerEvent<HTMLDivElement>) => void; onPointerLeave?: (e: ReactPointerEvent<HTMLDivElement>) => void }) {
   return (
-    <div className={`card min-w-0 ${selected ? "ring-2 ring-brand/40 bg-brand-50/60" : ""}`}>
+    <div data-testid={`fleet-job-card-${v.jobId}`} onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave} className={`card min-w-0 ${selected ? "ring-2 ring-brand/40 bg-brand-50/60" : ""}`}>
       <div className="flex w-full min-w-0 flex-col gap-1.5 px-4 py-3 text-left hover:bg-[#fafbf9]">
         <button type="button" onClick={onSelect} className="flex min-w-0 flex-col gap-1.5 text-left">
           <div className="flex min-w-0 items-start justify-between gap-2">

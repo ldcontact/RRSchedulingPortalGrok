@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clusterIconHtml, hasHeading, jobSiteIconHtml, jobSiteFill, JOB_SITE_FILL, JOB_SITE_FILL_BY_TYPE, vehicleIconHtml, VEHICLE_FILL, vehicleStatusDotStyle } from "./map-icons";
+import { clusterIconHtml, hasHeading, jobSiteIconHtml, jobSiteFill, jobSiteIconSize, JOB_SITE_FILL, JOB_SITE_FILL_BY_TYPE, vehicleIconHtml, VEHICLE_FILL, vehicleStatusDotStyle } from "./map-icons";
 
 describe("fleet map icons", () => {
   it("uses a green vehicle when driving and a red vehicle when stopped", () => {
@@ -42,6 +42,9 @@ describe("fleet map icons", () => {
     expect(jobSiteIconHtml({ type: "hvac" })).toContain(JOB_SITE_FILL_BY_TYPE.hvac);
     expect(jobSiteFill("lighting")).toBe(JOB_SITE_FILL);
     expect(jobSiteIconHtml({ kind: "warranty" })).toContain(">W</text>");
+    expect(jobSiteIconSize(true)[1]).toBeGreaterThan(jobSiteIconSize(false)[1]);
+    expect(jobSiteIconHtml({ selected: true })).toContain("is-selected");
+    expect(jobSiteIconHtml({ selected: true })).toContain(`width="${jobSiteIconSize(true)[0]}"`);
   });
 
   it("exposes the same status colors for list dots as the map icons", () => {

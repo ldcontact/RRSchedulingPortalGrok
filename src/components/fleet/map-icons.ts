@@ -33,7 +33,9 @@ export const VEHICLE_ICON_SIZE = 28;
 export const VEHICLE_ICON_SIZE_SELECTED = 34;
 export const CLUSTER_ICON_SIZE = 32;
 export const JOB_SITE_ICON_SIZE: [number, number] = [28, 36];
+export const JOB_SITE_ICON_SIZE_SELECTED: [number, number] = [34, 44];
 export const JOB_SITE_ICON_ANCHOR: [number, number] = [14, 34];
+export const JOB_SITE_ICON_ANCHOR_SELECTED: [number, number] = [17, 42];
 
 export function hasHeading(heading: number | null | undefined): heading is number {
   return typeof heading === "number" && Number.isFinite(heading);
@@ -51,11 +53,11 @@ function vehicleSvg(color: string, size: number, defs = ""): string {
 </svg>`;
 }
 
-function jobSiteSvg(fill: string, kind?: JobKind | null): string {
+function jobSiteSvg(fill: string, kind?: JobKind | null, size: [number, number] = JOB_SITE_ICON_SIZE): string {
   const badge = kind === "warranty" || kind === "service"
     ? `<circle cx="22.5" cy="7.5" r="5.6" fill="${kind === "warranty" ? "#b45309" : "#c2410c"}" stroke="#fff" stroke-width="1.4"/><text x="22.5" y="10.2" text-anchor="middle" font-size="8" font-weight="700" font-family="system-ui,sans-serif" fill="#fff">${kind === "warranty" ? "W" : "S"}</text>`
     : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 36" width="28" height="36" aria-hidden="true">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 36" width="${size[0]}" height="${size[1]}" aria-hidden="true">
   <path d="M14 1.5c-6.2 0-11 4.9-11 11.2 0 8.2 11 21.3 11 21.3s11-13.1 11-21.3C25 6.4 20.2 1.5 14 1.5z" fill="${fill}" stroke="#fff" stroke-width="1.8"/>
   <path d="M14 9.2 20 14v7.2h-3.2v-3.8h-3.6v3.8H10V14z" fill="#fff"/>
   ${badge}
@@ -95,10 +97,19 @@ export function clusterIconHtml(opts: { count: number; fill: string; split?: boo
 
 export function jobSiteIconHtml(opts: { type?: ProjectType | null; kind?: JobKind | null; selected?: boolean } = {}): string {
   const fill = jobSiteFill(opts.type);
+  const size = jobSiteIconSize(!!opts.selected);
   const ring = opts.selected
     ? `box-shadow:0 0 0 2px #fff,0 0 0 4px ${fill};border-radius:16px;`
     : "filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));";
-  return `<div class="fleet-jobsite-icon${opts.selected ? " is-selected" : ""}" data-testid="fleet-jobsite" data-type="${opts.type ?? ""}" data-kind="${opts.kind ?? "install"}" style="line-height:0;${ring}">${jobSiteSvg(fill, opts.kind)}</div>`;
+  return `<div class="fleet-jobsite-icon${opts.selected ? " is-selected" : ""}" data-testid="fleet-jobsite" data-type="${opts.type ?? ""}" data-kind="${opts.kind ?? "install"}" style="line-height:0;width:${size[0]}px;height:${size[1]}px;${ring}">${jobSiteSvg(fill, opts.kind, size)}</div>`;
+}
+
+export function jobSiteIconSize(selected = false): [number, number] {
+  return selected ? JOB_SITE_ICON_SIZE_SELECTED : JOB_SITE_ICON_SIZE;
+}
+
+export function jobSiteIconAnchor(selected = false): [number, number] {
+  return selected ? JOB_SITE_ICON_ANCHOR_SELECTED : JOB_SITE_ICON_ANCHOR;
 }
 
 export function vehicleIconSize(selected = false): [number, number] {

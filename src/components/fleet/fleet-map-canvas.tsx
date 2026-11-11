@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FleetLocationsResponse, FleetVehicle } from "@/lib/geotab/types";
 import { autoFitPoints, CHICAGO_BOUNDS, isMappablePoint } from "@/lib/geotab/region";
+import { allowMapAnimation } from "./preview";
 import {
   clusterAppearance,
   clusterByPixelDistance,
@@ -12,8 +13,8 @@ import {
 } from "./cluster";
 import {
   JOB_SITE_FILL,
-  JOB_SITE_ICON_ANCHOR,
-  JOB_SITE_ICON_SIZE,
+  jobSiteIconAnchor,
+  jobSiteIconSize,
   clusterIconAnchor,
   clusterIconHtml,
   clusterIconSize,
@@ -45,22 +46,27 @@ type PaintRefs = {
   data: React.RefObject<FleetLocationsResponse | null>;
   selectedId: React.RefObject<string | null | undefined>;
   selectedVisitId: React.RefObject<string | null | undefined>;
+  previewVehicleId: React.RefObject<string | null | undefined>;
+  previewVisitId: React.RefObject<string | null | undefined>;
   padding: React.RefObject<number>;
   spiderfy: React.RefObject<string[] | null>;
   onSelect: React.RefObject<((id: string) => void) | undefined>;
   onSelectVisit: React.RefObject<((id: string) => void) | undefined>;
   fitted: React.RefObject<boolean>;
   lastSelected: React.RefObject<string | null | undefined>;
+  lastPreview: React.RefObject<string | null>;
   viewKey: React.RefObject<string>;
   lastViewKey: React.RefObject<string>;
 };
 
-export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, onSelectVisit, viewKey = "", className = "", padding = 48 }: {
+export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, onSelectVisit, previewVehicleId, previewVisitId, viewKey = "", className = "", padding = 48 }: {
   data: FleetLocationsResponse | null;
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   selectedVisitId?: string | null;
   onSelectVisit?: (id: string) => void;
+  previewVehicleId?: string | null;
+  previewVisitId?: string | null;
   /** Changes when the visible vehicle/visit set is filtered so the map can refit. */
   viewKey?: string;
   className?: string;
@@ -74,12 +80,15 @@ export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, on
   const dataRef = useRef(data);
   const selectedIdRef = useRef(selectedId);
   const selectedVisitIdRef = useRef(selectedVisitId);
+  const previewVehicleIdRef = useRef(previewVehicleId);
+  const previewVisitIdRef = useRef(previewVisitId);
   const paddingRef = useRef(padding);
   const viewKeyRef = useRef(viewKey);
   const lastViewKeyRef = useRef("");
   const spiderfyRef = useRef<string[] | null>(null);
   const fittedRef = useRef(false);
   const lastSelectedRef = useRef<string | null | undefined>(undefined);
+  const lastPreviewRef = useRef<string | null>(null);
   const refs = useRef<PaintRefs>({
     wrap,
     map: mapRef,
@@ -87,12 +96,15 @@ export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, on
     data: dataRef,
     selectedId: selectedIdRef,
     selectedVisitId: selectedVisitIdRef,
+    previewVehicleId: previewVehicleIdRef,
+    previewVisitId: previewVisitIdRef,
     padding: paddingRef,
     spiderfy: spiderfyRef,
     onSelect: onSelectRef,
     onSelectVisit: onSelectVisitRef,
     fitted: fittedRef,
     lastSelected: lastSelectedRef,
+    lastPreview: lastPreviewRef,
     viewKey: viewKeyRef,
     lastViewKey: lastViewKeyRef,
   });
@@ -102,6 +114,8 @@ export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, on
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
   useEffect(() => { selectedVisitIdRef.current = selectedVisitId; }, [selectedVisitId]);
+  useEffect(() => { previewVehicleIdRef.current = previewVehicleId; }, [previewVehicleId]);
+  useEffect(() => { previewVisitIdRef.current = previewVisitId; }, [previewVisitId]);
   useEffect(() => { paddingRef.current = padding; }, [padding]);
   useEffect(() => { viewKeyRef.current = viewKey; }, [viewKey]);
 
@@ -152,7 +166,7 @@ export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, on
 
   useEffect(() => {
     void paint(refs.current, { fit: true });
-  }, [data, selectedId, selectedVisitId, viewKey, padding, mapReady]);
+  }, [data, selectedId, selectedVisitId, previewVehicleId, previewVisitId, viewKey, padding, mapReady]);
 
   return (
     <div className={`relative min-h-[200px] w-full min-w-0 ${className}`}>
@@ -174,18 +188,20 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
   const zoom = map.getZoom();
   const showLabels = zoom > 10;
   const selectedVisit = refs.selectedVisitId.current;
+  const previewVisit = refs.previewVisitId.current;
   let selectedVisitMarker: import("leaflet").Marker | null = null;
   for (const v of current.visits) {
     if (!isMappablePoint(v.latitude, v.longitude)) continue;
     const isSelected = v.jobId === selectedVisit;
+    const emphasized = isSelected || v.jobId === previewVisit;
     const icon = L.divIcon({
       className: "fleet-div-icon",
-      html: jobSiteIconHtml({ type: v.projectType, kind: v.kind, selected: isSelected }),
-      iconSize: JOB_SITE_ICON_SIZE,
-      iconAnchor: JOB_SITE_ICON_ANCHOR,
+      html: jobSiteIconHtml({ type: v.projectType, kind: v.kind, selected: emphasized }),
+      iconSize: jobSiteIconSize(emphasized),
+      iconAnchor: jobSiteIconAnchor(emphasized),
       popupAnchor: [0, -32],
     });
-    const m = L.marker([v.latitude, v.longitude], { icon, zIndexOffset: isSelected ? 650 : 50, keyboard: false });
+    const m = L.marker([v.latitude, v.longitude], { icon, zIndexOffset: emphasized ? 650 : 50, keyboard: false });
     m.bindPopup(`<strong>${escapeHtml(v.customerName)}</strong><br/>${escapeHtml(v.title)}`, { autoPan: false });
     m.on("click", () => refs.onSelectVisit.current?.(v.jobId));
     m.addTo(layers);
@@ -198,6 +214,8 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
   };
   const groups = clusterByPixelDistance(vehicles, project);
   const selected = refs.selectedId.current;
+  const previewVehicle = refs.previewVehicleId.current;
+  const focusVehicleId = previewVehicle || selected || null;
   const spiderIds = refs.spiderfy.current ? new Set(refs.spiderfy.current) : null;
 
   for (const g of groups) {
@@ -212,7 +230,7 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
       continue;
     }
     const appearance = clusterAppearance(g.members.map((m) => m.status));
-    const isSelected = !!selected && ids.includes(selected);
+    const isSelected = !!(focusVehicleId && ids.includes(focusVehicleId));
     const icon = L.divIcon({
       className: "fleet-div-icon",
       html: clusterIconHtml({ count: g.members.length, fill: appearance.fill, split: appearance.split, id: ids.join("-"), selected: isSelected }),
@@ -236,21 +254,14 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
     const viewKey = refs.viewKey.current;
     const viewChanged = viewKey !== refs.lastViewKey.current;
     refs.lastViewKey.current = viewKey;
+    const animate = allowMapAnimation();
     if (selected && selectedChanged) {
-      const sel = current.vehicles.find((v) => v.id === selected);
-      if (sel && isMappablePoint(sel.latitude, sel.longitude)) {
-        const host = groups.find((g) => g.members.some((m) => m.id === selected));
-        if (host && host.members.length > 1) {
-          onClusterClick(refs, L, map, host.members);
-        } else {
-          map.setView([sel.latitude, sel.longitude], Math.max(map.getZoom(), 14), { animate: true });
-        }
-      }
+      focusVehicleOnMap(refs, L, map, groups, current, selected, animate);
       refs.fitted.current = true;
     } else if (selectedVisit && selectedChanged) {
       const visit = current.visits.find((v) => v.jobId === selectedVisit);
       if (visit && isMappablePoint(visit.latitude, visit.longitude)) {
-        map.setView([visit.latitude, visit.longitude], Math.max(map.getZoom(), 15), { animate: true });
+        map.setView([visit.latitude, visit.longitude], Math.max(map.getZoom(), 15), { animate });
         selectedVisitMarker?.openPopup();
       }
       refs.fitted.current = true;
@@ -259,11 +270,24 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
       const fitPts = autoFitPoints(current.vehicles, current.visits, current.asOf);
       for (const p of fitPts) bounds.extend([p.latitude, p.longitude]);
       if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [refs.padding.current, refs.padding.current], maxZoom: 14 });
+        map.fitBounds(bounds, { padding: [refs.padding.current, refs.padding.current], maxZoom: 14, animate: allowMapAnimation() });
       } else {
-        map.fitBounds(CHICAGO_BOUNDS, { padding: [refs.padding.current, refs.padding.current], maxZoom: 14 });
+        map.fitBounds(CHICAGO_BOUNDS, { padding: [refs.padding.current, refs.padding.current], maxZoom: 14, animate: allowMapAnimation() });
       }
       refs.fitted.current = true;
+    }
+    const previewToken = previewVehicle ? `v:${previewVehicle}` : previewVisit ? `j:${previewVisit}` : null;
+    const previewChanged = refs.lastPreview.current !== previewToken;
+    refs.lastPreview.current = previewToken;
+    if (previewToken && previewChanged) {
+      if (previewVehicle) {
+        focusVehicleOnMap(refs, L, map, groups, current, previewVehicle, allowMapAnimation());
+      } else if (previewVisit) {
+        const visit = current.visits.find((v) => v.jobId === previewVisit);
+        if (visit && isMappablePoint(visit.latitude, visit.longitude)) {
+          map.setView([visit.latitude, visit.longitude], Math.max(map.getZoom(), 15), { animate: allowMapAnimation() });
+        }
+      }
     }
   } else if (selectedVisitMarker && selectedVisit) {
     selectedVisitMarker.openPopup();
@@ -271,7 +295,27 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
   requestAnimationFrame(() => map.invalidateSize());
 }
 
-function onClusterClick(refs: PaintRefs, L: Leaflet, map: import("leaflet").Map, members: FleetVehicle[]) {
+function focusVehicleOnMap(
+  refs: PaintRefs,
+  L: Leaflet,
+  map: import("leaflet").Map,
+  groups: { members: FleetVehicle[]; latitude: number; longitude: number }[],
+  current: FleetLocationsResponse,
+  id: string,
+  animate: boolean,
+) {
+  const sel = current.vehicles.find((v) => v.id === id);
+  if (!sel || !isMappablePoint(sel.latitude, sel.longitude)) return;
+  const host = groups.find((g) => g.members.some((m) => m.id === id));
+  if (host && host.members.length > 1) {
+    onClusterClick(refs, L, map, host.members, animate);
+  } else {
+    refs.spiderfy.current = null;
+    map.setView([sel.latitude, sel.longitude], Math.max(map.getZoom(), 14), { animate });
+  }
+}
+
+function onClusterClick(refs: PaintRefs, L: Leaflet, map: import("leaflet").Map, members: FleetVehicle[], animate = allowMapAnimation()) {
   const pts = members.map((m) => map.latLngToLayerPoint([m.latitude, m.longitude]));
   const minDist = minPairPixelDistance(pts.map((p) => ({ x: p.x, y: p.y })));
   const decision = zoomToSeparate(minDist, map.getZoom(), map.getMaxZoom());
@@ -283,7 +327,7 @@ function onClusterClick(refs: PaintRefs, L: Leaflet, map: import("leaflet").Map,
     return;
   }
   refs.spiderfy.current = null;
-  map.setView([lat, lng], decision.zoom, { animate: true });
+  map.setView([lat, lng], decision.zoom, { animate });
 }
 
 function addSpiderfy(
@@ -326,17 +370,18 @@ function addVehicleMarker(
   at?: import("leaflet").LatLng,
 ) {
   const selected = v.id === selectedId;
+  const emphasized = selected || v.id === refs.previewVehicleId.current;
   const label = showLabels ? vehicleTagLabel(v, compact) : null;
   const icon = L.divIcon({
     className: "fleet-div-icon",
-    html: vehicleIconHtml(v.status, { heading: spiderfied ? null : v.heading, selected, label }),
-    iconSize: vehicleIconSize(selected),
-    iconAnchor: vehicleIconAnchor(selected),
+    html: vehicleIconHtml(v.status, { heading: spiderfied ? null : v.heading, selected: emphasized, label }),
+    iconSize: vehicleIconSize(emphasized),
+    iconAnchor: vehicleIconAnchor(emphasized),
     popupAnchor: [0, -18],
   });
   const marker = L.marker(at ?? [v.latitude, v.longitude], {
     icon,
-    zIndexOffset: selected ? 700 : v.status === "driving" ? 300 : v.status === "offline" ? 80 : 200,
+    zIndexOffset: emphasized ? 700 : v.status === "driving" ? 300 : v.status === "offline" ? 80 : 200,
     keyboard: false,
   });
   const who = v.profile?.full_name ?? v.geotabDriverName ?? "Unassigned";
