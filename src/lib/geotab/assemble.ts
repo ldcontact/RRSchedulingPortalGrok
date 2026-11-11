@@ -9,7 +9,13 @@ export type AssembleInput = {
   snapshots: GeotabVehicleSnapshot[];
   mappings: FleetMapping[];
   people: FleetPerson[];
-  jobs: { id: string; title: string; customer_name: string; address: string | null; starts_at: string; ends_at: string; assignees: { id: string }[]; latitude?: number | null; longitude?: number | null }[];
+  jobs: {
+    id: string; title: string; customer_name: string; address: string | null; starts_at: string; ends_at: string;
+    assignees: { id: string; full_name?: string; color?: string; avatar_url?: string | null }[];
+    latitude?: number | null; longitude?: number | null;
+    project_id?: string | null; project_name?: string | null; project_type?: import("@/lib/types").ProjectType;
+    kind?: import("@/lib/types").JobKind; status?: import("@/lib/types").JobStatus;
+  }[];
   scope: "all" | "own";
   viewerId: string;
 };
@@ -48,16 +54,35 @@ export function assembleLocations(input: AssembleInput): FleetLocationsResponse 
   return { sample: input.sample, asOf: input.asOf, geocoding: "census", vehicles, visits };
 }
 
+function visitMeta(j: AssembleInput["jobs"][number]): Pick<FleetVisitPin, "projectId" | "projectName" | "projectType" | "kind" | "status" | "assignees" | "assigneeIds"> {
+  const assignees = j.assignees.map((a) => ({
+    id: a.id,
+    full_name: a.full_name || a.id,
+    color: a.color || "#64748b",
+    avatar_url: a.avatar_url ?? null,
+  }));
+  return {
+    projectId: j.project_id ?? null,
+    projectName: j.project_name ?? null,
+    projectType: j.project_type ?? "lighting",
+    kind: j.kind ?? "install",
+    status: j.status ?? "scheduled",
+    assignees,
+    assigneeIds: assignees.map((a) => a.id),
+  };
+}
+
 export function visitPinsFromJobs(jobs: AssembleInput["jobs"], sample: boolean): FleetVisitPin[] {
   return jobs.flatMap((j) => {
+    const meta = visitMeta(j);
     if (j.latitude != null && j.longitude != null) {
       return [{
         jobId: j.id, title: j.title, customerName: j.customer_name, address: j.address,
         startsAt: j.starts_at, endsAt: j.ends_at, latitude: j.latitude, longitude: j.longitude,
-        assigneeIds: j.assignees.map((a) => a.id),
+        ...meta,
       }];
     }
-    return sample ? sampleVisitPins([j]) : [];
+    return sample ? sampleVisitPins([j]).map((pin) => ({ ...pin, ...meta })) : [];
   });
 }
 

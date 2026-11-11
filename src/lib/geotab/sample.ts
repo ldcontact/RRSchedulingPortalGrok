@@ -39,6 +39,8 @@ export function sampleVisitPins(jobs: { id: string; title: string; customer_name
       jobId: j.id, title: j.title, customerName: j.customer_name, address: j.address,
       startsAt: j.starts_at, endsAt: j.ends_at, latitude: c.lat, longitude: c.lng,
       assigneeIds: j.assignees.map((a) => a.id),
+      projectId: null, projectName: null, projectType: "lighting", kind: "install", status: "scheduled",
+      assignees: j.assignees.map((a) => ({ id: a.id, full_name: a.id, color: "#64748b" })),
     }];
   });
 }

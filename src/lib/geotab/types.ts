@@ -1,3 +1,5 @@
+import type { JobKind, JobStatus, ProjectType } from "@/lib/types";
+
 export type FleetStatus = "driving" | "stopped" | "offline";
 
 export type FleetMapping = {
@@ -13,6 +15,8 @@ export type FleetPerson = {
   avatar_url?: string | null;
 };
 
+export type FleetVisitAssignee = { id: string; full_name: string; color: string; avatar_url?: string | null };
+
 export type FleetVisitPin = {
   jobId: string;
   title: string;
@@ -23,6 +27,12 @@ export type FleetVisitPin = {
   latitude: number;
   longitude: number;
   assigneeIds: string[];
+  projectId: string | null;
+  projectName: string | null;
+  projectType: ProjectType;
+  kind: JobKind;
+  status: JobStatus;
+  assignees: FleetVisitAssignee[];
 };
 
 export type FleetNearestVisit = {

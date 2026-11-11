@@ -44,17 +44,25 @@ type PaintRefs = {
   layers: React.RefObject<import("leaflet").LayerGroup | null>;
   data: React.RefObject<FleetLocationsResponse | null>;
   selectedId: React.RefObject<string | null | undefined>;
+  selectedVisitId: React.RefObject<string | null | undefined>;
   padding: React.RefObject<number>;
   spiderfy: React.RefObject<string[] | null>;
   onSelect: React.RefObject<((id: string) => void) | undefined>;
+  onSelectVisit: React.RefObject<((id: string) => void) | undefined>;
   fitted: React.RefObject<boolean>;
   lastSelected: React.RefObject<string | null | undefined>;
+  viewKey: React.RefObject<string>;
+  lastViewKey: React.RefObject<string>;
 };
 
-export function FleetMapCanvas({ data, selectedId, onSelect, className = "", padding = 48 }: {
+export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, onSelectVisit, viewKey = "", className = "", padding = 48 }: {
   data: FleetLocationsResponse | null;
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  selectedVisitId?: string | null;
+  onSelectVisit?: (id: string) => void;
+  /** Changes when the visible vehicle/visit set is filtered so the map can refit. */
+  viewKey?: string;
   className?: string;
   padding?: number;
 }) {
@@ -62,9 +70,13 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const layerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const onSelectRef = useRef(onSelect);
+  const onSelectVisitRef = useRef(onSelectVisit);
   const dataRef = useRef(data);
   const selectedIdRef = useRef(selectedId);
+  const selectedVisitIdRef = useRef(selectedVisitId);
   const paddingRef = useRef(padding);
+  const viewKeyRef = useRef(viewKey);
+  const lastViewKeyRef = useRef("");
   const spiderfyRef = useRef<string[] | null>(null);
   const fittedRef = useRef(false);
   const lastSelectedRef = useRef<string | null | undefined>(undefined);
@@ -74,17 +86,24 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
     layers: layerRef,
     data: dataRef,
     selectedId: selectedIdRef,
+    selectedVisitId: selectedVisitIdRef,
     padding: paddingRef,
     spiderfy: spiderfyRef,
     onSelect: onSelectRef,
+    onSelectVisit: onSelectVisitRef,
     fitted: fittedRef,
     lastSelected: lastSelectedRef,
+    viewKey: viewKeyRef,
+    lastViewKey: lastViewKeyRef,
   });
   const [mapReady, setMapReady] = useState(0);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+  useEffect(() => { onSelectVisitRef.current = onSelectVisit; }, [onSelectVisit]);
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  useEffect(() => { selectedVisitIdRef.current = selectedVisitId; }, [selectedVisitId]);
   useEffect(() => { paddingRef.current = padding; }, [padding]);
+  useEffect(() => { viewKeyRef.current = viewKey; }, [viewKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,7 +152,7 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
 
   useEffect(() => {
     void paint(refs.current, { fit: true });
-  }, [data, selectedId, padding, mapReady]);
+  }, [data, selectedId, selectedVisitId, viewKey, padding, mapReady]);
 
   return (
     <div className={`relative min-h-[200px] w-full min-w-0 ${className}`}>
@@ -154,18 +173,23 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
   const compact = (wrapEl?.clientHeight ?? 400) < 260 || (wrapEl?.clientWidth ?? 600) < 400;
   const zoom = map.getZoom();
   const showLabels = zoom > 10;
-  const siteIcon = L.divIcon({
-    className: "fleet-div-icon",
-    html: jobSiteIconHtml(),
-    iconSize: JOB_SITE_ICON_SIZE,
-    iconAnchor: JOB_SITE_ICON_ANCHOR,
-    popupAnchor: [0, -32],
-  });
+  const selectedVisit = refs.selectedVisitId.current;
+  let selectedVisitMarker: import("leaflet").Marker | null = null;
   for (const v of current.visits) {
     if (!isMappablePoint(v.latitude, v.longitude)) continue;
-    const m = L.marker([v.latitude, v.longitude], { icon: siteIcon, zIndexOffset: 50, keyboard: false });
+    const isSelected = v.jobId === selectedVisit;
+    const icon = L.divIcon({
+      className: "fleet-div-icon",
+      html: jobSiteIconHtml({ type: v.projectType, kind: v.kind, selected: isSelected }),
+      iconSize: JOB_SITE_ICON_SIZE,
+      iconAnchor: JOB_SITE_ICON_ANCHOR,
+      popupAnchor: [0, -32],
+    });
+    const m = L.marker([v.latitude, v.longitude], { icon, zIndexOffset: isSelected ? 650 : 50, keyboard: false });
     m.bindPopup(`<strong>${escapeHtml(v.customerName)}</strong><br/>${escapeHtml(v.title)}`, { autoPan: false });
+    m.on("click", () => refs.onSelectVisit.current?.(v.jobId));
     m.addTo(layers);
+    if (isSelected) selectedVisitMarker = m;
   }
   const vehicles = current.vehicles.filter((v) => isMappablePoint(v.latitude, v.longitude));
   const project = (lat: number, lng: number) => {
@@ -206,8 +230,12 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
   }
 
   if (opts.fit) {
-    const selectedChanged = refs.lastSelected.current !== selected;
-    refs.lastSelected.current = selected;
+    const token = selected ? `v:${selected}` : selectedVisit ? `j:${selectedVisit}` : null;
+    const selectedChanged = refs.lastSelected.current !== token;
+    refs.lastSelected.current = token;
+    const viewKey = refs.viewKey.current;
+    const viewChanged = viewKey !== refs.lastViewKey.current;
+    refs.lastViewKey.current = viewKey;
     if (selected && selectedChanged) {
       const sel = current.vehicles.find((v) => v.id === selected);
       if (sel && isMappablePoint(sel.latitude, sel.longitude)) {
@@ -219,7 +247,14 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
         }
       }
       refs.fitted.current = true;
-    } else if (!refs.fitted.current) {
+    } else if (selectedVisit && selectedChanged) {
+      const visit = current.visits.find((v) => v.jobId === selectedVisit);
+      if (visit && isMappablePoint(visit.latitude, visit.longitude)) {
+        map.setView([visit.latitude, visit.longitude], Math.max(map.getZoom(), 15), { animate: true });
+        selectedVisitMarker?.openPopup();
+      }
+      refs.fitted.current = true;
+    } else if (!refs.fitted.current || viewChanged) {
       const bounds = L.latLngBounds([]);
       const fitPts = autoFitPoints(current.vehicles, current.visits, current.asOf);
       for (const p of fitPts) bounds.extend([p.latitude, p.longitude]);
@@ -230,6 +265,8 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
       }
       refs.fitted.current = true;
     }
+  } else if (selectedVisitMarker && selectedVisit) {
+    selectedVisitMarker.openPopup();
   }
   requestAnimationFrame(() => map.invalidateSize());
 }

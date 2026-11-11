@@ -150,6 +150,7 @@ function seedPhase2(): P2 {
     jb("j2", "p1", "Exam rooms + hallway retrofit", 0, 8, 15, "scheduled", "Operatories 3 & 4 after 1pm only. Bring 2 spare sensors."),
     jb("j3", "p2", "High bays – bays 1 & 2", 0, 7, 11, "in_progress", "Lift is in bay 2. Tony on site from 7am.", { started_at: at(0, 7, 5) }),
     jb("j8", "p2", "Bay 4 punch list", 0, 13, 15, "scheduled", "Quick punch list; customer asked for afternoon."),
+    jb("j13", "p3", "Thermostat follow-up", 0, 14, 16, "scheduled", "Confirm both new stats are on the 6a–7p schedule."),
     jb("j4", "p2", "High bays bays 3–4 + wall packs", 1, 7, 15, "scheduled", null),
     jb("j5", "p3", "RTU tune-up + thermostats", -1, 9, 13, "completed", "Roof ladder at rear; lockbox code from Maria.", { started_at: at(-1, 9), completed_at: at(-1, 12, 40), completed_by: "u-tech3" }),
     jb("j6", "p4", "Phase A – high bays (day 1)", 2, 7, 16, "scheduled", "Safety glasses + steel toes. Check in at the guard shack."),
@@ -157,7 +158,7 @@ function seedPhase2(): P2 {
   ];
   const as = (job_id: string, ...ids: string[]) => ids.map((profile_id) => ({ job_id, profile_id }));
   const assignments = [...as("j1", "u-tech1", "u-tech2"), ...as("j2", "u-tech1", "u-tech2"), ...as("j3", "u-tech4"), ...as("j8", "u-tech2"), ...as("j4", "u-tech4", "u-tech1"),
-    ...as("j5", "u-tech3"), ...as("j6", "u-tech1", "u-tech2", "u-tech3"), ...as("j7", "u-tech1", "u-tech2")];
+    ...as("j5", "u-tech3"), ...as("j13", "u-tech3"), ...as("j6", "u-tech1", "u-tech2", "u-tech3"), ...as("j7", "u-tech1", "u-tech2")];
   const ph = (project_id: string, job_id: string | null, kind: Photo["kind"], caption: string, days: number, by: string, requirement_id: string | null = null): PhotoRow =>
     ({ id: randomUUID(), project_id, job_id, kind, storage_path: `seed/${kind}/${encodeURIComponent(caption)}.svg`, caption, requirement_id, uploaded_by: by, created_at: ago(days) });
   const req = (id: string, project_id: string, label: string, sort_order: number, note: string | null = null): PhotoRequirement =>

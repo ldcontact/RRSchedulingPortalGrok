@@ -1,23 +1,77 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, PageHeader } from "@/components/ui";
+import { AvatarStack, JobKindBadge, JobStatusPill, TypeTag } from "@/components/status";
 import { SubmitButton } from "@/components/submit-button";
 import { setFleetMapping } from "@/app/(app)/fleet/actions";
-import { fmtDateTime } from "@/lib/time";
+import { fmtDateTime, fmtRange } from "@/lib/time";
 import type { FleetVehicleRow, TeamMember } from "@/lib/types";
-import type { FleetVehicle } from "@/lib/geotab/types";
+import type { FleetVehicle, FleetVisitPin } from "@/lib/geotab/types";
 import { FleetMapCanvas } from "./fleet-map";
 import { SampleBadge } from "./sample-badge";
 import { suggestFleetAssignee } from "@/lib/geotab/suggest";
-import { vehicleStatusDotStyle } from "./map-icons";
+import { jobSiteFill, vehicleStatusDotStyle } from "./map-icons";
 import { driverLabel, statusDetail, STATUS_LABEL, STATUS_PILL, vehicleTitle } from "./status";
 import { useFleetLocations } from "./use-fleet-locations";
+import {
+  JOB_FILTER_LABEL,
+  VEHICLE_FILTER_LABEL,
+  VEHICLE_FILTER_ORDER,
+  jobFilterCounts,
+  parseFilterQuery,
+  serializeFilterQuery,
+  toggleFilter,
+  vehicleFilterCounts,
+  vehicleMatchesFilters,
+  visitMatchesFilters,
+  visibleJobFilters,
+  type JobFilterKey,
+  type VehicleFilterKey,
+} from "./filters";
 
 export function FleetPageClient({ admin, team, mappings }: { admin: boolean; team: TeamMember[]; mappings: FleetVehicleRow[] }) {
   const { data, error, loading } = useFleetLocations();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedVisitId, setSelectedVisitId] = useState<string | null>(null);
   const mapByDevice = useMemo(() => new Map(mappings.map((m) => [m.geotab_device_id, m])), [mappings]);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { types, vehicles: vehicleFilters } = useMemo(() => parseFilterQuery(searchParams), [searchParams]);
+
+  const setFilters = useCallback((nextTypes: JobFilterKey[], nextVehicles: VehicleFilterKey[]) => {
+    const qs = serializeFilterQuery(nextTypes, nextVehicles);
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router]);
+
+  const jobCounts = useMemo(() => jobFilterCounts(data?.visits ?? []), [data]);
+  const shownJobFilters = visibleJobFilters(jobCounts);
+  const vehicleCounts = useMemo(() => vehicleFilterCounts(data?.vehicles ?? []), [data]);
+
+  const filtered = useMemo(() => {
+    if (!data) return null;
+    return {
+      ...data,
+      vehicles: data.vehicles.filter((v) => vehicleMatchesFilters(v, vehicleFilters)),
+      visits: data.visits.filter((v) => visitMatchesFilters(v, types)),
+    };
+  }, [data, types, vehicleFilters]);
+
+  const viewKey = `${types.join(",")}|${vehicleFilters.join(",")}`;
+
+  function selectVehicle(id: string) {
+    setSelectedVisitId(null);
+    setSelectedId(id);
+    scrollToMap();
+  }
+  function selectVisit(id: string) {
+    setSelectedId(null);
+    setSelectedVisitId(id);
+    scrollToMap();
+  }
 
   return (
     <div data-testid="fleet-page">
@@ -30,29 +84,116 @@ export function FleetPageClient({ admin, team, mappings }: { admin: boolean; tea
       {data && (
         <p className="mb-3 text-[12.5px] text-muted">Visit pins use geocoded job-site coordinates (US Census). Arrival is automatic when a stopped truck is within 150 m. Sites that have not been geocoded yet are omitted.</p>
       )}
-      <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,360px)]">
-        <div className="card min-w-0 overflow-hidden">
-          <div className="h-[280px] w-full min-w-0 md:h-[560px]">
-            {loading && !data ? <div className="grid h-full place-items-center text-sm text-muted">Loading map…</div> : <FleetMapCanvas data={data} selectedId={selectedId} onSelect={setSelectedId} className="h-full" />}
-          </div>
-        </div>
-        <div className="card flex min-h-0 min-w-0 flex-col overflow-hidden lg:max-h-[560px]">
-          <div className="card-hd shrink-0"><h3 className="font-semibold">Vehicles</h3><span className="text-xs text-muted">{data?.vehicles.length ?? 0}</span></div>
-          <div className="min-h-0 flex-1 divide-y divide-line overflow-y-auto" data-testid="fleet-vehicle-list">
-            {!data?.vehicles.length && <div className="p-5 text-sm text-muted">{loading ? "Loading…" : "No vehicles to show."}</div>}
-            {data?.vehicles.map((v) => (
-              <VehicleRow key={v.id} v={v} selected={v.id === selectedId} onSelect={() => setSelectedId(v.id)} admin={admin} team={team} mapping={mapByDevice.get(v.id)} />
+
+      <div className="mb-3 flex flex-col gap-2">
+        {shownJobFilters.length > 0 && (
+          <FilterRow label="Job type" testId="fleet-job-filters">
+            <FilterChip active={types.length === 0} onClick={() => setFilters([], vehicleFilters)} count={data?.visits.length ?? 0}>All</FilterChip>
+            {shownJobFilters.map((key) => (
+              <FilterChip
+                key={key}
+                active={types.includes(key)}
+                onClick={() => setFilters(toggleFilter(types, key), vehicleFilters)}
+                count={jobCounts[key]}
+                swatch={key === "warranty" || key === "service" ? undefined : jobSiteFill(key)}
+              >
+                {JOB_FILTER_LABEL[key]}
+              </FilterChip>
             ))}
-          </div>
+          </FilterRow>
+        )}
+        <FilterRow label="Vehicles" testId="fleet-vehicle-filters">
+          <FilterChip active={vehicleFilters.length === 0} onClick={() => setFilters(types, [])} count={data?.vehicles.length ?? 0}>All</FilterChip>
+          {VEHICLE_FILTER_ORDER.map((key) => (
+            <FilterChip
+              key={key}
+              active={vehicleFilters.includes(key)}
+              onClick={() => setFilters(types, toggleFilter(vehicleFilters, key))}
+              count={vehicleCounts[key]}
+            >
+              {VEHICLE_FILTER_LABEL[key]}
+            </FilterChip>
+          ))}
+        </FilterRow>
+      </div>
+
+      <div className="card mb-4 min-w-0 overflow-hidden">
+        <div className="h-[320px] w-full min-w-0 md:h-[520px]">
+          {loading && !filtered ? <div className="grid h-full place-items-center text-sm text-muted">Loading map…</div> : (
+            <FleetMapCanvas
+              data={filtered}
+              selectedId={selectedId}
+              onSelect={selectVehicle}
+              selectedVisitId={selectedVisitId}
+              onSelectVisit={selectVisit}
+              viewKey={viewKey}
+              className="h-full"
+            />
+          )}
         </div>
       </div>
+
+      <section className="mb-4">
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h2 className="text-base font-semibold">Vehicles</h2>
+          <span className="text-xs text-muted">{filtered?.vehicles.length ?? 0}</span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" data-testid="fleet-vehicle-list">
+          {!filtered?.vehicles.length && <div className="card p-5 text-sm text-muted md:col-span-2 xl:col-span-3">{loading ? "Loading…" : "No vehicles to show."}</div>}
+          {filtered?.vehicles.map((v) => (
+            <div key={v.id} className={`card min-w-0 ${selectedId === v.id ? "ring-2 ring-brand/40" : ""}`}>
+              <VehicleRow v={v} selected={v.id === selectedId} onSelect={() => selectVehicle(v.id)} admin={admin} team={team} mapping={mapByDevice.get(v.id)} />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h2 className="text-base font-semibold">Jobs / Projects</h2>
+          <span className="text-xs text-muted">{filtered?.visits.length ?? 0}</span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2" data-testid="fleet-job-list">
+          {!filtered?.visits.length && <div className="card p-5 text-sm text-muted md:col-span-2">{loading && !data ? "Loading…" : "No job sites to show."}</div>}
+          {filtered?.visits.map((v) => (
+            <JobRow key={v.jobId} v={v} selected={v.jobId === selectedVisitId} onSelect={() => selectVisit(v.jobId)} />
+          ))}
+        </div>
+      </section>
     </div>
+  );
+}
+
+function scrollToMap() {
+  document.querySelector("[data-testid='fleet-map']")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function FilterRow({ label, testId, children }: { label: string; testId: string; children: ReactNode }) {
+  return (
+    <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-0.5" role="group" aria-label={label} data-testid={testId}>
+      {children}
+    </div>
+  );
+}
+
+function FilterChip({ active, onClick, count, swatch, children }: { active: boolean; onClick: () => void; count?: number; swatch?: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-semibold ${active ? "border-brand bg-brand text-white" : "border-line bg-white text-muted hover:text-ink"}`}
+    >
+      {swatch && <span className="size-2 shrink-0 rounded-full ring-1 ring-black/10" style={{ backgroundColor: swatch }} aria-hidden />}
+      {children}
+      {count != null && <span className={`rounded-full px-1.5 text-[11px] ${active ? "bg-white/20" : "bg-canvas"}`}>{count}</span>}
+    </button>
   );
 }
 
 function VehicleRow({ v, selected, onSelect, admin, team, mapping }: { v: FleetVehicle; selected: boolean; onSelect: () => void; admin: boolean; team: TeamMember[]; mapping?: FleetVehicleRow }) {
   return (
-    <div className={`px-4 py-3 ${selected ? "bg-brand-50/60" : "hover:bg-[#fafbf9]"}`}>
+    <div className={`px-4 py-3 ${selected ? "bg-brand-50/60" : ""}`}>
       <button type="button" onClick={onSelect} className="flex w-full min-w-0 items-start gap-3 text-left">
         <span className="mt-1 size-2.5 shrink-0 rounded-full" style={vehicleStatusDotStyle(v.status)} data-testid="fleet-status-dot" data-status={v.status} />
         <div className="min-w-0 flex-1">
@@ -86,6 +227,41 @@ function VehicleRow({ v, selected, onSelect, admin, team, mapping }: { v: FleetV
           <SuggestedMapping v={v} team={team} mapping={mapping} />
         </div>
       )}
+    </div>
+  );
+}
+
+function JobRow({ v, selected, onSelect }: { v: FleetVisitPin; selected: boolean; onSelect: () => void }) {
+  return (
+    <div className={`card min-w-0 ${selected ? "ring-2 ring-brand/40 bg-brand-50/60" : ""}`}>
+      <div className="flex w-full min-w-0 flex-col gap-1.5 px-4 py-3 text-left hover:bg-[#fafbf9]">
+        <button type="button" onClick={onSelect} className="flex min-w-0 flex-col gap-1.5 text-left">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate font-semibold">{v.customerName}</div>
+              <div className="truncate text-[12.5px] text-muted">{v.projectName || v.title}</div>
+            </div>
+            <JobStatusPill status={v.status} />
+          </div>
+          <div className="flex min-w-0 items-center gap-1 text-[12.5px] text-muted">
+            <Icon name="pin" className="size-3.5 shrink-0" />
+            <span className="truncate">{v.address || "No address on file"}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <TypeTag type={v.projectType} />
+            <JobKindBadge kind={v.kind} size="sm" />
+            <span className="text-[12.5px] text-muted">{fmtRange(v.startsAt, v.endsAt)}</span>
+          </div>
+        </button>
+        <div className="flex items-center justify-between gap-2">
+          <button type="button" onClick={onSelect} className="min-w-0 text-left"><AvatarStack people={v.assignees} /></button>
+          {v.projectId && (
+            <Link href={`/projects/${v.projectId}`} className="text-[12.5px] font-semibold text-brand hover:underline">
+              View project
+            </Link>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

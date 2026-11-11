@@ -60,4 +60,15 @@ describe("assembleLocations", () => {
     const carlos = res.vehicles.find((v) => v.profile?.id === "u-tech1")!;
     expect(carlos.nearestVisit?.kind).toBe("enroute");
   });
+  it("copies project type, visit kind, status and assignees onto visit pins", () => {
+    const withMeta = [
+      { ...jobs[0], project_id: "p2", project_name: "Shop high-bay upgrade", project_type: "lighting" as const, kind: "install" as const, status: "in_progress" as const, latitude: 42.048335210405, longitude: -88.100787329604, assignees: [{ id: "u-tech4", full_name: "Emily Chen", color: "#16a34a" }] },
+      { ...jobs[1], project_id: "p3", project_name: "RTU tune-up", project_type: "hvac" as const, kind: "warranty" as const, status: "scheduled" as const, latitude: 42.11, longitude: -88.04, assignees: [{ id: "u-tech3", full_name: "Andre Williams", color: "#db2777" }] },
+    ];
+    const res = assembleLocations({ ...base, jobs: withMeta, sample: false, scope: "all", viewerId: "u-admin" });
+    expect(res.visits.find((v) => v.jobId === "j3")).toMatchObject({ projectType: "lighting", kind: "install", status: "in_progress", projectId: "p2" });
+    const hvac = res.visits.find((v) => v.jobId === "j2")!;
+    expect(hvac).toMatchObject({ projectType: "hvac", kind: "warranty", projectName: "RTU tune-up" });
+    expect(hvac.assignees[0]?.full_name).toBe("Andre Williams");
+  });
 });

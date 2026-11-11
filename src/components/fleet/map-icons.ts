@@ -1,4 +1,5 @@
 import type { FleetStatus } from "@/lib/geotab/types";
+import type { JobKind, ProjectType } from "@/lib/types";
 
 /** Map vehicle fills: green when driving, red when stopped, muted slate when offline. */
 export const VEHICLE_FILL: Record<FleetStatus, string> = {
@@ -8,6 +9,18 @@ export const VEHICLE_FILL: Record<FleetStatus, string> = {
 };
 
 export const JOB_SITE_FILL = "#d97706";
+
+/** House-pin fills by project type. Lighting keeps the original orange. */
+export const JOB_SITE_FILL_BY_TYPE: Record<ProjectType, string> = {
+  lighting: "#d97706",
+  hvac: "#2563eb",
+  lighting_hvac: "#7c3aed",
+  other: "#57534e",
+};
+
+export function jobSiteFill(type?: ProjectType | null): string {
+  return (type && JOB_SITE_FILL_BY_TYPE[type]) || JOB_SITE_FILL;
+}
 
 /** Shared list-dot / legend fill for a vehicle status. Offline is slightly muted. */
 export function vehicleStatusDotStyle(status: FleetStatus): { backgroundColor: string; opacity?: number } {
@@ -38,10 +51,14 @@ function vehicleSvg(color: string, size: number, defs = ""): string {
 </svg>`;
 }
 
-function jobSiteSvg(): string {
+function jobSiteSvg(fill: string, kind?: JobKind | null): string {
+  const badge = kind === "warranty" || kind === "service"
+    ? `<circle cx="22.5" cy="7.5" r="5.6" fill="${kind === "warranty" ? "#b45309" : "#c2410c"}" stroke="#fff" stroke-width="1.4"/><text x="22.5" y="10.2" text-anchor="middle" font-size="8" font-weight="700" font-family="system-ui,sans-serif" fill="#fff">${kind === "warranty" ? "W" : "S"}</text>`
+    : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 36" width="28" height="36" aria-hidden="true">
-  <path d="M14 1.5c-6.2 0-11 4.9-11 11.2 0 8.2 11 21.3 11 21.3s11-13.1 11-21.3C25 6.4 20.2 1.5 14 1.5z" fill="${JOB_SITE_FILL}" stroke="#fff" stroke-width="1.8"/>
+  <path d="M14 1.5c-6.2 0-11 4.9-11 11.2 0 8.2 11 21.3 11 21.3s11-13.1 11-21.3C25 6.4 20.2 1.5 14 1.5z" fill="${fill}" stroke="#fff" stroke-width="1.8"/>
   <path d="M14 9.2 20 14v7.2h-3.2v-3.8h-3.6v3.8H10V14z" fill="#fff"/>
+  ${badge}
 </svg>`;
 }
 
@@ -76,8 +93,12 @@ export function clusterIconHtml(opts: { count: number; fill: string; split?: boo
   return `<div class="fleet-cluster-icon${opts.selected ? " is-selected" : ""}" data-testid="fleet-cluster" data-count="${opts.count}" style="position:relative;width:${size}px;height:${size}px;line-height:0;${ring}">${vehicleSvg(color, size, defs)}<span class="fleet-cluster-count">${opts.count}</span></div>`;
 }
 
-export function jobSiteIconHtml(): string {
-  return `<div class="fleet-jobsite-icon" style="line-height:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">${jobSiteSvg()}</div>`;
+export function jobSiteIconHtml(opts: { type?: ProjectType | null; kind?: JobKind | null; selected?: boolean } = {}): string {
+  const fill = jobSiteFill(opts.type);
+  const ring = opts.selected
+    ? `box-shadow:0 0 0 2px #fff,0 0 0 4px ${fill};border-radius:16px;`
+    : "filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));";
+  return `<div class="fleet-jobsite-icon${opts.selected ? " is-selected" : ""}" data-testid="fleet-jobsite" data-type="${opts.type ?? ""}" data-kind="${opts.kind ?? "install"}" style="line-height:0;${ring}">${jobSiteSvg(fill, opts.kind)}</div>`;
 }
 
 export function vehicleIconSize(selected = false): [number, number] {
