@@ -29,7 +29,7 @@ type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "addres
 const mapCustomers = (data: unknown[] | null): CustomerRow[] =>
   ((data ?? []) as CustomerRowRaw[]).map(({ contacts, ...c }) => ({ ...c, primary_contact: contacts.find((x) => x.is_primary)?.name ?? contacts[0]?.name ?? null }));
 const iso = (t: string | null) => (t ? new Date(t).toISOString() : t); // normalise "+00:00" -> "Z" so string compares work
-const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip, lat, lng, geocode_status)), service_requests(lat, lng, geocode_status, site_address), job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))";
+const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip, lat, lng, geocode_status)), service_requests!jobs_service_request_id_fkey(lat, lng, geocode_status, site_address), job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))";
 type JobRow = Job & {
   projects: { name: string; type: Project["type"]; customer_id: string; customers: { name: string; address: string | null; city: string | null; state: string | null; zip: string | null; lat: number | null; lng: number | null; geocode_status: import("@/lib/types").GeocodeStatus | null } | null };
   service_requests: { lat: number | null; lng: number | null; geocode_status: import("@/lib/types").GeocodeStatus | null; site_address: string | null } | null;
