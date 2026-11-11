@@ -21,9 +21,9 @@ export const JobStatusPill = ({ status }: { status: JobStatus }) => <span classN
 export const TypeTag = ({ type }: { type: ProjectType }) => <span className="tag">{PROJECT_TYPE_LABEL[type]}</span>;
 
 export function AvatarStack({ people, max = 4 }: { people: Person[]; max?: number }) {
-  if (!people.length) return <span className="text-xs text-muted">Unassigned</span>;
+  if (!people.length) return <span className="shrink-0 text-xs text-muted">Unassigned</span>;
   return (
-    <span className="flex -space-x-1.5">
+    <span className="flex shrink-0 -space-x-1.5">
       {people.slice(0, max).map((p) => <span key={p.id} className="rounded-full ring-2 ring-white"><Avatar name={p.full_name} color={p.color} size="sm" src={p.avatar_url} /></span>)}
       {people.length > max && <span className="grid size-6 place-items-center rounded-full bg-slate-200 text-[10px] font-bold ring-2 ring-white">+{people.length - max}</span>}
     </span>

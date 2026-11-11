@@ -60,7 +60,8 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { 
           </div>
         </aside>
       )}
-      <div className="flex min-w-0 flex-col">
+      {/* overflow-x-clip: last-resort guard so one stray wide element can never widen the phone layout viewport (clip, not hidden, keeps the sticky header working). */}
+      <div className="flex min-w-0 flex-col overflow-x-clip" data-overflow-guard>
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-white/90 px-3 backdrop-blur md:h-[60px] md:px-6">
           <div className={tech ? "" : "md:hidden"}><Logo compact /></div>
           <div className="min-w-0 flex-1 truncate font-semibold">{tech ? "RR Scheduler" : ""}</div>
@@ -70,12 +71,12 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { 
         </header>
         <main className={`w-full px-3 pt-4 pb-28 md:px-6 md:pt-6 ${tech ? "mx-auto max-w-[680px]" : "max-w-[1320px] md:pb-10"}`}>{children}</main>
       </div>
-      <nav className={`fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-line bg-white px-1.5 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,.05)] ${tech ? "mx-auto max-w-[680px] rounded-t-2xl border-x" : "md:hidden"}`}>
+      <nav className={`fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-line bg-white px-1 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,.05)] ${tech ? "mx-auto max-w-[680px] rounded-t-2xl border-x" : "md:hidden"}`}>
         {bottom.map((i) => i.soon ? (
-          <span key={i.href} className="flex min-w-[60px] flex-col items-center gap-0.5 px-2 py-1.5 text-[11px] font-semibold text-slate-300" title="Coming in phase 2"><Icon name={i.icon} className="size-[22px]" />{i.label}</span>
+          <span key={i.href} className="flex max-w-24 min-w-0 flex-1 flex-col items-center gap-0.5 px-px py-1.5 text-[10px] min-[380px]:text-[11px] font-semibold text-slate-300" title="Coming in phase 2"><Icon name={i.icon} className="size-[22px] shrink-0" /><span className="max-w-full truncate">{i.label}</span></span>
         ) : (
-          <Link key={i.href} href={i.href} className={`relative flex min-w-[56px] flex-col items-center gap-0.5 rounded-lg px-1.5 py-1.5 text-[11px] font-semibold ${bottomActive(i.href) ? "bg-brand-50 text-brand" : "text-muted"}`}>
-            <Icon name={i.icon} className="size-[22px]" />{i.short ?? i.label}
+          <Link key={i.href} href={i.href} className={`relative flex max-w-24 min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-px py-1.5 text-[10px] font-semibold min-[380px]:text-[11px] ${bottomActive(i.href) ? "bg-brand-50 text-brand" : "text-muted"}`}>
+            <Icon name={i.icon} className="size-[22px] shrink-0" /><span className="max-w-full truncate">{i.short ?? i.label}</span>
             {!!badges[i.href] && <span className="absolute top-0.5 right-1 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold text-[#3b2600]">{badges[i.href]}</span>}
           </Link>
         ))}

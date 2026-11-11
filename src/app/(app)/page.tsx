@@ -12,8 +12,8 @@ import type { JobView } from "@/lib/types";
 function JobRow({ j, showCrew = true }: { j: JobView; showCrew?: boolean }) {
   return (
     <Link href={`/jobs/${j.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-[#fafbf9]">
-      <div className="w-[72px] text-[12px] font-semibold text-muted">{fmtRange(j.starts_at, j.ends_at)}</div>
-      <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="truncate font-semibold">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div><div className="truncate text-[12.5px] text-muted">{j.customer_name}</div></div>
+      <div className="w-[72px] shrink-0 text-[12px] font-semibold text-muted">{fmtRange(j.starts_at, j.ends_at)}</div>
+      <div className="min-w-0 flex-1"><div className="flex min-w-0 items-center gap-1.5"><span className="min-w-0 truncate font-semibold">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div><div className="truncate text-[12.5px] text-muted">{j.customer_name}</div></div>
       {showCrew && <AvatarStack people={j.assignees} max={3} />}
       <JobStatusPill status={j.status} />
     </Link>
@@ -97,21 +97,21 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
         {stat(c.proposed, "Proposals out", "send", "/projects?status=proposed", "bg-accent-50 text-amber-700")}
         {stat(openSr, "Open service requests", "wrench", "/service-requests", "bg-orange-50 text-orange-800", "col-span-2 lg:col-span-1", "home-open-service-requests")}
       </div>
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <div className="card" id="review" data-testid="awaiting-review">
-          <div className="card-hd"><h3 className="font-semibold">Awaiting your review</h3><span className="pill bg-violet-100 text-violet-800">{review.length}</span></div>
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div className="card min-w-0" id="review" data-testid="awaiting-review">
+          <div className="card-hd"><h3 className="min-w-0 truncate font-semibold">Awaiting your review</h3><span className="pill shrink-0 bg-violet-100 text-violet-800">{review.length}</span></div>
           <div className="divide-y divide-line">
             {!review.length && <div className="p-6 text-center text-sm text-muted">All caught up.</div>}
             {review.map((j) => (
               <Link key={j.id} href={`/jobs/${j.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-[#fafbf9]">
                 <div className="min-w-0 flex-1"><div className="truncate font-semibold">{j.title}</div><div className="truncate text-[12.5px] text-muted">{j.customer_name} · submitted {j.completed_at ? fmtDateTime(j.completed_at) : ""}</div></div>
-                <AvatarStack people={j.assignees} max={3} /><span className="btn btn-sm">Review</span>
+                <AvatarStack people={j.assignees} max={3} /><span className="btn btn-sm shrink-0">Review</span>
               </Link>
             ))}
           </div>
         </div>
-        <div className="card">
-          <div className="card-hd"><h3 className="font-semibold">Today&apos;s visits</h3><Link href={`/schedule?view=day&date=${T}`} className="text-xs font-semibold text-brand">Dispatch board</Link></div>
+        <div className="card min-w-0">
+          <div className="card-hd"><h3 className="min-w-0 truncate font-semibold">Today&apos;s visits</h3><Link href={`/schedule?view=day&date=${T}`} className="shrink-0 text-xs font-semibold whitespace-nowrap text-brand">Dispatch board</Link></div>
           <div className="divide-y divide-line">
             {!todays.length && <div className="p-6 text-center text-sm text-muted">No visits today.</div>}
             {todays.map((j) => <JobRow key={j.id} j={j} />)}

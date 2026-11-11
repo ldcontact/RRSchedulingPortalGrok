@@ -100,10 +100,10 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
               {!list.length && <div className="p-4 text-sm text-muted">Nothing scheduled.</div>}
               {list.map((j) => (
                 <Link key={j.id} href={`/jobs/${j.id}`} className={`flex items-center gap-3 border-l-4 px-3 py-3 ${JOB_BAR[j.status]} ${KIND_BAR[j.kind ?? "install"]}`}>
-                  <div className="w-16 text-[12px] font-semibold text-muted">{fmtTime(j.starts_at)}<br />{fmtTime(j.ends_at)}</div>
+                  <div className="w-16 shrink-0 text-[12px] font-semibold text-muted">{fmtTime(j.starts_at)}<br />{fmtTime(j.ends_at)}</div>
                   <div className="min-w-0 flex-1"><div className="truncate font-semibold">{j.title}</div><div className="truncate text-[12.5px] text-muted">{j.customer_name}{j.address ? ` · ${j.address.split(" ").slice(-3, -2)[0] ?? ""}` : ""}</div>
-                    <div className="mt-1 flex items-center gap-2"><JobKindBadge kind={j.kind} size="sm" /><JobStatusPill status={j.status} />{conflicted.has(j.id) && <span className="pill bg-red-50 text-red-700"><Icon name="alert" className="size-3" />Double-booked</span>}</div></div>
-                  <span className="flex -space-x-1.5">{j.assignees.slice(0, 3).map((a) => <span key={a.id} className="rounded-full ring-2 ring-white"><Avatar name={a.full_name} color={a.color} size="sm" src={a.avatar_url} /></span>)}</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><JobKindBadge kind={j.kind} size="sm" /><JobStatusPill status={j.status} />{conflicted.has(j.id) && <span className="pill bg-red-50 text-red-700"><Icon name="alert" className="size-3" />Double-booked</span>}</div></div>
+                  <span className="flex shrink-0 -space-x-1.5">{j.assignees.slice(0, 3).map((a) => <span key={a.id} className="rounded-full ring-2 ring-white"><Avatar name={a.full_name} color={a.color} size="sm" src={a.avatar_url} /></span>)}</span>
                 </Link>
               ))}
             </div>
