@@ -56,8 +56,8 @@ export type FleetVehicle = {
 export type FleetLocationsResponse = {
   sample: boolean;
   asOf: string;
-  /** Visits have addresses but no lat/lng in the schema; pins only appear when sample coords are supplied. */
-  geocoding: "unavailable";
+  /** "census" once addresses can be geocoded; visit pins appear only for jobs with stored (or sample-fallback) coords. */
+  geocoding: "census";
   vehicles: FleetVehicle[];
   visits: FleetVisitPin[];
 };

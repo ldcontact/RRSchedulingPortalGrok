@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
+import { geocodeServiceRequestById } from "@/lib/geocode/run";
 import { findConflicts, getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDay, fmtRange, parseHHMM, validDay, zonedToUtc } from "@/lib/time";
 import { formatAddress } from "@/lib/project-row";
@@ -97,6 +98,7 @@ export async function createTicket(_: TicketFormState, fd: FormData): Promise<Ti
       await repo.addServiceRequestEvent(id, { kind: "linked", body: `Matched to original project “${p?.name ?? "project"}”.` });
     }
   } catch (e) { return { error: (e as Error).message, values }; }
+  await geocodeServiceRequestById(id);
   refresh(id);
   redirect(`/service-requests/${id}?ok=${encodeURIComponent(`${ticketNo(number)} created. Nothing was sent to the customer.`)}`);
 }

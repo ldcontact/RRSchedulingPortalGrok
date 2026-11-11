@@ -21,7 +21,7 @@ describe("assembleLocations", () => {
   it("flags sample data and pins today's visits only when sample coords exist", () => {
     const res = assembleLocations({ ...base, sample: true, scope: "all", viewerId: "u-admin" });
     expect(res.sample).toBe(true);
-    expect(res.geocoding).toBe("unavailable");
+    expect(res.geocoding).toBe("census");
     expect(res.vehicles).toHaveLength(SAMPLE_VEHICLES.length);
     expect(res.visits.map((v) => v.jobId).sort()).toEqual(["j2", "j3"]);
   });
@@ -40,10 +40,24 @@ describe("assembleLocations", () => {
     expect(res.vehicles).toHaveLength(1);
     expect(res.vehicles[0].profile?.id).toBe("u-tech1");
   });
-  it("does not attach visit pins when not in sample mode (no stored coords)", () => {
+  it("does not attach visit pins when not in sample mode and jobs have no stored coords", () => {
     const res = assembleLocations({ ...base, sample: false, scope: "all", viewerId: "u-admin" });
     expect(res.sample).toBe(false);
     expect(res.visits).toEqual([]);
     expect(res.vehicles.find((v) => v.profile?.id === "u-tech4")!.nearestVisit).toBeNull();
+  });
+  it("uses stored Census coordinates even when Geotab is live (not sample), including 150 m arrival", () => {
+    const withCoords = [
+      { ...jobs[0], latitude: 42.048335210405, longitude: -88.100787329604 },
+      { ...jobs[1], latitude: 42.05564871268, longitude: -87.999730840348 },
+    ];
+    const res = assembleLocations({ ...base, jobs: withCoords, sample: false, scope: "all", viewerId: "u-admin" });
+    expect(res.visits).toHaveLength(2);
+    expect(res.visits.find((v) => v.jobId === "j3")).toMatchObject({ latitude: 42.048335210405, longitude: -88.100787329604 });
+    const emily = res.vehicles.find((v) => v.profile?.id === "u-tech4")!;
+    expect(emily.nearestVisit?.kind).toBe("onsite");
+    expect(emily.nearestVisit?.customerName).toBe("Golf Road Auto Body");
+    const carlos = res.vehicles.find((v) => v.profile?.id === "u-tech1")!;
+    expect(carlos.nearestVisit?.kind).toBe("enroute");
   });
 });

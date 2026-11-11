@@ -2,13 +2,14 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
-import type { FleetVehicleRow,  AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
+import type { FleetVehicleRow, AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { applySearch, parseSearch } from "@/lib/search";
 import { applyTicketVisits } from "@/lib/tickets";
+import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 import type { TicketVisitCrew } from "@/lib/types";
 
 /** Search term safe inside a PostgREST or=() filter: quoted, without wildcard/grouping chars. */
@@ -28,18 +29,21 @@ type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "addres
 const mapCustomers = (data: unknown[] | null): CustomerRow[] =>
   ((data ?? []) as CustomerRowRaw[]).map(({ contacts, ...c }) => ({ ...c, primary_contact: contacts.find((x) => x.is_primary)?.name ?? contacts[0]?.name ?? null }));
 const iso = (t: string | null) => (t ? new Date(t).toISOString() : t); // normalise "+00:00" -> "Z" so string compares work
-const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip)), job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))";
+const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip, lat, lng, geocode_status)), service_requests(lat, lng, geocode_status, site_address), job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))";
 type JobRow = Job & {
-  projects: { name: string; type: Project["type"]; customer_id: string; customers: { name: string; address: string | null; city: string | null; state: string | null; zip: string | null } | null };
+  projects: { name: string; type: Project["type"]; customer_id: string; customers: { name: string; address: string | null; city: string | null; state: string | null; zip: string | null; lat: number | null; lng: number | null; geocode_status: import("@/lib/types").GeocodeStatus | null } | null };
+  service_requests: { lat: number | null; lng: number | null; geocode_status: import("@/lib/types").GeocodeStatus | null; site_address: string | null } | null;
   job_assignments: { profiles: Person | null }[];
 };
 function toJobView(r: JobRow): JobView {
-  const { projects: p, job_assignments, ...j } = r;
+  const { projects: p, job_assignments, service_requests: sr, ...j } = r;
   const c = p.customers;
   const addr = c ? [c.address, [c.city, c.state].filter(Boolean).join(", "), c.zip].filter(Boolean).join(" ") : "";
+  const { latitude, longitude } = visitCoords(c, sr);
   return {
     ...j, starts_at: iso(j.starts_at)!, ends_at: iso(j.ends_at)!, project_name: p.name, project_type: p.type, customer_id: p.customer_id,
     customer_name: c?.name ?? "", address: addr || null, assignees: job_assignments.map((a) => a.profiles).filter((x): x is Person => !!x),
+    latitude, longitude,
   };
 }
 
@@ -177,12 +181,15 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       return data as Customer | null;
     },
     async createCustomer(input) {
-      const { data, error } = await (await db()).from("customers").insert(input).select().single();
+      const { data, error } = await (await db()).from("customers").insert({ ...input, ...emptyGeocode() }).select().single();
       fail(error);
       return data as Customer;
     },
     async updateCustomer(id, input) {
-      const { error } = await (await db()).from("customers").update(input).eq("id", id);
+      const s = await db();
+      const { data: prev } = await s.from("customers").select("address, city, state, zip").eq("id", id).maybeSingle();
+      const patch = addressChanged(prev, input) ? { ...input, ...emptyGeocode() } : input;
+      const { error } = await s.from("customers").update(patch).eq("id", id);
       fail(error);
     },
     async listContacts(customerId) {
@@ -685,6 +692,12 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     },
     async setFleetAccess(profileId, access) {
       fail((await (await db()).from("profiles").update({ fleet_access: access }).eq("id", profileId).is("deleted_at", null)).error);
+    },
+    async setCustomerGeocode(id, patch) {
+      fail((await (await db()).from("customers").update(patch).eq("id", id)).error);
+    },
+    async setServiceRequestGeocode(id, patch) {
+      fail((await (await db()).from("service_requests").update(patch).eq("id", id)).error);
     },
   };
 }

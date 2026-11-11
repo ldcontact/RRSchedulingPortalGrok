@@ -25,8 +25,8 @@ export function FleetPageClient({ admin, team, mappings }: { admin: boolean; tea
         actions={data?.sample ? <SampleBadge /> : null}
       />
       {error && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div>}
-      {data?.sample && (
-        <p className="mb-3 text-[12.5px] text-muted">Visit pins and arrival chips use sample coordinates. Live jobs store addresses only — a geocoder is needed before arrival can be computed from Geotab.</p>
+      {data && (
+        <p className="mb-3 text-[12.5px] text-muted">Visit pins use geocoded job-site coordinates (US Census). Arrival is automatic when a stopped truck is within 150 m. Sites that have not been geocoded yet are omitted.</p>
       )}
       <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,360px)]">
         <div className="card min-w-0 overflow-hidden">

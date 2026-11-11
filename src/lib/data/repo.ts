@@ -2,7 +2,7 @@ import type {
   Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, CustomerPageFilter, CustomerRow, Paged, ProjectPage, ProjectPageFilter, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
   Milestone, Note, Person, Photo, PhotoKind, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
   ServiceRequest, ServiceRequestInput, ServiceRequestPatch, ServiceRequestView, SREvent, SREventKind, SRPage, SRPageFilter,
-  FleetVehicleRow,
+  FleetVehicleRow, GeocodeFields,
 } from "@/lib/types";
 
 /**
@@ -91,6 +91,9 @@ export interface Repo {
   listFleetVehicles(): Promise<FleetVehicleRow[]>;
   setFleetVehicleMapping(deviceId: string, patch: { label?: string | null; profile_id?: string | null }): Promise<void>;
   setFleetAccess(profileId: string, access: boolean): Promise<void>;
+
+  setCustomerGeocode(id: string, patch: GeocodeFields): Promise<void>;
+  setServiceRequestGeocode(id: string, patch: GeocodeFields): Promise<void>;
 }
 
 /** Jobs in `jobs` (not cancelled) that overlap [starts, ends) for any of `people`, excluding `exceptJob`. */

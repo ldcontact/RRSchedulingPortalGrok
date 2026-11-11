@@ -4,9 +4,9 @@ import type { FleetVisitPin, GeotabVehicleSnapshot } from "./types";
 export const SAMPLE_AS_OF = "2026-11-11T16:18:00.000Z";
 
 export const SAMPLE_VEHICLES: GeotabVehicleSnapshot[] = [
-  { id: "gt-t1", name: "Truck 1 – Ford Transit", status: "driving", speedKmh: 45, latitude: 42.022, longitude: -88.008, heading: 120, lastUpdate: "2026-11-11T16:17:00.000Z", isDeviceCommunicating: true, currentStateDuration: null, geotabDriverName: null },
-  { id: "gt-t2", name: "Truck 2", status: "stopped", speedKmh: 0, latitude: 42.05516, longitude: -88.08235, heading: 80, lastUpdate: "2026-11-11T15:42:00.000Z", isDeviceCommunicating: true, currentStateDuration: "00:36:00", geotabDriverName: null },
-  { id: "gt-v3", name: "Van 3", status: "driving", speedKmh: 30.6, latitude: 42.079, longitude: -87.992, heading: 50, lastUpdate: "2026-11-11T16:17:00.000Z", isDeviceCommunicating: true, currentStateDuration: null, geotabDriverName: null },
+  { id: "gt-t1", name: "Truck 1 – Ford Transit", status: "driving", speedKmh: 45, latitude: 42.03049599978025, longitude: -87.97069430757468, heading: 120, lastUpdate: "2026-11-11T16:17:00.000Z", isDeviceCommunicating: true, currentStateDuration: null, geotabDriverName: null },
+  { id: "gt-t2", name: "Truck 2", status: "stopped", speedKmh: 0, latitude: 42.048784365992496, longitude: -88.10151315934525, heading: 80, lastUpdate: "2026-11-11T15:42:00.000Z", isDeviceCommunicating: true, currentStateDuration: "00:36:00", geotabDriverName: null },
+  { id: "gt-v3", name: "Van 3", status: "driving", speedKmh: 30.6, latitude: 42.04846222328007, longitude: -87.98521257396133, heading: 50, lastUpdate: "2026-11-11T16:17:00.000Z", isDeviceCommunicating: true, currentStateDuration: null, geotabDriverName: null },
   { id: "gt-car", name: "Car – Luke", status: "stopped", speedKmh: 0, latitude: 42.0298, longitude: -88.0875, heading: 0, lastUpdate: "2026-11-11T16:15:00.000Z", isDeviceCommunicating: true, currentStateDuration: "01:12:00", geotabDriverName: null },
   { id: "gt-t4", name: "Truck 4", status: "offline", speedKmh: 0, latitude: 42.005, longitude: -88.078, heading: 0, lastUpdate: "2026-11-11T13:02:00.000Z", isDeviceCommunicating: false, currentStateDuration: null, geotabDriverName: null },
   { id: "gt-v5", name: "Van 5", status: "driving", speedKmh: 58, latitude: 41.992, longitude: -87.912, heading: 95, lastUpdate: "2026-11-11T16:16:00.000Z", isDeviceCommunicating: true, currentStateDuration: null, geotabDriverName: null },
@@ -22,13 +22,13 @@ export const SAMPLE_DEFAULT_MAP: { geotab_device_id: string; label: string | nul
 ];
 
 /**
- * Sample visit pins keyed by mock job id. Live data cannot pin visits: jobs/customers
- * store address text only, no lat/lng columns.
+ * Fallback visit pins (Census-matched customer coords) used in Geotab sample mode
+ * only when a job has no stored lat/lng.
  */
 export const SAMPLE_VISIT_COORDS: Record<string, { lat: number; lng: number }> = {
-  j3: { lat: 42.0548, lng: -88.0815 }, // Golf Road Auto Body — High bays
-  j2: { lat: 42.0884, lng: -87.9806 }, // Lakeview Family Dental
-  j8: { lat: 42.0535, lng: -88.079 },  // Golf Road, afternoon punch
+  j3: { lat: 42.048335210405, lng: -88.100787329604 }, // Golf Road Auto Body (Census)
+  j2: { lat: 42.05564871268, lng: -87.999730840348 },  // Lakeview Family Dental (Census)
+  j8: { lat: 42.048335210405, lng: -88.100787329604 }, // Golf Road, afternoon punch
 };
 
 export function sampleVisitPins(jobs: { id: string; title: string; customer_name: string; address: string | null; starts_at: string; ends_at: string; assignees: { id: string }[] }[]): FleetVisitPin[] {

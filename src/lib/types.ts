@@ -55,6 +55,9 @@ export type TeamMember = {
   fleet_access: boolean;
 };
 
+export type GeocodeStatus = "matched" | "no_match" | "tie" | "error";
+export type GeocodeFields = { lat: number | null; lng: number | null; geocoded_at: string | null; geocode_status: GeocodeStatus | null };
+
 export type Customer = {
   id: string;
   name: string;
@@ -68,8 +71,8 @@ export type Customer = {
   tags: string[];
   created_at: string;
   updated_at: string;
-};
-export type CustomerInput = Omit<Customer, "id" | "created_at" | "updated_at">;
+} & GeocodeFields;
+export type CustomerInput = Omit<Customer, "id" | "created_at" | "updated_at" | "lat" | "lng" | "geocoded_at" | "geocode_status">;
 export type CustomerListItem = Customer & { primary_contact: string | null; project_count: number };
 
 // ---- paged list views (one database page at a time; only the columns the row shows)
@@ -142,7 +145,7 @@ export type Job = {
   kind: JobKind; service_request_id: string | null;
 };
 export type JobInput = Pick<Job, "project_id" | "title" | "starts_at" | "ends_at" | "instructions"> & { kind?: JobKind; service_request_id?: string | null };
-export type JobView = Job & { project_name: string; project_type: ProjectType; customer_id: string; customer_name: string; address: string | null; assignees: Person[] };
+export type JobView = Job & { project_name: string; project_type: ProjectType; customer_id: string; customer_name: string; address: string | null; assignees: Person[]; latitude: number | null; longitude: number | null };
 export type JobFilter = { from?: string; to?: string; projectId?: string; assignee?: string; status?: JobStatus[]; serviceRequestId?: string };
 
 export type PhotoKind = "before" | "completion";
@@ -182,7 +185,7 @@ export type ServiceRequest = {
   billable: boolean; assignee_id: string | null; converted_project_id: string | null;
   resolved_at: string | null; resolved_by: string | null; resolved_job_id: string | null;
   created_by: string | null; created_at: string; updated_at: string;
-};
+} & GeocodeFields;
 /** Crew on the ticket's next upcoming service/warranty visit, or the latest visit if none are upcoming. */
 export type TicketVisitCrew = {
   job_id: string; starts_at: string; status: JobStatus; kind: JobKind; techs: Person[];

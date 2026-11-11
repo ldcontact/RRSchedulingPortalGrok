@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import type { CustomerInput } from "@/lib/types";
+import { geocodeCustomerById } from "@/lib/geocode/run";
 
 export type CustomerFormState = { error?: string; values?: Record<string, string> } | undefined;
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -22,6 +23,7 @@ export async function saveCustomer(_: CustomerFormState, fd: FormData): Promise<
   if (input.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) return { error: "That email address doesn't look right.", values };
   const repo = await getRepo();
   let targetId = id;
+  const prev = id ? await repo.getCustomer(id).catch(() => null) : null;
   try {
     if (id) await repo.updateCustomer(id, input);
     else {
@@ -33,7 +35,11 @@ export async function saveCustomer(_: CustomerFormState, fd: FormData): Promise<
   } catch (e) {
     return { error: (e as Error).message, values };
   }
+  // Geocode after the row is saved so a Census timeout/error never blocks the customer.
+  await geocodeCustomerById(targetId, prev, !id);
   revalidatePath("/customers");
+  revalidatePath("/fleet");
+  revalidatePath("/schedule");
   redirect(`/customers/${targetId}?saved=1`);
 }
 

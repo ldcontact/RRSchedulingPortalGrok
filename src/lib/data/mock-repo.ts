@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
-import type { Contact, Customer, FleetVehicleRow, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
+import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
@@ -14,6 +14,7 @@ import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 import { applyTicketVisits } from "@/lib/tickets";
 import { SAMPLE_DEFAULT_MAP } from "@/lib/geotab/sample";
 import { hasFleetAccess } from "@/lib/geotab/access";
+import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 
 /*
  * DEV MOCK MODE data layer. Persists to .mock-db.json in the project root
@@ -31,6 +32,25 @@ type AuditRow = { id: string; actor_id: string; action: string; target_email: st
 type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[]; fleet_vehicles: FleetVehicleRow[] } & P2 & SR;
 export const MOCK_UPLOADS = join(process.cwd(), ".mock-uploads");
 const FILE = join(process.cwd(), ".mock-db.json");
+
+/** Census Geocoder results (Public_AR_Current, 2026-11-11) for the sample customer addresses. */
+const CENSUS_AT = "2026-11-11T15:45:00.000Z";
+const CENSUS_SEED: Record<string, GeocodeFields> = {
+  c1: { lat: 42.05564871268, lng: -87.999730840348, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  c2: { lat: 42.048335210405, lng: -88.100787329604, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  c3: { lat: 42.111750364075, lng: -88.046276782448, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  c4: { lat: 42.002294921649, lng: -87.948362438668, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  c5: { lat: null, lng: null, geocoded_at: CENSUS_AT, geocode_status: "no_match" }, // 1600 W Higgins Rd did not match
+  c6: { lat: 42.079082186161, lng: -88.02292446097, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  c7: { lat: 41.971354670264, lng: -88.020444520251, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  c8: { lat: 41.986558490764, lng: -88.085092482722, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+};
+function withGeocode<T extends { id: string }>(row: T, table: "customer" | "sr" = "customer"): T & GeocodeFields {
+  const g = CENSUS_SEED[row.id] ?? (table === "sr" ? CENSUS_SEED[(row as { customer_id?: string }).customer_id ?? ""] : undefined);
+  return { ...row, ...(g ?? emptyGeocode()) };
+}
+
+
 
 const now = () => new Date().toISOString();
 const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
@@ -53,7 +73,7 @@ function seed(): DB {
   }));
   invites.push({ email: "sam.ortiz@gmail.com", role: "tech", full_name: "Sam Ortiz", phone: "(630) 555-0177", title: "Apprentice Electrician", color: "#0891b2", avatar_source: "none", avatar_path: null, invited_at: ago(1), accepted_at: null });
   const c = (id: string, name: string, phone: string, email: string, address: string, city: string, zip: string, tags: string[], notes: string, days: number): Customer =>
-    ({ id, name, phone, email, address, city, state: "IL", zip, tags, notes, created_at: ago(days), updated_at: ago(days) });
+    ({ id, name, phone, email, address, city, state: "IL", zip, tags, notes, created_at: ago(days), updated_at: ago(days), ...emptyGeocode() });
   const customers = [
     c("c1", "Lakeview Family Dental", "(847) 555-0141", "office@lakeviewdental.example", "1420 W Algonquin Rd", "Arlington Heights", "60005", ["ComEd SB", "Lighting"], "Office manager is Janet. Prefers texts. Closes 1pm Fridays.", 60),
     c("c2", "Golf Road Auto Body", "(847) 555-0152", "tony@golfrdautobody.example", "905 E Golf Rd", "Schaumburg", "60173", ["ComEd SB", "Lighting"], "Shop opens 7am. Bay 4 is clear for the lift.", 45),
@@ -63,7 +83,7 @@ function seed(): DB {
     c("c6", "Northwest Fitness Studio", "(847) 555-0196", "jamal@nwfitness.example", "3315 Kirchoff Rd", "Rolling Meadows", "60008", ["Lead", "HVAC"], "Wants HVAC tune-up + lighting assessment. Busy 5–8pm.", 6),
     c("c7", "Itasca Print & Sign", "(630) 555-0127", "rosa@itascaprint.example", "510 W Irving Park Rd", "Itasca", "60143", ["Lead"], "Referred by Golf Road Auto Body.", 3),
     c("c8", "Roselle Family Pharmacy", "(630) 555-0138", "ken@rosellerx.example", "122 E Irving Park Rd", "Roselle", "60172", ["Lead", "Lighting"], "Asked about the free ComEd assessment.", 2),
-  ];
+  ].map((row) => withGeocode(row));
   const k = (customer_id: string, name: string, title: string, phone: string, email: string, is_primary = true): Contact =>
     ({ id: randomUUID(), customer_id, name, title, phone, email, is_primary });
   const contacts = [
@@ -265,7 +285,7 @@ function seedServiceRequests(db: DB) {
       id, number, customer_id, project_id, site_address: c?.address ?? null, site_city: c?.city ?? null, site_state: c?.state ?? null, site_zip: c?.zip ?? null,
       contact_name: k?.name ?? null, contact_phone: k?.phone ?? null, contact_email: k?.email ?? null, channel, received_at, summary, description, priority: "normal", status: "new",
       billable: false, assignee_id: null, converted_project_id: null, resolved_at: null, resolved_by: null, resolved_job_id: null, created_by: "u-manager",
-      created_at: received_at, updated_at: received_at, ...extra,
+      created_at: received_at, updated_at: received_at, ...(c ? { lat: c.lat, lng: c.lng, geocoded_at: c.geocoded_at, geocode_status: c.geocode_status } : emptyGeocode()), ...extra,
     };
   };
   const tickets = [
@@ -320,6 +340,15 @@ function load(): DB {
     }
   }
   if (fleetTouched) save(db);
+  let geoTouched = false;
+  const blankGeo = () => { geoTouched = true; return emptyGeocode(); };
+  for (const row of db.customers) {
+    if (row.geocode_status === undefined) Object.assign(row, blankGeo());
+  }
+  for (const row of db.service_requests ?? []) {
+    if (row.geocode_status === undefined) Object.assign(row, blankGeo());
+  }
+  if (geoTouched) save(db);
   return db;
 }
 function save(db: DB) { writeFileSync(FILE, JSON.stringify(db, null, 2)); }
@@ -350,7 +379,9 @@ function viewJob(db: DB, j: Job): JobView {
       id: x!.id, full_name: x!.full_name, color: x!.color,
       avatar_url: resolveAvatarUrl(x!, x!.avatar_source === "upload" && x!.avatar_path ? `/api/mock-photo/${x!.avatar_path}` : null),
     }));
-  return { ...j, project_name: p.name, project_type: p.type, customer_id: p.customer_id, customer_name: c?.name ?? "", address: addr || null, assignees };
+  const sr = j.service_request_id ? db.service_requests.find((x) => x.id === j.service_request_id) : null;
+  const { latitude, longitude } = visitCoords(c, sr);
+  return { ...j, project_name: p.name, project_type: p.type, customer_id: p.customer_id, customer_name: c?.name ?? "", address: addr || null, assignees, latitude, longitude };
 }
 const profileOf = (db: DB, id: string | null) => (id ? db.profiles.find((p) => p.id === id) ?? null : null);
 const labelOf = (db: DB, id: string | null) => authorLabel(id, profileOf(db, id));
@@ -381,10 +412,15 @@ export const mockRepo: Repo = {
   },
   async getCustomer(id) { return load().customers.find((c) => c.id === id) ?? null; },
   async createCustomer(input) {
-    return mutate((db) => { const c: Customer = { ...input, id: randomUUID(), created_at: now(), updated_at: now() }; db.customers.push(c); return c; });
+    return mutate((db) => { const c: Customer = { ...input, id: randomUUID(), created_at: now(), updated_at: now(), ...emptyGeocode() }; db.customers.push(c); return c; });
   },
   async updateCustomer(id, input) {
-    mutate((db) => { const c = db.customers.find((x) => x.id === id); if (!c) throw new Error("Customer not found"); Object.assign(c, input, { updated_at: now() }); });
+    mutate((db) => {
+      const c = db.customers.find((x) => x.id === id); if (!c) throw new Error("Customer not found");
+      const changed = addressChanged(c, input);
+      Object.assign(c, input, { updated_at: now() });
+      if (changed) Object.assign(c, emptyGeocode());
+    });
   },
   async listContacts(customerId) {
     return load().contacts.filter((c) => c.customer_id === customerId).sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.name.localeCompare(b.name));
@@ -775,7 +811,7 @@ export const mockRepo: Repo = {
     return mutate((db) => {
       const number = Math.max(1000, ...db.service_requests.map((x) => x.number)) + 1;
       const sr: ServiceRequest = { ...input, id: randomUUID(), number, status: "new", billable: false, assignee_id: input.assignee_id ?? null, converted_project_id: null,
-        resolved_at: null, resolved_by: null, resolved_job_id: null, created_by: w.uid, created_at: now(), updated_at: now() };
+        resolved_at: null, resolved_by: null, resolved_job_id: null, created_by: w.uid, created_at: now(), updated_at: now(), ...emptyGeocode() };
       db.service_requests.push(sr);
       db.sr_events.push({ id: randomUUID(), request_id: sr.id, kind: "created", body: `Logged from ${input.channel === "email" ? "an email" : input.channel === "call" ? "a phone call" : "another channel"}.`, actor_id: w.uid, created_at: now() });
       return sr;
@@ -841,6 +877,12 @@ export const mockRepo: Repo = {
       const prof = db.profiles.find((x) => x.id === profileId);
       if (prof && !prof.deleted_at) prof.fleet_access = access;
     });
+  },
+  async setCustomerGeocode(id, patch) {
+    mutate((db) => { const c = db.customers.find((x) => x.id === id); if (c) Object.assign(c, patch); });
+  },
+  async setServiceRequestGeocode(id, patch) {
+    mutate((db) => { const sr = db.service_requests.find((x) => x.id === id); if (sr) Object.assign(sr, patch); });
   },
 };
 

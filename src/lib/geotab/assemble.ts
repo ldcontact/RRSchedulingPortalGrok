@@ -9,7 +9,7 @@ export type AssembleInput = {
   snapshots: GeotabVehicleSnapshot[];
   mappings: FleetMapping[];
   people: FleetPerson[];
-  jobs: { id: string; title: string; customer_name: string; address: string | null; starts_at: string; ends_at: string; assignees: { id: string }[] }[];
+  jobs: { id: string; title: string; customer_name: string; address: string | null; starts_at: string; ends_at: string; assignees: { id: string }[]; latitude?: number | null; longitude?: number | null }[];
   scope: "all" | "own";
   viewerId: string;
 };
@@ -17,7 +17,7 @@ export type AssembleInput = {
 export function assembleLocations(input: AssembleInput): FleetLocationsResponse {
   const peopleById = new Map(input.people.map((p) => [p.id, p]));
   const mapByDevice = new Map(input.mappings.map((m) => [m.geotab_device_id, m]));
-  const visits: FleetVisitPin[] = input.sample ? sampleVisitPins(input.jobs) : [];
+  const visits: FleetVisitPin[] = visitPinsFromJobs(input.jobs, input.sample);
   const snaps = input.scope === "own"
     ? input.snapshots.filter((s) => mapByDevice.get(s.id)?.profile_id === input.viewerId)
     : input.snapshots;
@@ -44,7 +44,20 @@ export function assembleLocations(input: AssembleInput): FleetLocationsResponse 
     };
   });
 
-  return { sample: input.sample, asOf: input.asOf, geocoding: "unavailable", vehicles, visits };
+  return { sample: input.sample, asOf: input.asOf, geocoding: "census", vehicles, visits };
+}
+
+export function visitPinsFromJobs(jobs: AssembleInput["jobs"], sample: boolean): FleetVisitPin[] {
+  return jobs.flatMap((j) => {
+    if (j.latitude != null && j.longitude != null) {
+      return [{
+        jobId: j.id, title: j.title, customerName: j.customer_name, address: j.address,
+        startsAt: j.starts_at, endsAt: j.ends_at, latitude: j.latitude, longitude: j.longitude,
+        assigneeIds: j.assignees.map((a) => a.id),
+      }];
+    }
+    return sample ? sampleVisitPins([j]) : [];
+  });
 }
 
 function nearestVisit(s: GeotabVehicleSnapshot, profileId: string | undefined, visits: FleetVisitPin[], speedMph: number | null): FleetNearestVisit | null {
