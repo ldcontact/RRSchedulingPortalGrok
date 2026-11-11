@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
-import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
+import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskView } from "@/lib/types";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
@@ -15,6 +15,7 @@ import { applyTicketVisits } from "@/lib/tickets";
 import { SAMPLE_DEFAULT_MAP } from "@/lib/geotab/sample";
 import { hasFleetAccess } from "@/lib/geotab/access";
 import { customerDeleteBlockers, hasDeleteAccess } from "@/lib/delete-access";
+import { canUpdateTaskStatus, canViewTask, compareTasksByDue, completedAtFor, isMyOpenTask, matchesTaskFilters, parseTaskPriority, parseTaskStatus, taskCounts } from "@/lib/tasks";
 import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 
 /*
@@ -28,9 +29,10 @@ type MessageRow = Omit<Message, "sender_name" | "sender_color">;
 type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[] };
 type SREventRow = Omit<SREvent, "actor_name" | "actor_color">;
 type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[] };
+type Tasks = { tasks: Task[] };
 type MockProfile = Profile & { deleted_at?: string | null };
 type AuditRow = { id: string; actor_id: string; action: string; target_email: string | null; target_profile_id: string | null; detail: Record<string, unknown>; created_at: string };
-type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[]; fleet_vehicles: FleetVehicleRow[] } & P2 & SR;
+type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[]; fleet_vehicles: FleetVehicleRow[] } & P2 & SR & Tasks;
 export const MOCK_UPLOADS = join(process.cwd(), ".mock-uploads");
 const FILE = join(process.cwd(), ".mock-db.json");
 
@@ -101,8 +103,9 @@ function seed(): DB {
   const maria = profiles.find((x) => x.id === "u-manager");
   if (maria) maria.fleet_access = true; // operations manager — used for manager fleet demos
   const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m }));
-  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [] } as DB;
+  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [] } as DB;
   seedServiceRequests(db);
+  seedTasks(db);
   return db;
 }
 
@@ -324,6 +327,47 @@ function seedServiceRequests(db: DB) {
 }
 const fmtShort = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: process.env.NEXT_PUBLIC_TZ || "America/Chicago", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
+
+function seedTasks(db: DB) {
+  const T = todayKey();
+  const now = (dayOffset: number, h = 9) => zonedToUtc(addDays(T, dayOffset), h * 60);
+  const task = (id: string, title: string, over: Partial<Task>): Task => ({
+    id, title, description: null, status: "open", priority: "normal", due_date: null,
+    assignee_id: null, created_by: "u-admin", project_id: null, customer_id: null, service_request_id: null,
+    completed_at: null, created_at: now(-2), updated_at: now(-2), ...over,
+  });
+  db.tasks = [
+    task("t1", "Call ComEd about Lakeview rebate paperwork", {
+      description: "They are missing the final invoice for the office retrofit. Ask for a status and forward anything they need.",
+      priority: "high", due_date: addDays(T, -1), assignee_id: "u-admin", created_by: "u-manager",
+      project_id: "p1", customer_id: "c1", created_at: now(-3),
+    }),
+    task("t2", "Order occupancy sensors for Lakeview", {
+      description: "Four sensors for the break room and restrooms. Use the usual supplier.",
+      status: "in_progress", due_date: T, assignee_id: "u-manager", created_by: "u-admin",
+      project_id: "p1", customer_id: "c1", created_at: now(-2, 10),
+    }),
+    task("t3", "Send Prairie Bean thermostat schedule PDF", {
+      description: "Confirm both new stats are on the 6a–7p weekday schedule and email Megan the one-pager.",
+      due_date: addDays(T, 1), assignee_id: "u-tech3", created_by: "u-manager",
+      project_id: "p3", customer_id: "c3", created_at: now(-1, 14),
+    }),
+    task("t4", "Follow up on Golf Road warranty ticket", {
+      description: "Check whether the high-bay in bay 2 is still cycling after last week's visit.",
+      priority: "high", due_date: addDays(T, 5), assignee_id: "u-tech1", created_by: "u-admin",
+      service_request_id: "sr4", customer_id: "c2", created_at: now(-1, 11),
+    }),
+    task("t5", "Restock van LED panels", {
+      description: "Two 2x4 40W flats for Friday afternoon at Lakeview.",
+      priority: "low", assignee_id: "u-tech2", created_by: "u-tech2", created_at: now(0, 8),
+    }),
+    task("t6", "Review Lakeview completion photos", {
+      status: "done", due_date: addDays(T, -7), assignee_id: "u-admin", created_by: "u-manager",
+      project_id: "p1", customer_id: "c1", completed_at: now(-4, 16), created_at: now(-8), updated_at: now(-4, 16),
+    }),
+  ];
+}
+
 function load(): DB {
   if (!existsSync(FILE)) { const db = seed(); save(db); return db; }
   const db = JSON.parse(readFileSync(FILE, "utf8")) as DB;
@@ -355,6 +399,7 @@ function load(): DB {
     if (row.geocode_status === undefined) Object.assign(row, blankGeo());
   }
   if (geoTouched) save(db);
+  if (!db.tasks) { db.tasks = []; seedTasks(db); save(db); }
   return db;
 }
 function save(db: DB) { writeFileSync(FILE, JSON.stringify(db, null, 2)); }
@@ -400,6 +445,31 @@ function viewJob(db: DB, j: Job): JobView {
 const profileOf = (db: DB, id: string | null) => (id ? db.profiles.find((p) => p.id === id) ?? null : null);
 const labelOf = (db: DB, id: string | null) => authorLabel(id, profileOf(db, id));
 const colorOf = (db: DB, id: string | null) => authorColor(profileOf(db, id));
+
+
+function viewTask(db: DB, t: Task): TaskView {
+  const assignee = t.assignee_id ? profileOf(db, t.assignee_id) : null;
+  const creator = profileOf(db, t.created_by);
+  const project = t.project_id ? db.projects.find((p) => p.id === t.project_id) : null;
+  const customer = t.customer_id ? db.customers.find((c) => c.id === t.customer_id) : null;
+  const sr = t.service_request_id ? db.service_requests.find((r) => r.id === t.service_request_id) : null;
+  const person = (p: Profile | null) => p ? {
+    id: p.id, full_name: p.full_name, color: p.color,
+    avatar_url: resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null),
+  } : null;
+  return {
+    ...t,
+    assignee: person(assignee),
+    creator: person(creator) ?? { id: t.created_by, full_name: "Unknown", color: "#64748b" },
+    project_name: project?.name ?? null,
+    customer_name: customer?.name ?? null,
+    service_request_number: sr?.number ?? null,
+    service_request_summary: sr?.summary ?? null,
+  };
+}
+function visibleTasks(db: DB, w: { uid: string; role: import("@/lib/types").Role | null }): Task[] {
+  return db.tasks.filter((t) => canViewTask({ id: w.uid, role: w.role }, t));
+}
 
 export const mockRepo: Repo = {
   async listCustomers(q) {
@@ -916,6 +986,7 @@ export const mockRepo: Repo = {
       db.contacts = db.contacts.filter((x) => x.customer_id !== id);
       db.notes = db.notes.filter((x) => x.customer_id !== id);
       db.messages = db.messages.filter((x) => x.customer_id !== id);
+      for (const task of db.tasks) if (task.customer_id === id) task.customer_id = null;
       db.customers = db.customers.filter((x) => x.id !== id);
     });
   },
@@ -937,6 +1008,7 @@ export const mockRepo: Repo = {
         if (r.resolved_job_id && jobIds.has(r.resolved_job_id)) r.resolved_job_id = null;
       }
       for (const m of db.messages) if (m.project_id === id) m.project_id = null;
+      for (const task of db.tasks) if (task.project_id === id) task.project_id = null;
       db.projects = db.projects.filter((p) => p.id !== id);
     });
     unlinkPhotoFiles(paths);
@@ -959,8 +1031,100 @@ export const mockRepo: Repo = {
     mutate((db) => {
       for (const j of db.jobs) if (j.service_request_id === id) j.service_request_id = null;
       db.sr_events = db.sr_events.filter((e) => e.request_id !== id);
+      for (const task of db.tasks) if (task.service_request_id === id) task.service_request_id = null;
       db.service_requests = db.service_requests.filter((r) => r.id !== id);
     });
+  },
+
+  async pageTasks(f) {
+    const w = await who();
+    const db = load();
+    const visible = visibleTasks(db, w);
+    const filtered = visible.filter((t) => matchesTaskFilters(t, f, w.uid));
+    const sorted = [...filtered].sort(compareTasksByDue);
+    const page = mockPage(sorted, f.page, f.size);
+    return { ...page, items: page.items.map((t) => viewTask(db, t)), counts: taskCounts(visible, w.uid) };
+  },
+  async countMyOpenTasks() {
+    const w = await who();
+    const db = load();
+    return visibleTasks(db, w).filter((t) => isMyOpenTask(t, w.uid)).length;
+  },
+  async getTask(id) {
+    const w = await who();
+    const db = load();
+    const t = db.tasks.find((x) => x.id === id);
+    if (!t || !canViewTask({ id: w.uid, role: w.role }, t)) return null;
+    return viewTask(db, t);
+  },
+  async createTask(input) {
+    const w = await who();
+    if (!w.uid || !w.role) throw new Error("permission denied (mock RLS)");
+    const title = input.title.trim();
+    if (!title) throw new Error("A title is required.");
+    return mutate((db) => {
+      const row: Task = {
+        id: `t-${randomUUID().slice(0, 8)}`,
+        title,
+        description: input.description?.trim() ? input.description.trim() : null,
+        status: parseTaskStatus(input.status) ?? "open",
+        priority: parseTaskPriority(input.priority) ?? "normal",
+        due_date: input.due_date || null,
+        assignee_id: input.assignee_id || null,
+        created_by: w.uid,
+        project_id: input.project_id || null,
+        customer_id: input.customer_id || null,
+        service_request_id: input.service_request_id || null,
+        completed_at: completedAtFor(parseTaskStatus(input.status) ?? "open", null),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      db.tasks.push(row);
+      return row;
+    });
+  },
+  async updateTask(id, patch) {
+    const w = await who();
+    const existing = load().tasks.find((x) => x.id === id);
+    if (!existing || !canViewTask({ id: w.uid, role: w.role }, existing)) throw new Error("Task not found.");
+    const staff = w.role === "admin" || w.role === "manager";
+    if (!staff && !canUpdateTaskStatus({ id: w.uid, role: w.role }, existing)) throw new Error("permission denied (mock RLS)");
+    mutate((db) => {
+      const t = db.tasks.find((x) => x.id === id);
+      if (!t) return;
+      if (staff) {
+        if (patch.title !== undefined) {
+          const title = patch.title.trim();
+          if (!title) throw new Error("A title is required.");
+          t.title = title;
+        }
+        if (patch.description !== undefined) t.description = patch.description?.trim() ? patch.description.trim() : null;
+        if (patch.priority !== undefined) t.priority = parseTaskPriority(patch.priority) ?? t.priority;
+        if (patch.due_date !== undefined) t.due_date = patch.due_date || null;
+        if (patch.assignee_id !== undefined) t.assignee_id = patch.assignee_id || null;
+        if (patch.project_id !== undefined) t.project_id = patch.project_id || null;
+        if (patch.customer_id !== undefined) t.customer_id = patch.customer_id || null;
+        if (patch.service_request_id !== undefined) t.service_request_id = patch.service_request_id || null;
+      } else if (
+        patch.title !== undefined || patch.description !== undefined || patch.priority !== undefined
+        || patch.due_date !== undefined || patch.assignee_id !== undefined || patch.project_id !== undefined
+        || patch.customer_id !== undefined || patch.service_request_id !== undefined
+      ) {
+        throw new Error("techs can only update task status");
+      }
+      if (patch.status !== undefined) {
+        const status = parseTaskStatus(patch.status);
+        if (status) {
+          t.completed_at = completedAtFor(status, t.completed_at);
+          t.status = status;
+        }
+      }
+      t.updated_at = new Date().toISOString();
+    });
+  },
+  async deleteTask(id) {
+    requireDeleteMock(await who());
+    mutate((db) => { db.tasks = db.tasks.filter((t) => t.id !== id); });
   },
   async setCustomerGeocode(id, patch) {
     mutate((db) => { const c = db.customers.find((x) => x.id === id); if (c) Object.assign(c, patch); });

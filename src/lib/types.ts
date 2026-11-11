@@ -225,3 +225,54 @@ export type ProjectPick = {
 
 /** Geotab device ↔ team-member mapping (public.fleet_vehicles). */
 export type FleetVehicleRow = { geotab_device_id: string; label: string | null; profile_id: string | null };
+
+// ---------------------------------------------------------------- tasks
+export type TaskStatus = "open" | "in_progress" | "done";
+export const TASK_STATUSES: TaskStatus[] = ["open", "in_progress", "done"];
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = { open: "Open", in_progress: "In progress", done: "Done" };
+/** Open + in progress (not done). Used by the default list filter and the nav badge. */
+export const TASK_ACTIVE: TaskStatus[] = ["open", "in_progress"];
+export type TaskPriority = "low" | "normal" | "high";
+export const TASK_PRIORITIES: TaskPriority[] = ["low", "normal", "high"];
+export const TASK_PRIORITY_LABEL: Record<TaskPriority, string> = { low: "Low", normal: "Normal", high: "High" };
+export type TaskDueFilter = "overdue" | "today" | "upcoming" | "none";
+
+export type Task = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date: string | null;
+  assignee_id: string | null;
+  created_by: string;
+  project_id: string | null;
+  customer_id: string | null;
+  service_request_id: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type TaskInput = Pick<Task, "title" | "description" | "status" | "priority" | "due_date" | "assignee_id" | "project_id" | "customer_id" | "service_request_id">;
+export type TaskPatch = Partial<TaskInput>;
+export type TaskView = Task & {
+  assignee: Person | null;
+  creator: Person;
+  project_name: string | null;
+  customer_name: string | null;
+  service_request_number: number | null;
+  service_request_summary: string | null;
+};
+export type TaskTab = "mine" | "all";
+export type TaskPageFilter = {
+  tab?: TaskTab;
+  q?: string;
+  status?: TaskStatus | "active";
+  assignee?: string | "none";
+  due?: TaskDueFilter;
+  projectId?: string;
+  customerId?: string;
+  page: number;
+  size?: number;
+};
+export type TaskPage = Paged<TaskView> & { counts: Record<string, number> };

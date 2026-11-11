@@ -15,12 +15,14 @@ const NAV: Record<Role, NavItem[]> = {
     { href: "/customers", label: "Customers", icon: "users" },
     { href: "/projects", label: "Projects", icon: "briefcase" },
     { href: "/service-requests", label: "Service requests", short: "Service", icon: "wrench" },
+    { href: "/tasks", label: "Tasks", icon: "task" },
     { href: "/team", label: "Team", icon: "hardhat" },
   ],
   manager: [],
   tech: [
     { href: "/", label: "My Jobs", icon: "wrench" },
     { href: "/schedule", label: "Schedule", icon: "calendar" },
+    { href: "/tasks", label: "Tasks", icon: "task" },
     { href: "/account", label: "Profile", icon: "user" },
   ],
 };
@@ -44,7 +46,7 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { 
   }
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   // Staff bottom nav stays at 6 items (Fleet is desktop-sidebar + "Where's my crew"). Techs with access get Fleet in their shorter nav.
-  const bottom: NavItem[] = tech ? items : [...items.filter((i) => i.href !== "/team" && i.href !== "/fleet"), { href: "/account", label: "More", icon: "user" }];
+  const bottom: NavItem[] = tech ? items : [...items.filter((i) => i.href !== "/team" && i.href !== "/fleet" && i.href !== "/tasks"), { href: "/account", label: "More", icon: "user" }];
   const bottomActive = (href: string) => active(href) || (href === "/account" && path.startsWith("/team"));
 
   return (
@@ -78,6 +80,12 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { 
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-white/90 px-3 backdrop-blur md:h-[60px] md:px-6">
           <div className={tech ? "" : "md:hidden"}><Logo compact /></div>
           <div className="min-w-0 flex-1 truncate font-semibold">{tech ? "RR Scheduler" : ""}</div>
+          {!tech && (
+            <Link href="/tasks" className="relative grid size-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-canvas hover:text-ink md:hidden" aria-label="Tasks" data-testid="header-tasks">
+              <Icon name="task" />
+              {!!badges["/tasks"] && <span className="absolute top-0.5 right-0 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold text-[#3b2600]">{badges["/tasks"]}</span>}
+            </Link>
+          )}
           {mock && <span className="hidden sm:inline"><MockBadge /></span>}
           {roleSwitcher}
           <span className="hidden text-xs text-muted lg:inline">{ROLE_LABEL[user.role]}</span>

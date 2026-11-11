@@ -1,5 +1,5 @@
-import { JOB_KIND_LABEL, JOB_STATUS_LABEL, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_PRIORITY_LABEL, SR_STATUS_LABEL, WARRANTY_LABEL,
-  type JobKind, type JobStatus, type Person, type ProjectStatus, type ProjectType, type SRChannel, type SRPriority, type SRStatus, type WarrantyState } from "@/lib/types";
+import { JOB_KIND_LABEL, JOB_STATUS_LABEL, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_PRIORITY_LABEL, SR_STATUS_LABEL, TASK_PRIORITY_LABEL, TASK_STATUS_LABEL, WARRANTY_LABEL,
+  type JobKind, type JobStatus, type Person, type ProjectStatus, type ProjectType, type SRChannel, type SRPriority, type SRStatus, type TaskPriority, type TaskStatus, type WarrantyState } from "@/lib/types";
 import { Avatar } from "./ui";
 import { Icon } from "./icons";
 
@@ -65,3 +65,10 @@ export function ChannelIcon({ channel }: { channel: SRChannel }) {
   const tone = channel === "email" ? "bg-violet-100 text-violet-700" : channel === "call" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600";
   return <span className={`grid size-6 shrink-0 place-items-center rounded-full ${tone}`} title={SR_CHANNEL_LABEL[channel]}><Icon name={channel === "email" ? "mail" : channel === "call" ? "phone" : "note"} className="size-3.5" /></span>;
 }
+
+const TASK_TONE: Record<TaskStatus, string> = {
+  open: "bg-sky-100 text-sky-800", in_progress: "bg-accent-50 text-amber-800", done: "bg-green-100 text-green-800",
+};
+export const TaskStatusPill = ({ status }: { status: TaskStatus }) => <span className={`pill ${TASK_TONE[status]}`}>{TASK_STATUS_LABEL[status]}</span>;
+export const TaskPriorityPill = ({ priority, always = false }: { priority: TaskPriority; always?: boolean }) =>
+  !always && priority === "normal" ? null : <span className={`pill ${priority === "high" ? "bg-red-50 text-red-700" : priority === "low" ? "bg-slate-100 text-slate-600" : "bg-brand-50 text-brand"}`}>{TASK_PRIORITY_LABEL[priority]}</span>;

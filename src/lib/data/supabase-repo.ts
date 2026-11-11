@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
-import type { FleetVehicleRow, AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter } from "@/lib/types";
+import type { FleetVehicleRow, AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskView } from "@/lib/types";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
@@ -11,6 +11,8 @@ import { applySearch, parseSearch } from "@/lib/search";
 import { applyTicketVisits } from "@/lib/tickets";
 import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 import type { TicketVisitCrew } from "@/lib/types";
+import { compareTasksByDue, taskCounts } from "@/lib/tasks";
+import { TASK_ACTIVE } from "@/lib/types";
 
 /** Search term safe inside a PostgREST or=() filter: quoted, without wildcard/grouping chars. */
 const searchTerm = (q: string | undefined) => {
@@ -129,6 +131,33 @@ const toPick = (r: PickRaw): ProjectPick => ({
 export type UserDb = Awaited<ReturnType<typeof createClient>>;
 
 /** Default: the signed-in user's cookie session. Pass another factory (e.g. a bearer-token client) to reuse the same logic. */
+
+const TASK_SELECT = "*, assignee:profiles!tasks_assignee_id_fkey(id, full_name, color, avatar_source, avatar_path, google_avatar_url), creator:profiles!tasks_created_by_fkey(id, full_name, color, avatar_source, avatar_path, google_avatar_url), projects(id, name), customers(id, name), service_requests(id, number, summary)";
+type TaskRowRaw = Task & {
+  assignee: (Person & AvatarFields) | null;
+  creator: (Person & AvatarFields) | null;
+  projects: { id: string; name: string } | null;
+  customers: { id: string; name: string } | null;
+  service_requests: { id: string; number: number; summary: string } | null;
+};
+function toTaskView(r: TaskRowRaw, avatars: Map<string, string>): TaskView {
+  const person = (p: (Person & AvatarFields) | null): Person | null => p ? {
+    id: p.id, full_name: p.full_name, color: p.color,
+    avatar_url: resolveAvatarUrl(p, p.avatar_path ? avatars.get(p.avatar_path) ?? null : null),
+  } : null;
+  const { assignee, creator, projects, customers, service_requests: sr, ...t } = r;
+  return {
+    ...t,
+    due_date: t.due_date ?? null,
+    assignee: person(assignee),
+    creator: person(creator) ?? { id: t.created_by, full_name: "Unknown", color: "#64748b" },
+    project_name: projects?.name ?? null,
+    customer_name: customers?.name ?? null,
+    service_request_number: sr?.number ?? null,
+    service_request_summary: sr?.summary ?? null,
+  };
+}
+
 export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
   return {
     async listCustomers(q) {
@@ -733,6 +762,99 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const s = await db();
       fail((await s.from("jobs").update({ service_request_id: null }).eq("service_request_id", id)).error);
       fail((await s.from("service_requests").delete().eq("id", id)).error);
+    },
+
+    async pageTasks(f) {
+      const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      const uid = user?.id ?? "";
+      const { data: allRows, error: allErr } = await s.from("tasks").select("id, status, assignee_id, due_date, created_at, priority");
+      fail(allErr);
+      const visible = (allRows ?? []) as Pick<Task, "id" | "status" | "assignee_id" | "due_date" | "created_at" | "priority">[];
+      const counts = taskCounts(visible as Task[], uid);
+      let q = s.from("tasks").select(TASK_SELECT, { count: "exact" });
+      if (f.tab === "mine" && uid) q = q.eq("assignee_id", uid);
+      if (f.status === "done" || f.status === "open" || f.status === "in_progress") q = q.eq("status", f.status);
+      else q = q.in("status", TASK_ACTIVE);
+      if (f.assignee === "none") q = q.is("assignee_id", null);
+      else if (f.assignee) q = q.eq("assignee_id", f.assignee);
+      if (f.projectId) q = q.eq("project_id", f.projectId);
+      if (f.customerId) q = q.eq("customer_id", f.customerId);
+      const today = todayKey();
+      if (f.due === "none") q = q.is("due_date", null);
+      else if (f.due === "today") q = q.eq("due_date", today);
+      else if (f.due === "upcoming") q = q.gt("due_date", today);
+      else if (f.due === "overdue") q = q.lt("due_date", today).neq("status", "done");
+      const term = searchTerm(f.q);
+      if (term) q = q.or(`title.ilike.${term},description.ilike.${term}`);
+      // Fetch the matching set and sort in app code so null due dates stay last (PostgREST nullsFirst is version-dependent).
+      const { data, error } = await q;
+      fail(error);
+      const rows = (data ?? []) as TaskRowRaw[];
+      rows.sort(compareTasksByDue);
+      const page = pageBounds(f.page, f.size ?? PAGE_SIZE);
+      const slice = rows.slice(page.from, page.from + page.n);
+      const avatars = await signAvatarPaths(s, slice.flatMap((r) => [r.assignee?.avatar_path, r.creator?.avatar_path]));
+      return { items: slice.map((r) => toTaskView(r, avatars)), total: rows.length, page: page.p, size: page.n, counts };
+    },
+    async countMyOpenTasks() {
+      const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      if (!user) return 0;
+      const { count, error } = await s.from("tasks").select("id", { count: "exact", head: true }).eq("assignee_id", user.id).in("status", TASK_ACTIVE);
+      fail(error);
+      return count ?? 0;
+    },
+    async getTask(id) {
+      const s = await db();
+      const { data, error } = await s.from("tasks").select(TASK_SELECT).eq("id", id).maybeSingle();
+      fail(error);
+      if (!data) return null;
+      const row = data as TaskRowRaw;
+      const avatars = await signAvatarPaths(s, [row.assignee?.avatar_path, row.creator?.avatar_path]);
+      return toTaskView(row, avatars);
+    },
+    async createTask(input) {
+      const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      if (!user) throw new Error("Not signed in.");
+      const row = {
+        title: input.title.trim(),
+        description: input.description?.trim() ? input.description.trim() : null,
+        status: input.status ?? "open",
+        priority: input.priority ?? "normal",
+        due_date: input.due_date || null,
+        assignee_id: input.assignee_id || null,
+        created_by: user.id,
+        project_id: input.project_id || null,
+        customer_id: input.customer_id || null,
+        service_request_id: input.service_request_id || null,
+      };
+      const { data, error } = await s.from("tasks").insert(row).select().single();
+      fail(error);
+      return data as Task;
+    },
+    async updateTask(id, patch) {
+      const s = await db();
+      const body: Record<string, unknown> = {};
+      if (patch.title !== undefined) body.title = patch.title.trim();
+      if (patch.description !== undefined) body.description = patch.description?.trim() ? patch.description.trim() : null;
+      if (patch.status !== undefined) body.status = patch.status;
+      if (patch.priority !== undefined) body.priority = patch.priority;
+      if (patch.due_date !== undefined) body.due_date = patch.due_date || null;
+      if (patch.assignee_id !== undefined) body.assignee_id = patch.assignee_id || null;
+      if (patch.project_id !== undefined) body.project_id = patch.project_id || null;
+      if (patch.customer_id !== undefined) body.customer_id = patch.customer_id || null;
+      if (patch.service_request_id !== undefined) body.service_request_id = patch.service_request_id || null;
+      if (!Object.keys(body).length) return;
+      const { data, error } = await s.from("tasks").update(body).eq("id", id).select("id");
+      fail(error);
+      if (!data?.length) throw new Error("Task not found.");
+    },
+    async deleteTask(id) {
+      const { data, error } = await (await db()).from("tasks").delete().eq("id", id).select("id");
+      fail(error);
+      if (!data?.length) throw new Error("Task not found.");
     },
     async setCustomerGeocode(id, patch) {
       fail((await (await db()).from("customers").update(patch).eq("id", id)).error);

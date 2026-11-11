@@ -52,6 +52,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
         sub={<><Link href={`/customers/${p.customer_id}`} className="font-semibold text-brand">{c?.name}</Link> · <TypeTag type={p.type} /> · <span className="text-xs">{p.warranty_months ?? DEFAULT_WARRANTY_MONTHS}-month warranty</span></>}
         actions={<>
           <Link href={`/jobs/new?project=${p.id}`} className="btn btn-primary"><Icon name="plus" />Schedule visit</Link>
+          <Link href={`/tasks?new=1&project_id=${p.id}&customer_id=${p.customer_id}`} className="btn" data-testid="project-add-task"><Icon name="task" />Add task</Link>
           <Link href={`/projects/${p.id}/edit`} className="btn"><Icon name="edit" />Edit</Link>
           {p.status === "cancelled"
             ? <form action={setProjectStatus.bind(null, p.id, "proposed")}><SubmitButton className="btn"><Icon name="undo" />Reopen</SubmitButton></form>

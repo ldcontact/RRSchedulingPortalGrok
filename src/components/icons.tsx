@@ -37,6 +37,7 @@ const P: Record<string, string> = {
   grid: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
   x: "M18 6 6 18M6 6l12 12",
   truck: "M3 7h11v10H3zM14 10h4l3 3v4h-7zM6 20a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17 20a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+  task: "M9 5H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M9 5V3h6v2M9 5h6M9 12l2 2 4-4",
 };
 
 export function Icon({ name, className = "size-[18px]", ...rest }: { name: keyof typeof P | string } & SVGProps<SVGSVGElement>) {
