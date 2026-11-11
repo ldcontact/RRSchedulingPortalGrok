@@ -1,6 +1,6 @@
 import "server-only";
 import { after } from "next/server";
-import { sendEmail, smtpConfigured, smtpMissingMessage } from "@/lib/email";
+import { sendEmail, emailConfigured, emailMissingMessage } from "@/lib/email";
 import { buildTaskEmail, shouldEmailAssignee, type TaskEmailInput } from "@/lib/task-email";
 import type { TaskPriority } from "@/lib/types";
 
@@ -23,8 +23,8 @@ export async function deliverTaskAssigneeEmail(notice: Notice) {
   if (!shouldEmailAssignee({ assigneeId: notice.task.assignee_id, actorId: notice.actor.id, previousAssigneeId: notice.previousAssigneeId })) {
     return;
   }
-  if (!smtpConfigured()) {
-    console.info("[email] skipped task notification:", smtpMissingMessage());
+  if (!emailConfigured()) {
+    console.info("[email] skipped task notification:", emailMissingMessage());
     return;
   }
   const to = notice.assigneeEmail?.trim();

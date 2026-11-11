@@ -1,16 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_EMAIL_FROM_NAME,
+  DEFAULT_EMAIL_SENDER,
   DEFAULT_SMTP_HOST,
   DEFAULT_SMTP_PORT,
+  buildRfc2822Message,
+  emailConfigured,
   formatFromAddress,
+  gmailApiConfigured,
+  gmailApiEnv,
+  parseServiceAccountJson,
   parseSmtpPort,
   requireSendInput,
+  resolveEmailTransport,
+  sanitizeGmailError,
   sanitizeSmtpError,
   smtpConfigured,
   smtpEnv,
   smtpSecureForPort,
   smtpTransportOptions,
+  toBase64Url,
 } from "./email-config";
 
 const KEYS = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_FROM"] as const;
@@ -130,5 +139,87 @@ describe("sanitizeSmtpError", () => {
     expect(err.message).toMatch(/^SMTP 535:/);
     expect(err.message).not.toContain("super-secret");
     expect(err.message).not.toMatch(/AUTH PLAIN/);
+  });
+});
+
+const DUMMY_PEM = "-----BEGIN PRIVATE KEY-----\nMIIBdummy\n-----END PRIVATE KEY-----\n";
+const SA = {
+  type: "service_account",
+  project_id: "rr-scheduler-mail-514420",
+  private_key_id: "abc",
+  private_key: DUMMY_PEM,
+  client_email: "rr-scheduler-mailer@rr-scheduler-mail-514420.iam.gserviceaccount.com",
+  client_id: "100574981655353125304",
+};
+
+describe("parseServiceAccountJson / gmailApiEnv", () => {
+  it("parses a valid service-account key and ignores incomplete JSON", () => {
+    const parsed = parseServiceAccountJson(JSON.stringify(SA));
+    expect(parsed).toMatchObject({
+      type: "service_account",
+      project_id: "rr-scheduler-mail-514420",
+      client_email: SA.client_email,
+      client_id: SA.client_id,
+    });
+    expect(parsed?.private_key).toContain("BEGIN PRIVATE KEY");
+    expect(parseServiceAccountJson(undefined)).toBeNull();
+    expect(parseServiceAccountJson("{")).toBeNull();
+    expect(parseServiceAccountJson(JSON.stringify({ type: "service_account", client_email: "x@y.com" }))).toBeNull();
+  });
+  it("unescapes a single-line private_key and accepts base64 input", () => {
+    const oneLine = { ...SA, private_key: "-----BEGIN PRIVATE KEY-----\\nMIIBdummy\\n-----END PRIVATE KEY-----\\n" };
+    expect(parseServiceAccountJson(JSON.stringify(oneLine))?.private_key).toContain("\n");
+    const b64 = Buffer.from(JSON.stringify(SA), "utf8").toString("base64");
+    expect(parseServiceAccountJson(b64)?.client_email).toBe(SA.client_email);
+  });
+  it("prefers Gmail API over SMTP when both are set", () => {
+    const env = {
+      GOOGLE_MAILER_SA_JSON: JSON.stringify(SA),
+      EMAIL_SENDER: "admin@retrofitrebates.com",
+      EMAIL_FROM: "Retrofit Rebates Scheduler",
+      SMTP_USER: "admin@retrofitrebates.com",
+      SMTP_PASSWORD: "x",
+    };
+    expect(gmailApiConfigured(env)).toBe(true);
+    expect(smtpConfigured(env)).toBe(true);
+    expect(emailConfigured(env)).toBe(true);
+    expect(resolveEmailTransport(env)).toBe("gmail-api");
+    const cfg = gmailApiEnv(env)!;
+    expect(cfg.sender).toBe(DEFAULT_EMAIL_SENDER);
+    expect(cfg.from).toBe(`"${DEFAULT_EMAIL_FROM_NAME}" <admin@retrofitrebates.com>`);
+    expect(cfg.clientEmail).toBe(SA.client_email);
+  });
+  it("defaults EMAIL_SENDER and reports none when nothing is configured", () => {
+    expect(resolveEmailTransport({})).toBe("none");
+    expect(emailConfigured({})).toBe(false);
+    const cfg = gmailApiEnv({ GOOGLE_MAILER_SA_JSON: JSON.stringify(SA) })!;
+    expect(cfg.sender).toBe(DEFAULT_EMAIL_SENDER);
+  });
+});
+
+describe("buildRfc2822Message / toBase64Url", () => {
+  it("builds a plain and a multipart message", () => {
+    const plain = buildRfc2822Message({ from: "A <a@x.com>", to: ["b@x.com"], subject: "Hi", text: "Hello" });
+    expect(plain).toContain("From: A <a@x.com>");
+    expect(plain).toContain("Content-Type: text/plain; charset=utf-8");
+    expect(plain).not.toContain("multipart/alternative");
+    const multi = buildRfc2822Message({ from: "A <a@x.com>", to: ["b@x.com"], subject: "Hi", text: "Hello", html: "<p>Hello</p>" });
+    expect(multi).toContain("multipart/alternative");
+    expect(multi).toContain("<p>Hello</p>");
+    const encoded = toBase64Url(plain);
+    expect(encoded).not.toMatch(/[+/=]/);
+  });
+});
+
+describe("sanitizeGmailError", () => {
+  it("redacts PEM material and tokens", () => {
+    const err = sanitizeGmailError({
+      status: 401,
+      error: "unauthorized_client",
+      message: `unauthorized_client ${DUMMY_PEM} ya29.abc-token`,
+    });
+    expect(err.message).toMatch(/Gmail API 401 unauthorized_client/);
+    expect(err.message).not.toContain("BEGIN PRIVATE KEY");
+    expect(err.message).not.toContain("ya29");
   });
 });

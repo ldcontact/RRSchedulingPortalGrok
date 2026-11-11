@@ -14,7 +14,7 @@ import {
   validateAdminPassword,
 } from "@/lib/admin-users";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendEmail, smtpConfigured, smtpMissingMessage } from "@/lib/email";
+import { sendEmail, emailConfigured, emailMissingMessage } from "@/lib/email";
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const back = (msg: string, tone: "ok" | "error" = "ok"): never => redirect(`/team?${tone}=${encodeURIComponent(msg)}`);
@@ -219,13 +219,14 @@ export async function sendSelfTestEmail() {
   if (MOCK_MODE) {
     back(`Dev mock mode: test email to ${me.email} simulated (not sent).`);
   }
-  if (!smtpConfigured()) back(smtpMissingMessage(), "error");
+  if (!emailConfigured()) back(emailMissingMessage(), "error");
   try {
     const result = await sendEmail({
       to: me.email,
       subject: "RR Scheduler test email",
       text: "This is a test from RR Scheduler. The portal can now send email from this mailbox.",
     });
+    if (result.skipped) back(emailMissingMessage(), "error");
     const id = result.messageId ? ` Message ID: ${result.messageId}` : "";
     const rejected = result.rejected.length ? ` Not accepted: ${result.rejected.join(", ")}.` : "";
     if (result.rejected.includes(me.email) || (result.rejected.length && !result.accepted.length)) {

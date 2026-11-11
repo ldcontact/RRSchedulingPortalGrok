@@ -156,7 +156,9 @@ For a real team, set **Authentication → Emails → SMTP Settings** to Gmail / 
 * **Sender name:** `Retrofit Rebates Scheduler`
 * **Minimum interval between emails:** `60` seconds (per recipient; safe default for a small team)
 
-The portal also sends its own mail (admin test on the Team page) with the `SMTP_*` / `EMAIL_FROM` env vars below. Customer emails are still log-only until that hook is wired up.
+The portal's own mail (admin test on the Team page, task assignment notices) prefers a Workspace **service account** with domain-wide delegation (`GOOGLE_MAILER_SA_JSON` or `GOOGLE_MAILER_SA_JSON_B64`, plus `EMAIL_SENDER`) and falls back to SMTP if that is not set. If neither is configured, sends are logged and skipped.
+
+**Supabase Auth emails cannot use the service account.** Auth (invites, password reset, confirmations) still needs **Authentication → Emails → SMTP Settings** with a Gmail app password as above. The Gmail API / service-account path is only for mail the portal sends itself.
 
 **Identity linking:** this is on by default. Someone invited at `maria@gmail.com` can set a password from the invite
 email **and** use *Sign in with Google* with the same Gmail address; both reach the same account.
@@ -171,11 +173,14 @@ email **and** use *Sign in with Google* with the same Gmail address; both reach 
 | `NEXT_PUBLIC_SITE_URL` | server | public URL of the app, e.g. `https://rr-scheduler.vercel.app` (used in email links) |
 | `NEXT_PUBLIC_TZ` | browser + server | optional business time zone for the schedule (default `America/Chicago`). Times are stored in UTC; Vercel runs in UTC, so this matters |
 | `NEXT_PUBLIC_RR_MOCK_MODE` | dev only | `1` = mock mode (no Supabase). Leave unset in production. |
-| `SMTP_HOST` | **server only** | SMTP host. Default `smtp.gmail.com`. |
+| `GOOGLE_MAILER_SA_JSON` | **server only** | Google Workspace service-account JSON key (preferred). Domain-wide delegation, scope `https://www.googleapis.com/auth/gmail.send`. On Vercel: Production env, mark Sensitive / encrypted. **Never** expose it to the browser or commit it. |
+| `GOOGLE_MAILER_SA_JSON_B64` | **server only** | Optional base64 form of the same JSON key, used if `GOOGLE_MAILER_SA_JSON` is unset. Mark Sensitive / encrypted. |
+| `EMAIL_SENDER` | **server only** | Mailbox the service account impersonates. Default `admin@retrofitrebates.com`. |
+| `EMAIL_FROM` | **server only** | From display name (`Retrofit Rebates Scheduler`), a bare mailbox, or a full `Name <email>` value. Defaults to `Retrofit Rebates Scheduler <EMAIL_SENDER or SMTP_USER>`. |
+| `SMTP_HOST` | **server only** | SMTP host, used only if the service account JSON is not set. Default `smtp.gmail.com`. |
 | `SMTP_PORT` | **server only** | SMTP port. Default `465` (SSL). Use `587` for STARTTLS. |
-| `SMTP_USER` | **server only** | Sender mailbox: `admin@retrofitrebates.com`. |
-| `SMTP_PASSWORD` | **server only** | Google Workspace app password. On Vercel: Production env, mark Sensitive / encrypted. **Never** expose it to the browser or commit it. |
-| `EMAIL_FROM` | **server only** | From display name (`Retrofit Rebates Scheduler`), a bare mailbox, or a full `Name <email>` value. Defaults to `Retrofit Rebates Scheduler <SMTP_USER>`. |
+| `SMTP_USER` | **server only** | SMTP sender mailbox: `admin@retrofitrebates.com`. Needed for SMTP fallback and for Supabase Auth custom SMTP (Auth cannot use the service account). |
+| `SMTP_PASSWORD` | **server only** | Google Workspace app password for SMTP fallback / Supabase Auth. On Vercel: mark Sensitive / encrypted. **Never** expose it to the browser or commit it. |
 
 ## 6. Deploy to Vercel
 
@@ -212,7 +217,7 @@ src/lib/supabase/            @supabase/ssr clients (server, browser, proxy) + se
 src/app/login, forgot-password, account/password, auth/{callback,confirm,signout}, not-invited
 src/app/(app)/               signed-in app: home, customers, projects, jobs (visits), schedule, team, account
 src/lib/time.ts              business-time-zone helpers (UTC <-> local wall clock, DST-safe)
-src/lib/email.ts             server-only SMTP sender (Gmail Workspace). Admin test on Team; not used for customer mail yet
+src/lib/email.ts             server-only mailer (Gmail API service account, SMTP fallback). Admin test on Team; task notices; not used for customer mail yet
 src/lib/messaging.ts         outbound customer-message hook (log-only; plug in Twilio or src/lib/email.ts later)
 src/components/photos.tsx    client-side resize + upload, photo grid/lightbox
 supabase/migrations/         schema, triggers, RLS, storage bucket + policies

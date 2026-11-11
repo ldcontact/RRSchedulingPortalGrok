@@ -7,7 +7,7 @@ import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { ROLE_LABEL, ROLES } from "@/lib/types";
 import { inviteMember, sendSelfTestEmail } from "./actions";
-import { smtpConfigured } from "@/lib/email";
+import { emailConfigured } from "@/lib/email";
 
 export const metadata: Metadata = { title: "Team" };
 
@@ -20,7 +20,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
   let team = await (await getRepo()).listTeam();
   if (!admin) team = team.filter((m) => m.status !== "invited"); // matches RLS: only admins see the invite list
   const active = team.filter((m) => m.status === "active").length;
-  const emailReady = smtpConfigured();
+  const emailReady = emailConfigured();
 
   return (
     <>
@@ -54,7 +54,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
             {emailReady ? (
               <div><SubmitButton pendingText="Sending…"><Icon name="send" className="size-4" />Send a test email to me</SubmitButton></div>
             ) : (
-              <Banner tone="warn"><Icon name="shield" />Outbound email is not configured yet. Set SMTP_USER and SMTP_PASSWORD in the server environment, then try again.</Banner>
+              <Banner tone="warn"><Icon name="shield" />Outbound email is not configured yet. Set GOOGLE_MAILER_SA_JSON and EMAIL_SENDER, or SMTP_USER and SMTP_PASSWORD, then try again.</Banner>
             )}
           </div>
         </form>
