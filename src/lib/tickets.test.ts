@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTicketVisits, pickTicketVisit, resolveNewTicketAssignee } from "./tickets";
+import { applyTicketVisits, pickTicketVisit, resolveNewTicketAssignee, ticketAssigneeStack } from "./tickets";
 
 const luke = { id: "u-luke", name: "Luke" };
 const staff = [
@@ -66,5 +66,29 @@ describe("applyTicketVisits", () => {
     expect(a.visit?.job_id).toBe("j1");
     expect(a.visit?.techs.map((p) => p.full_name)).toEqual(["Carlos Mendez"]);
     expect(b.visit).toBeNull();
+  });
+});
+
+describe("ticketAssigneeStack", () => {
+  it("returns an empty list when no one is assigned", () => {
+    expect(ticketAssigneeStack([], [])).toEqual([]);
+  });
+  it("lists the office owner first, then visit techs, with role titles", () => {
+    const office = tech("u-luke", "Luke Dlugosz");
+    const techs = [tech("u-tech1", "Carlos Mendez"), tech("u-tech2", "Ann Perez")];
+    const stacked = ticketAssigneeStack([office], techs);
+    expect(stacked.map((p) => p.title)).toEqual([
+      "Office: Luke Dlugosz",
+      "Tech: Carlos Mendez",
+      "Tech: Ann Perez",
+    ]);
+  });
+  it("dedupes a person who is both office owner and tech", () => {
+    const luke = tech("u-luke", "Luke Dlugosz");
+    const stacked = ticketAssigneeStack([luke], [luke, tech("u-tech1", "Carlos Mendez")]);
+    expect(stacked.map((p) => ({ id: p.id, title: p.title }))).toEqual([
+      { id: "u-luke", title: "Office & Tech: Luke Dlugosz" },
+      { id: "u-tech1", title: "Tech: Carlos Mendez" },
+    ]);
   });
 });

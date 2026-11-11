@@ -8,7 +8,7 @@ import { Pager, pageParam } from "@/components/pager";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { formatAddress, ageText } from "@/lib/project-row";
-import { fmtMonthYear, fmtReceived, localInput } from "@/lib/tickets";
+import { fmtMonthYear, fmtReceived, localInput, ticketAssigneeStack } from "@/lib/tickets";
 import { PAGE_SIZE, SR_CHANNEL_LABEL, SR_STATUSES, SR_STATUS_LABEL, WARRANTY_LABEL, ticketNo, type Person, type SRChannel, type SRPageFilter, type SRStatus, type WarrantyState } from "@/lib/types";
 import { LogCallForm } from "./log-call-form";
 
@@ -81,37 +81,37 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
           const office: Person[] = t.assignee_id
             ? [personById.get(t.assignee_id) ?? { id: t.assignee_id, full_name: t.assignee_name ?? "?", color: t.assignee_color ?? "#64748b" }]
             : [];
+          const assignees = ticketAssigneeStack(office, t.visit?.techs ?? []);
           return (
           <Link key={t.id} href={`/service-requests/${t.id}`} data-testid="ticket-row"
             className="block min-w-0 px-4 py-3 hover:bg-[#fafbf9] sm:px-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 truncate font-semibold">{t.customer_name}</div>
-              <div className="shrink-0 text-[13px] font-bold tabular-nums tracking-tight" data-testid="ticket-number">{ticketNo(t.number)}</div>
-            </div>
-            <div className="mt-0.5 grid gap-x-4 gap-y-1.5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,150px)_auto] xl:items-start">
-              <div className="min-w-0">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 xl:grid-cols-[minmax(0,1fr)_13rem_9.25rem_19rem] xl:gap-y-0.5">
+              <div className="min-w-0 truncate font-semibold">{t.customer_name}</div>
+              <div className="shrink-0 text-right text-[13px] font-bold tabular-nums tracking-tight xl:col-start-4" data-testid="ticket-number">{ticketNo(t.number)}</div>
+              <div className="col-span-2 min-w-0 xl:col-span-1 xl:col-start-1">
                 <div className="truncate text-[12.5px] text-muted">{formatAddress({ address: t.site_address, city: t.site_city }) || "No site address"}</div>
                 <div className="line-clamp-2 text-[12.5px] text-ink/80">{t.summary}</div>
               </div>
-              <div className="min-w-0 text-[12.5px]">
+              <div className="col-span-2 min-w-0 text-[12.5px] xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:row-span-2" data-testid="ticket-job">
                 {t.project_id ? <>
-                  <div className="truncate font-semibold">{t.project_name}</div>
+                  <div className="font-semibold leading-snug">{t.project_name}</div>
                   <div className="truncate text-muted">{t.project_completed_at ? `Completed ${fmtMonthYear(t.project_completed_at)} · ${ageText(t.project_completed_at)} ago` : "Original project not finished"}</div>
-                </> : <><div className="text-muted">No project linked</div><div className="text-muted">Match a past job, or convert if it is new work</div></>}
+                </> : <><div className="text-muted">No project linked</div><div className="truncate text-muted">Match a past job, or convert if it is new work</div></>}
               </div>
-              <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted xl:contents">
-                <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted">
+              <div className="col-span-2 flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1.5 text-[12.5px] text-muted xl:contents">
+                <div className="flex min-w-0 items-center gap-2 xl:col-start-3 xl:row-start-1" data-testid="ticket-received">
                   <ChannelIcon channel={t.channel} />{fmtReceived(t.received_at)}
                 </div>
-                <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0 xl:justify-end">
-                  <WarrantyPill state={t.warranty_state} />
-                  <SRStatusPill status={t.status} />
+                <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 xl:col-start-4 xl:row-start-2 xl:ml-0 xl:flex-nowrap" data-testid="ticket-badges">
+                  <div className="flex h-6 shrink-0 items-center justify-end xl:w-[3.75rem]" data-testid="ticket-assignees" title={assignees.length ? undefined : "Unassigned"}>
+                    {assignees.length
+                      ? <AvatarStack people={assignees} max={3} />
+                      : <span className="sr-only">Unassigned</span>}
+                  </div>
+                  <WarrantyPill state={t.warranty_state} className="xl:min-w-[8rem] xl:justify-center" />
+                  <SRStatusPill status={t.status} className="xl:min-w-[6.25rem] xl:justify-center" />
                 </div>
               </div>
-            </div>
-            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-              <PeopleCell label="Office" people={office} empty="Unassigned" testId="ticket-office" />
-              <PeopleCell label="Tech" people={t.visit?.techs ?? []} empty={t.visit ? "Unassigned" : "No visit yet"} testId="ticket-tech" />
             </div>
           </Link>
           );
@@ -127,17 +127,3 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
   );
 }
 
-function PeopleCell({ label, people, empty, testId }: { label: string; people: Person[]; empty: string; testId: string }) {
-  const names = people.map((p) => p.full_name).join(", ");
-  return (
-    <div className="flex min-w-0 max-w-full items-center gap-1.5" data-testid={testId}>
-      <span className="shrink-0 text-[10.5px] font-semibold uppercase tracking-wide text-muted">{label}</span>
-      {people.length === 0
-        ? <span className="truncate text-[12.5px] text-muted">{empty}</span>
-        : <>
-            <AvatarStack people={people} max={3} />
-            <span className="hidden min-w-0 truncate text-[12.5px] sm:inline" title={names}>{names}</span>
-          </>}
-    </div>
-  );
-}

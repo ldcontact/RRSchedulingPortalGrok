@@ -5,15 +5,16 @@ import { ROLE_LABEL, type Role } from "@/lib/types";
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 
-export function Avatar({ name, color, size = "md", src }: { name: string; color: string; size?: "sm" | "md" | "lg"; src?: string | null }) {
+export function Avatar({ name, color, size = "md", src, title }: { name: string; color: string; size?: "sm" | "md" | "lg"; src?: string | null; title?: string }) {
   const s = size === "lg" ? "size-12 text-base" : size === "sm" ? "size-6 text-[10px]" : "size-8 text-xs";
+  const tip = title ?? name;
   if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- signed Storage URLs or Google avatars; plain img avoids next/image host config issues
-      <img src={src} alt={name} title={name} className={`inline-block shrink-0 rounded-full object-cover ${s}`} />
+      <img src={src} alt={name} title={tip} className={`inline-block shrink-0 rounded-full object-cover ${s}`} />
     );
   }
-  return <span className={`inline-grid shrink-0 place-items-center rounded-full font-bold text-white ${s}`} style={{ background: color }} title={name}>{initials(name)}</span>;
+  return <span className={`inline-grid shrink-0 place-items-center rounded-full font-bold text-white ${s}`} style={{ background: color }} title={tip}>{initials(name)}</span>;
 }
 
 /** Retrofit Rebates company mark (local asset, not hotlinked). */

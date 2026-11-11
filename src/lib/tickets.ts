@@ -1,4 +1,4 @@
-import type { JobKind, JobStatus, ServiceRequestView, TicketVisitCrew } from "@/lib/types";
+import type { JobKind, JobStatus, Person, ServiceRequestView, TicketVisitCrew } from "@/lib/types";
 import { dayKey, fmtDay, fmtTime, timeKey, todayKey, addDays } from "@/lib/time";
 
 /** "Today 9:14am", "Mon 4:22pm" (this week), "Nov 5" (this year), "Nov 5, 2025". */
@@ -47,6 +47,24 @@ export function pickTicketVisit<T extends { starts_at: string; status: string; j
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at) || tie(a, b));
   if (live[0]) return live[0];
   return active.slice().sort((a, b) => b.starts_at.localeCompare(a.starts_at) || tie(b, a))[0] ?? null;
+}
+
+/** Office owner first, then visit techs, with role tooltips. Same person in both roles is shown once. */
+export function ticketAssigneeStack(office: Person[], techs: Person[]): (Person & { title: string })[] {
+  const out: (Person & { title: string })[] = [];
+  const seen = new Set<string>();
+  for (const p of office) {
+    if (!p.id || seen.has(p.id)) continue;
+    seen.add(p.id);
+    const alsoTech = techs.some((t) => t.id === p.id);
+    out.push({ ...p, title: alsoTech ? `Office & Tech: ${p.full_name}` : `Office: ${p.full_name}` });
+  }
+  for (const p of techs) {
+    if (!p.id || seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push({ ...p, title: `Tech: ${p.full_name}` });
+  }
+  return out;
 }
 
 /** Attach the chosen visit + crew to each ticket. `visits` is the full set for this page (one batched lookup). */
