@@ -1,11 +1,22 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { FleetLocationsResponse } from "@/lib/geotab/types";
+import type { FleetLocationsResponse, FleetVehicle } from "@/lib/geotab/types";
 import { autoFitPoints, CHICAGO_BOUNDS, isMappablePoint } from "@/lib/geotab/region";
+import {
+  clusterAppearance,
+  clusterByPixelDistance,
+  minPairPixelDistance,
+  spiderfyOffsets,
+  vehicleTagLabel,
+  zoomToSeparate,
+} from "./cluster";
 import {
   JOB_SITE_FILL,
   JOB_SITE_ICON_ANCHOR,
   JOB_SITE_ICON_SIZE,
+  clusterIconAnchor,
+  clusterIconHtml,
+  clusterIconSize,
   jobSiteIconHtml,
   VEHICLE_FILL,
   vehicleIconAnchor,
@@ -19,8 +30,26 @@ const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_
 const ESRI_ATTR = OSM_ATTR + ' &copy; <a href="https://www.esri.com/">Esri</a>';
 const SCHAUMBURG: [number, number] = [42.033, -88.083];
 
-const MARKER_CSS = `.fleet-div-icon{background:transparent!important;border:none!important;}
-.fleet-div-icon svg{display:block;overflow:visible;}`;
+const MARKER_CSS = `.fleet-div-icon{background:transparent!important;border:none!important;overflow:visible!important;}
+.fleet-div-icon svg{display:block;overflow:visible;}
+.fleet-vehicle-label{position:absolute;left:100%;top:50%;transform:translate(4px,-50%);max-width:9.5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:6px;padding:1px 5px;font:600 11px/1.3 system-ui,sans-serif;color:#1c2423;box-shadow:0 1px 2px rgba(0,0,0,.15);pointer-events:none;z-index:2;}
+.fleet-cluster-count{position:absolute;top:-4px;right:-6px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#1c2423;color:#fff;font:700 10px/16px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #fff;pointer-events:none;}
+.fleet-spider-leg{stroke-linecap:round;}`;
+
+type Leaflet = typeof import("leaflet");
+
+type PaintRefs = {
+  wrap: React.RefObject<HTMLDivElement | null>;
+  map: React.RefObject<import("leaflet").Map | null>;
+  layers: React.RefObject<import("leaflet").LayerGroup | null>;
+  data: React.RefObject<FleetLocationsResponse | null>;
+  selectedId: React.RefObject<string | null | undefined>;
+  padding: React.RefObject<number>;
+  spiderfy: React.RefObject<string[] | null>;
+  onSelect: React.RefObject<((id: string) => void) | undefined>;
+  fitted: React.RefObject<boolean>;
+  lastSelected: React.RefObject<string | null | undefined>;
+};
 
 export function FleetMapCanvas({ data, selectedId, onSelect, className = "", padding = 48 }: {
   data: FleetLocationsResponse | null;
@@ -33,8 +62,29 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const layerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const onSelectRef = useRef(onSelect);
+  const dataRef = useRef(data);
+  const selectedIdRef = useRef(selectedId);
+  const paddingRef = useRef(padding);
+  const spiderfyRef = useRef<string[] | null>(null);
+  const fittedRef = useRef(false);
+  const lastSelectedRef = useRef<string | null | undefined>(undefined);
+  const refs = useRef<PaintRefs>({
+    wrap,
+    map: mapRef,
+    layers: layerRef,
+    data: dataRef,
+    selectedId: selectedIdRef,
+    padding: paddingRef,
+    spiderfy: spiderfyRef,
+    onSelect: onSelectRef,
+    fitted: fittedRef,
+    lastSelected: lastSelectedRef,
+  });
   const [mapReady, setMapReady] = useState(0);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+  useEffect(() => { dataRef.current = data; }, [data]);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  useEffect(() => { paddingRef.current = padding; }, [padding]);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +120,7 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
       const layers = L.layerGroup().addTo(map);
       mapRef.current = map;
       layerRef.current = layers;
+      map.on("zoomend", () => { spiderfyRef.current = null; void paint(refs.current, { fit: false, L }); });
       requestAnimationFrame(() => { map.invalidateSize(); setMapReady((n) => n + 1); });
     })();
     return () => {
@@ -81,68 +132,7 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
   }, []);
 
   useEffect(() => {
-    const map = mapRef.current;
-    const layers = layerRef.current;
-    if (!map || !layers || !data) return;
-    let cancelled = false;
-    (async () => {
-      const L = (await import("leaflet")).default;
-      if (cancelled) return;
-      layers.clearLayers();
-      const bounds = L.latLngBounds([]);
-      const siteIcon = L.divIcon({
-        className: "fleet-div-icon",
-        html: jobSiteIconHtml(),
-        iconSize: JOB_SITE_ICON_SIZE,
-        iconAnchor: JOB_SITE_ICON_ANCHOR,
-        popupAnchor: [0, -32],
-      });
-      for (const v of data.visits) {
-        if (!isMappablePoint(v.latitude, v.longitude)) continue;
-        const m = L.marker([v.latitude, v.longitude], { icon: siteIcon, zIndexOffset: 50, keyboard: false });
-        m.bindPopup(`<strong>${escapeHtml(v.customerName)}</strong><br/>${escapeHtml(v.title)}`, { autoPan: false });
-        m.addTo(layers);
-      }
-      for (const v of data.vehicles) {
-        if (!isMappablePoint(v.latitude, v.longitude)) continue;
-        const selected = v.id === selectedId;
-        const icon = L.divIcon({
-          className: "fleet-div-icon",
-          html: vehicleIconHtml(v.status, { heading: v.heading, selected }),
-          iconSize: vehicleIconSize(selected),
-          iconAnchor: vehicleIconAnchor(selected),
-          popupAnchor: [0, -18],
-        });
-        const marker = L.marker([v.latitude, v.longitude], {
-          icon,
-          zIndexOffset: selected ? 700 : v.status === "driving" ? 300 : v.status === "offline" ? 80 : 200,
-          keyboard: false,
-        });
-        const who = v.profile?.full_name ?? v.geotabDriverName ?? "Unassigned";
-        marker.bindPopup(`<strong>${escapeHtml(v.label || v.name)}</strong><br/>${escapeHtml(who)}`, { autoPan: false });
-        marker.on("click", () => onSelectRef.current?.(v.id));
-        marker.addTo(layers);
-        if (selected) marker.openPopup();
-      }
-      const fit = autoFitPoints(data.vehicles, data.visits, data.asOf);
-      for (const p of fit) bounds.extend([p.latitude, p.longitude]);
-      if (selectedId) {
-        const sel = data.vehicles.find((v) => v.id === selectedId);
-        if (sel && isMappablePoint(sel.latitude, sel.longitude)) {
-          map.setView([sel.latitude, sel.longitude], Math.max(map.getZoom(), 14), { animate: true });
-        } else if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [padding, padding], maxZoom: 14 });
-        } else {
-          map.fitBounds(CHICAGO_BOUNDS, { padding: [padding, padding], maxZoom: 14 });
-        }
-      } else if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [padding, padding], maxZoom: 14 });
-      } else {
-        map.fitBounds(CHICAGO_BOUNDS, { padding: [padding, padding], maxZoom: 14 });
-      }
-      requestAnimationFrame(() => map.invalidateSize());
-    })();
-    return () => { cancelled = true; };
+    void paint(refs.current, { fit: true });
   }, [data, selectedId, padding, mapReady]);
 
   return (
@@ -151,6 +141,172 @@ export function FleetMapCanvas({ data, selectedId, onSelect, className = "", pad
       <FleetMapLegend />
     </div>
   );
+}
+
+async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
+  const map = refs.map.current;
+  const layers = refs.layers.current;
+  const current = refs.data.current;
+  if (!map || !layers || !current) return;
+  const L = opts.L ?? (await import("leaflet")).default;
+  layers.clearLayers();
+  const wrapEl = refs.wrap.current;
+  const compact = (wrapEl?.clientHeight ?? 400) < 260 || (wrapEl?.clientWidth ?? 600) < 400;
+  const zoom = map.getZoom();
+  const showLabels = zoom > 10;
+  const siteIcon = L.divIcon({
+    className: "fleet-div-icon",
+    html: jobSiteIconHtml(),
+    iconSize: JOB_SITE_ICON_SIZE,
+    iconAnchor: JOB_SITE_ICON_ANCHOR,
+    popupAnchor: [0, -32],
+  });
+  for (const v of current.visits) {
+    if (!isMappablePoint(v.latitude, v.longitude)) continue;
+    const m = L.marker([v.latitude, v.longitude], { icon: siteIcon, zIndexOffset: 50, keyboard: false });
+    m.bindPopup(`<strong>${escapeHtml(v.customerName)}</strong><br/>${escapeHtml(v.title)}`, { autoPan: false });
+    m.addTo(layers);
+  }
+  const vehicles = current.vehicles.filter((v) => isMappablePoint(v.latitude, v.longitude));
+  const project = (lat: number, lng: number) => {
+    const p = map.latLngToLayerPoint([lat, lng]);
+    return { x: p.x, y: p.y };
+  };
+  const groups = clusterByPixelDistance(vehicles, project);
+  const selected = refs.selectedId.current;
+  const spiderIds = refs.spiderfy.current ? new Set(refs.spiderfy.current) : null;
+
+  for (const g of groups) {
+    const ids = g.members.map((m) => m.id);
+    const stillSpider = !!(spiderIds && ids.length > 1 && ids.every((id) => spiderIds.has(id)) && spiderIds.size === ids.length);
+    if (g.members.length === 1) {
+      addVehicleMarker(L, layers, g.members[0], selected, showLabels, compact, false, refs);
+      continue;
+    }
+    if (stillSpider) {
+      addSpiderfy(L, map, layers, g.members, [g.latitude, g.longitude], selected, showLabels, compact, refs);
+      continue;
+    }
+    const appearance = clusterAppearance(g.members.map((m) => m.status));
+    const isSelected = !!selected && ids.includes(selected);
+    const icon = L.divIcon({
+      className: "fleet-div-icon",
+      html: clusterIconHtml({ count: g.members.length, fill: appearance.fill, split: appearance.split, id: ids.join("-"), selected: isSelected }),
+      iconSize: clusterIconSize(),
+      iconAnchor: clusterIconAnchor(),
+      popupAnchor: [0, -18],
+    });
+    const marker = L.marker([g.latitude, g.longitude], {
+      icon,
+      zIndexOffset: isSelected ? 800 : 500,
+      keyboard: false,
+    });
+    marker.on("click", () => onClusterClick(refs, L, map, g.members));
+    marker.addTo(layers);
+  }
+
+  if (opts.fit) {
+    const selectedChanged = refs.lastSelected.current !== selected;
+    refs.lastSelected.current = selected;
+    if (selected && selectedChanged) {
+      const sel = current.vehicles.find((v) => v.id === selected);
+      if (sel && isMappablePoint(sel.latitude, sel.longitude)) {
+        const host = groups.find((g) => g.members.some((m) => m.id === selected));
+        if (host && host.members.length > 1) {
+          onClusterClick(refs, L, map, host.members);
+        } else {
+          map.setView([sel.latitude, sel.longitude], Math.max(map.getZoom(), 14), { animate: true });
+        }
+      }
+      refs.fitted.current = true;
+    } else if (!refs.fitted.current) {
+      const bounds = L.latLngBounds([]);
+      const fitPts = autoFitPoints(current.vehicles, current.visits, current.asOf);
+      for (const p of fitPts) bounds.extend([p.latitude, p.longitude]);
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [refs.padding.current, refs.padding.current], maxZoom: 14 });
+      } else {
+        map.fitBounds(CHICAGO_BOUNDS, { padding: [refs.padding.current, refs.padding.current], maxZoom: 14 });
+      }
+      refs.fitted.current = true;
+    }
+  }
+  requestAnimationFrame(() => map.invalidateSize());
+}
+
+function onClusterClick(refs: PaintRefs, L: Leaflet, map: import("leaflet").Map, members: FleetVehicle[]) {
+  const pts = members.map((m) => map.latLngToLayerPoint([m.latitude, m.longitude]));
+  const minDist = minPairPixelDistance(pts.map((p) => ({ x: p.x, y: p.y })));
+  const decision = zoomToSeparate(minDist, map.getZoom(), map.getMaxZoom());
+  const lat = members.reduce((s, m) => s + m.latitude, 0) / members.length;
+  const lng = members.reduce((s, m) => s + m.longitude, 0) / members.length;
+  if (decision.spiderfy) {
+    refs.spiderfy.current = members.map((m) => m.id).sort();
+    void paint(refs, { fit: false, L });
+    return;
+  }
+  refs.spiderfy.current = null;
+  map.setView([lat, lng], decision.zoom, { animate: true });
+}
+
+function addSpiderfy(
+  L: Leaflet,
+  map: import("leaflet").Map,
+  layers: import("leaflet").LayerGroup,
+  members: FleetVehicle[],
+  origin: [number, number],
+  selected: string | null | undefined,
+  showLabels: boolean,
+  compact: boolean,
+  refs: PaintRefs,
+) {
+  const originPt = map.latLngToLayerPoint(origin);
+  const offsets = spiderfyOffsets(members.length);
+  members.forEach((v, i) => {
+    const pt = L.point(originPt.x + offsets[i].x, originPt.y + offsets[i].y);
+    const latlng = map.layerPointToLatLng(pt);
+    L.polyline([origin, latlng], {
+      color: "#64748b",
+      weight: 1.5,
+      opacity: 0.65,
+      dashArray: "4 3",
+      className: "fleet-spider-leg",
+      interactive: false,
+    }).addTo(layers);
+    addVehicleMarker(L, layers, v, selected, showLabels, compact, true, refs, latlng);
+  });
+}
+
+function addVehicleMarker(
+  L: Leaflet,
+  layers: import("leaflet").LayerGroup,
+  v: FleetVehicle,
+  selectedId: string | null | undefined,
+  showLabels: boolean,
+  compact: boolean,
+  spiderfied: boolean,
+  refs: PaintRefs,
+  at?: import("leaflet").LatLng,
+) {
+  const selected = v.id === selectedId;
+  const label = showLabels ? vehicleTagLabel(v, compact) : null;
+  const icon = L.divIcon({
+    className: "fleet-div-icon",
+    html: vehicleIconHtml(v.status, { heading: spiderfied ? null : v.heading, selected, label }),
+    iconSize: vehicleIconSize(selected),
+    iconAnchor: vehicleIconAnchor(selected),
+    popupAnchor: [0, -18],
+  });
+  const marker = L.marker(at ?? [v.latitude, v.longitude], {
+    icon,
+    zIndexOffset: selected ? 700 : v.status === "driving" ? 300 : v.status === "offline" ? 80 : 200,
+    keyboard: false,
+  });
+  const who = v.profile?.full_name ?? v.geotabDriverName ?? "Unassigned";
+  marker.bindPopup(`<strong>${escapeHtml(v.label || v.name)}</strong><br/>${escapeHtml(who)}`, { autoPan: false });
+  marker.on("click", () => refs.onSelect.current?.(v.id));
+  marker.addTo(layers);
+  if (selected) marker.openPopup();
 }
 
 function FleetMapLegend() {

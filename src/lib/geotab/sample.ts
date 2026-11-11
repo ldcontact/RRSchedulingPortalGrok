@@ -9,7 +9,7 @@ export const SAMPLE_VEHICLES: GeotabVehicleSnapshot[] = [
   { id: "gt-v3", name: "Van 3", status: "driving", speedKmh: 30.6, latitude: 42.04846222328007, longitude: -87.98521257396133, heading: 50, lastUpdate: "2026-11-11T16:17:00.000Z", isDeviceCommunicating: true, currentStateDuration: null, geotabDriverName: null },
   { id: "gt-car", name: "Car – Luke", status: "stopped", speedKmh: 0, latitude: 42.0298, longitude: -88.0875, heading: 0, lastUpdate: "2026-11-11T16:15:00.000Z", isDeviceCommunicating: true, currentStateDuration: "01:12:00", geotabDriverName: null },
   { id: "gt-t4", name: "Truck 4", status: "offline", speedKmh: 0, latitude: 42.005, longitude: -88.078, heading: 0, lastUpdate: "2026-11-11T13:02:00.000Z", isDeviceCommunicating: false, currentStateDuration: null, geotabDriverName: null },
-  { id: "gt-v5", name: "Van 5", status: "driving", speedKmh: 58, latitude: 41.992, longitude: -87.912, heading: 95, lastUpdate: "2026-11-11T16:16:00.000Z", isDeviceCommunicating: true, currentStateDuration: null, geotabDriverName: null },
+  { id: "gt-v5", name: "Van 5", status: "driving", speedKmh: 58, latitude: 42.0305, longitude: -88.0866, heading: 95, lastUpdate: "2026-11-11T16:16:00.000Z", isDeviceCommunicating: true, currentStateDuration: null, geotabDriverName: null },
 ];
 
 /** Default device → profile links for DEV MOCK MODE (overridable via fleet_vehicles). */

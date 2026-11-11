@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { hasHeading, jobSiteIconHtml, JOB_SITE_FILL, vehicleIconHtml, VEHICLE_FILL, vehicleStatusDotStyle } from "./map-icons";
+import { clusterIconHtml, hasHeading, jobSiteIconHtml, JOB_SITE_FILL, vehicleIconHtml, VEHICLE_FILL, vehicleStatusDotStyle } from "./map-icons";
 
 describe("fleet map icons", () => {
-  it("uses a green vehicle when driving and a slate vehicle when stopped", () => {
+  it("uses a green vehicle when driving and a red vehicle when stopped", () => {
     const driving = vehicleIconHtml("driving");
     const stopped = vehicleIconHtml("stopped");
     expect(driving).toContain(VEHICLE_FILL.driving);
@@ -42,8 +42,24 @@ describe("fleet map icons", () => {
   });
 
   it("exposes the same status colors for list dots as the map icons", () => {
+    expect(VEHICLE_FILL.stopped).toBe("#dc2626");
     expect(vehicleStatusDotStyle("driving")).toEqual({ backgroundColor: VEHICLE_FILL.driving });
     expect(vehicleStatusDotStyle("stopped")).toEqual({ backgroundColor: VEHICLE_FILL.stopped });
     expect(vehicleStatusDotStyle("offline")).toEqual({ backgroundColor: VEHICLE_FILL.offline, opacity: 0.75 });
+  });
+
+  it("puts a name tag outside the rotating body and draws a count badge on clusters", () => {
+    const html = vehicleIconHtml("stopped", { heading: 90, label: "Luke Dlugosz" });
+    expect(html).toContain("fleet-vehicle-label");
+    expect(html).toContain("Luke Dlugosz");
+    expect(html.indexOf("Luke Dlugosz")).toBeGreaterThan(html.indexOf("rotate(90deg)"));
+    const rotated = html.slice(html.indexOf("rotate(90deg)"), html.indexOf("</div>", html.indexOf("rotate(90deg)")));
+    expect(rotated).not.toContain("Luke Dlugosz");
+    const cluster = clusterIconHtml({ count: 2, fill: VEHICLE_FILL.driving, split: true, id: "ab" });
+    expect(cluster).toContain("fleet-cluster-icon");
+    expect(cluster).toContain("data-count=\"2\"");
+    expect(cluster).toContain("fleet-mix-ab");
+    expect(cluster).toContain(VEHICLE_FILL.driving);
+    expect(cluster).toContain(VEHICLE_FILL.stopped);
   });
 });
