@@ -530,8 +530,8 @@ async function who() {
   let salesCustomerIds = new Set<string>();
   try {
     const access = await import("@/lib/sales/mock-store");
-    salesProjectIds = access.convertedProjectIds(uid, staff);
-    salesCustomerIds = access.visibleCustomerIds(uid, staff);
+    salesProjectIds = access.convertedProjectIds(uid, staff || sales);
+    salesCustomerIds = access.visibleCustomerIds(uid, staff || sales);
   } catch { /* sales store not loaded */ }
   for (const id of salesProjectIds) myProjects.add(id);
   return {

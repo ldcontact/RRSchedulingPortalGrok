@@ -15,11 +15,14 @@ describe("sales permissions", () => {
     expect(isStaffRole("admin")).toBe(true);
   });
 
-  it("lets sales see only their own deals (and unassigned)", () => {
-    expect(canSeeAllDeals("sales")).toBe(false);
+  it("lets sales see the whole pipeline, including deals owned by someone else", () => {
+    expect(canSeeAllDeals("sales")).toBe(true);
+    expect(canSeeAllDeals("admin")).toBe(true);
+    expect(canSeeAllDeals("manager")).toBe(true);
+    expect(canSeeAllDeals("tech")).toBe(false);
     expect(canViewDeal({ role: "sales", userId: "u-sales", ownerId: "u-sales" })).toBe(true);
     expect(canViewDeal({ role: "sales", userId: "u-sales", ownerId: null })).toBe(true);
-    expect(canViewDeal({ role: "sales", userId: "u-sales", ownerId: "u-other" })).toBe(false);
+    expect(canViewDeal({ role: "sales", userId: "u-sales", ownerId: "u-other" })).toBe(true);
     expect(canViewDeal({ role: "admin", userId: "u-admin", ownerId: "u-other" })).toBe(true);
     expect(canViewDeal({ role: "tech", userId: "u-tech", ownerId: "u-sales" })).toBe(false);
   });

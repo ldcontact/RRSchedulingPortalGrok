@@ -6,8 +6,8 @@ export const isStaffRole = (role: Role | null | undefined) => role === "admin" |
 /** Admin, manager, or sales — anyone who may open the Sales section. Techs never can. */
 export const canAccessSales = (role: Role | null | undefined) => isStaffRole(role) || role === "sales";
 
-/** Managers and admins see every deal; sales reps see their own (plus unassigned). */
-export const canSeeAllDeals = (role: Role | null | undefined) => isStaffRole(role);
+/** Admin, manager, and sales all see the whole pipeline. Techs never do. */
+export const canSeeAllDeals = (role: Role | null | undefined) => canAccessSales(role);
 
 export const canManageAutomations = (role: Role | null | undefined) => isStaffRole(role) || role === "sales";
 
