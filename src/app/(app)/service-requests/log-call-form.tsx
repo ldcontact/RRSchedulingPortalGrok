@@ -1,40 +1,40 @@
 "use client";
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import { ProjectStatusPill } from "@/components/status";
 import { ageText, warrantyFor } from "@/lib/project-row";
 import { dayKey, fmtDay } from "@/lib/time";
 import { PROJECT_TYPE_LABEL, type ProjectPick, type SRChannel } from "@/lib/types";
-import { createTicket, customerPrefill, searchCustomers, type CustomerHit, type CustomerPrefill } from "./actions";
+import { CustomerPicker, type CustomerHit } from "@/components/customer-picker";
+import { createTicket, customerPrefill, type CustomerPrefill } from "./actions";
 
 const fmtD = (iso: string) => fmtDay(dayKey(iso), { month: "short", day: "numeric", year: "numeric" });
 
-/** Log a call / email as a new service request. Customer search is bounded (8 matches); suggestions are the customer's latest 10 projects. */
+/** Log a call / email as a new service request. Customer search is bounded (10 matches); suggestions are the customer's latest 10 projects. */
 export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: string }) {
   const [state, action, pending] = useActionState(createTicket, undefined);
   const v = state?.values ?? {};
   const [channel, setChannel] = useState<SRChannel>((v.channel as SRChannel) || "call");
   const [q, setQ] = useState(v.customer_name ?? "");
-  const [hits, setHits] = useState<CustomerHit[]>([]);
-  const [open, setOpen] = useState(false);
   const [cust, setCust] = useState<CustomerPrefill | null>(null);
   const [projectId, setProjectId] = useState<string>(v.project_id ?? "");
-  const [searching, startSearch] = useTransition();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    if (v.customer_id && !cust) customerPrefill(v.customer_id).then((c) => c && setCust(c));
+    if (v.customer_id && !cust) customerPrefill(v.customer_id).then((c) => {
+      if (!c) return;
+      setCust(c);
+      setQ(c.name);
+    });
   }, [v.customer_id, cust]);
 
-  function onType(text: string) {
-    setQ(text); setCust(null); setProjectId(""); setOpen(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => startSearch(async () => setHits(await searchCustomers(text))), 250);
-  }
-  async function pick(h: CustomerHit) {
-    setQ(h.name); setOpen(false); setHits([]);
+  async function onCustomer(h: CustomerHit | null) {
+    if (!h) {
+      setQ(""); setCust(null); setProjectId("");
+      return;
+    }
+    setQ(h.name);
     const c = await customerPrefill(h.id);
     if (!c) return;
     setCust(c);
@@ -54,7 +54,6 @@ export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: stri
 
   return (
     <form ref={formRef} action={action} className="flex flex-col gap-4 p-5" data-testid="log-call-form">
-      <input type="hidden" name="customer_id" value={cust?.id ?? v.customer_id ?? ""} />
       <input type="hidden" name="customer_name" value={q} />
       <input type="hidden" name="project_id" value={projectId} />
       <fieldset>
@@ -67,21 +66,14 @@ export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: stri
           ))}
         </div>
       </fieldset>
-      <div className="relative">
-        <label className="label">Customer *
-          <input className="input" value={q} onChange={(e) => onType(e.target.value)} onFocus={() => q && !cust && setOpen(true)} placeholder="Search by name, city, phone…" autoComplete="off" aria-label="Customer" data-testid="customer-search" />
-        </label>
-        {open && !cust && q.trim().length >= 2 && (
-          <ul className="absolute inset-x-0 top-full z-10 mt-1 max-h-64 overflow-auto rounded-lg border border-line bg-white shadow-lg" role="listbox">
-            {searching && !hits.length && <li className="px-3 py-2 text-sm text-muted">Searching…</li>}
-            {!searching && !hits.length && <li className="px-3 py-2 text-sm text-muted">No customer matches. <Link href="/customers/new" className="font-semibold text-brand">Add a customer</Link> first.</li>}
-            {hits.map((h) => (
-              <li key={h.id}><button type="button" onClick={() => pick(h)} className="block w-full px-3 py-2 text-left text-sm hover:bg-brand-50" role="option" aria-selected={false}>
-                <div className="font-semibold">{h.name}</div><div className="truncate text-xs text-muted">{h.address || "No address"}</div>
-              </button></li>
-            ))}
-          </ul>
-        )}
+      <div className="label">Customer *
+        <CustomerPicker
+          name="customer_id"
+          required
+          defaultSelectedId={v.customer_id}
+          onChange={onCustomer}
+          noMatchHint={<>No customers match. <Link href="/customers/new" className="font-semibold text-brand">Add a customer</Link> first.</>}
+        />
       </div>
       <div className="grid gap-3 sm:grid-cols-[2fr_1.2fr_.6fr_.9fr]">
         <label className="label">Site address<input className="input" name="site_address" defaultValue={v.site_address} placeholder="Street" /></label>

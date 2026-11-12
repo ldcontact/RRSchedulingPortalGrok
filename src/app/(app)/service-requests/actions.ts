@@ -34,15 +34,6 @@ async function load(id: string) {
 }
 
 // ---------------------------------------------------------------- log a call / new request
-export type CustomerHit = { id: string; name: string; address: string };
-/** Customer search for the Log a call form: at most 8 matches, never the whole list. */
-export async function searchCustomers(q: string): Promise<CustomerHit[]> {
-  await staff();
-  const term = q.trim();
-  if (term.length < 2) return [];
-  const { items } = await (await getRepo()).pageCustomers({ q: term, page: 1, size: 8, sort: "name" });
-  return items.map((c) => ({ id: c.id, name: c.name, address: formatAddress(c) }));
-}
 export type CustomerPrefill = {
   id: string; name: string; site_address: string; site_city: string; site_state: string; site_zip: string;
   contact_name: string; contact_phone: string; contact_email: string; projects: ProjectPick[];

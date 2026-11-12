@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
+import { formatAddress } from "@/lib/project-row";
 import type { CustomerInput } from "@/lib/types";
 import { geocodeCustomerById } from "@/lib/geocode/run";
 
@@ -103,4 +104,26 @@ export async function addCustomerNote(customerId: string, fd: FormData) {
   if (!body) return;
   await (await getRepo()).addNote({ customer_id: customerId, body });
   revalidatePath(`/customers/${customerId}`);
+}
+
+// ---------------------------------------------------------------- typeahead (New project, Log a call, …)
+export type CustomerHit = { id: string; name: string; address: string };
+const staff = () => requireRole("admin", "manager");
+
+/** Bounded customer search for the typeahead: at most 10 matches, never the whole list. RLS via the user-scoped repo. */
+export async function searchCustomers(q: string): Promise<CustomerHit[]> {
+  await staff();
+  const term = q.trim();
+  if (term.length < 2) return [];
+  const { items } = await (await getRepo()).pageCustomers({ q: term, page: 1, size: 10, sort: "name" });
+  return items.map((c) => ({ id: c.id, name: c.name, address: formatAddress(c) }));
+}
+
+/** Resolve one customer for a preselected id (e.g. /projects/new?customer=). */
+export async function getCustomerHit(id: string): Promise<CustomerHit | null> {
+  await staff();
+  const term = id.trim();
+  if (!term) return null;
+  const c = await (await getRepo()).getCustomer(term);
+  return c ? { id: c.id, name: c.name, address: formatAddress(c) } : null;
 }

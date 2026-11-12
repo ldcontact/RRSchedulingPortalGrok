@@ -1,21 +1,24 @@
 "use client";
 import Link from "next/link";
 import { useActionState } from "react";
+import { CustomerPicker, type CustomerHit } from "@/components/customer-picker";
 import { saveProject } from "./actions";
 import { DEFAULT_WARRANTY_MONTHS, PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, type Project, type ProjectType } from "@/lib/types";
 
-export function ProjectForm({ project, customers, customerId }: { project?: Project; customers: { id: string; name: string }[]; customerId?: string }) {
+export function ProjectForm({ project, initialCustomer, customerId }: { project?: Project; initialCustomer?: CustomerHit | null; customerId?: string }) {
   const [state, action, pending] = useActionState(saveProject, undefined);
   const v = (k: string, fallback = "") => state?.values?.[k] ?? (project ? String((project as Record<string, unknown>)[k] ?? "") : fallback);
   return (
     <form action={action} className="card grid gap-4 p-5 sm:grid-cols-2">
       {project && <input type="hidden" name="id" value={project.id} />}
-      <label className="label sm:col-span-2">Customer *
-        <select className="input" name="customer_id" required defaultValue={v("customer_id", customerId ?? "")}>
-          <option value="" disabled>Choose a customer…</option>
-          {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </label>
+      <div className="label sm:col-span-2">Customer *
+        <CustomerPicker
+          name="customer_id"
+          required
+          defaultSelected={initialCustomer ?? null}
+          defaultSelectedId={initialCustomer ? undefined : (customerId || project?.customer_id)}
+        />
+      </div>
       <label className="label sm:col-span-2">Project name *<input className="input" name="name" required defaultValue={v("name")} placeholder="e.g. LED retrofit – warehouse" /></label>
       <label className="label">Type
         <select className="input" name="type" defaultValue={v("type", "lighting")}>
