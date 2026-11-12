@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
+import { customerSubtitle, emptyWorkspaceSearch, matchesProfile, personHref, personSubtitle, projectSubtitle, WORKSPACE_SEARCH_LIMIT, workspaceQuery } from "@/lib/workspace-search";
 import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskComment, TaskCommentView, TaskView } from "@/lib/types";
 import { derivePhotoPhase, kindForPhase } from "@/lib/photo-phase";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
@@ -121,7 +122,7 @@ function seedPhase2(): P2 {
   const projects = [
     pr("p1", "c1", "LED retrofit – full office", "lighting",
       "Replace 42 (2x4) T8 troffers with 40W LED flat panels in lobby, 6 operatories and hallway.\nInstall 4 occupancy sensors in break room and restrooms.\nRecycle old lamps/ballasts (ComEd requirement). Work around patient hours; operatories 3 & 4 only after 1pm Friday.",
-      18400, 9200, { timeline_sent_at: ago(12), timeline_sent_via: "email", timeline_approved_at: ago(10) }),
+      18400, 9200, { timeline_sent_at: ago(12), timeline_sent_via: "email", timeline_approved_at: ago(10), hcp_job_number: "367" }),
     pr("p2", "c2", "Shop high-bay upgrade", "lighting",
       "Swap 16 400W metal-halide high bays for 150W LED UFO high bays (bays 1–4).\nAdd 6 LED wall packs outside. Lift is on site; bay 4 must be clear before 7am.",
       14250, 7600, { timeline_sent_at: ago(9), timeline_sent_via: "text", timeline_approved_at: ago(8) }),
@@ -130,7 +131,7 @@ function seedPhase2(): P2 {
       { timeline_sent_at: ago(7), timeline_sent_via: "email", timeline_approved_at: ago(6) }),
     pr("p4", "c4", "Plant floor lighting + HVAC controls", "lighting_hvac",
       "Phase A: 64 LED high bays on the production floor.\nPhase B: VFDs on 2 make-up air units + controls.\nSafety glasses and steel toes required on the floor.", 61800, 28900,
-      { timeline_sent_at: ago(5), timeline_sent_via: "email", timeline_approved_at: ago(3) }),
+      { timeline_sent_at: ago(5), timeline_sent_via: "email", timeline_approved_at: ago(3), hcp_job_number: "1367" }),
     pr("p5", "c5", "Exterior + hallway LED retrofit", "lighting",
       "Buildings A–E: replace 120 hallway fixtures and 22 exterior wall packs with LED + photocells.", 22600, 11800),
     pr("p6", "c6", "HVAC tune-up + lighting assessment", "lighting_hvac",
@@ -396,7 +397,13 @@ function load(): DB {
     if (!p.phase) p.phase = derivePhotoPhase(p);
   }
   for (const j of db.jobs) { j.kind ??= "install"; if (j.service_request_id === undefined) j.service_request_id = null; }
-  for (const p of db.projects) p.warranty_months ??= DEFAULT_WARRANTY_MONTHS;
+  let hcpTouched = false;
+  const hcpSeed: Record<string, string> = { p1: "367", p4: "1367" };
+  for (const p of db.projects) {
+    p.warranty_months ??= DEFAULT_WARRANTY_MONTHS;
+    if (!p.hcp_job_number && hcpSeed[p.id]) { p.hcp_job_number = hcpSeed[p.id]; hcpTouched = true; }
+  }
+  if (hcpTouched) save(db);
   if (!db.service_requests) { db.service_requests = []; db.sr_events = []; seedServiceRequests(db); save(db); } // upgrade an older mock DB
   if (db.tasks?.some((t) => !Array.isArray((t as Task & { assignee_id?: string }).assignee_ids))) {
     db.tasks = db.tasks.map((t) => {
@@ -573,6 +580,39 @@ export const mockRepo: Repo = {
       ...m,
       avatar_url: resolveAvatarUrl(m, m.avatar_source === "upload" && m.avatar_path ? `/api/mock-photo/${m.avatar_path}` : null),
     }));
+  },
+  async searchWorkspace(q) {
+    const parsed = workspaceQuery(q);
+    if (!parsed) return emptyWorkspaceSearch();
+    const w = await who();
+    const db = load();
+    const myCustomers = w.staff ? null : new Set(db.projects.filter((proj) => w.canProject(proj.id)).map((proj) => proj.customer_id));
+    const custFields = (id: string) => {
+      const c = db.customers.find((x) => x.id === id);
+      return customerSearchFields(c ?? { name: "", phone: null, email: null, address: null, city: null, state: null, zip: null }, db.contacts.filter((x) => x.customer_id === id));
+    };
+
+    const customers = db.customers.filter((c) => (!myCustomers || myCustomers.has(c.id)) && matchesSearch(custFields(c.id).doc, custFields(c.id).digits, parsed));
+    const projects = db.projects.filter((proj) => w.canProject(proj.id) && (() => { const f = projectSearchFields(proj, custFields(proj.customer_id)); return matchesSearch(f.doc, f.digits, parsed); })());
+    const people = db.profiles.filter((prof) => !prof.deleted_at && prof.role && matchesProfile(prof, parsed));
+
+    return {
+      customers: {
+        total: customers.length,
+        items: customers.slice(0, WORKSPACE_SEARCH_LIMIT).map((c) => ({ id: c.id, kind: "customer" as const, title: c.name, subtitle: customerSubtitle(c), href: `/customers/${c.id}` })),
+      },
+      projects: {
+        total: projects.length,
+        items: projects.slice(0, WORKSPACE_SEARCH_LIMIT).map((proj) => {
+          const c = db.customers.find((x) => x.id === proj.customer_id);
+          return { id: proj.id, kind: "project" as const, title: proj.name, subtitle: projectSubtitle({ customer_name: c?.name, hcp_job_number: proj.hcp_job_number, address: formatAddress(c) }), href: `/projects/${proj.id}` };
+        }),
+      },
+      people: {
+        total: people.length,
+        items: people.slice(0, WORKSPACE_SEARCH_LIMIT).map((prof) => ({ id: prof.id, kind: "person" as const, title: prof.full_name, subtitle: personSubtitle(prof), href: personHref({ profileId: prof.id, viewerId: w.uid, staff: w.staff }) })),
+      },
+    };
   },
   async getProfile(id) { const row = load().profiles.find((p) => p.id === id); return row ? { ...row, fleet_access: !!row.fleet_access, can_delete: !!row.can_delete } : null; },
   async upsertInvite(input) {

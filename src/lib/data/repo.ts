@@ -3,6 +3,7 @@ import type {
   Milestone, Note, Person, Photo, PhotoKind, PhotoPhase, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
   ServiceRequest, ServiceRequestInput, ServiceRequestPatch, ServiceRequestView, SREvent, SREventKind, SRPage, SRPageFilter,
   FleetVehicleRow, GeocodeFields, Task, TaskCommentView, TaskInput, TaskPage, TaskPageFilter, TaskPatch, TaskView,
+  WorkspaceSearchResults,
 } from "@/lib/types";
 
 /**
@@ -23,6 +24,8 @@ export interface Repo {
   deleteContact(id: string): Promise<void>;
 
   listTeam(): Promise<TeamMember[]>;
+  /** Quick Find: bounded, RLS-scoped matches across customers, projects, and people. */
+  searchWorkspace(q: string): Promise<WorkspaceSearchResults>;
   getProfile(id: string): Promise<Profile | null>;
   upsertInvite(input: InviteInput): Promise<void>;
   removeFromTeam(email: string): Promise<void>;

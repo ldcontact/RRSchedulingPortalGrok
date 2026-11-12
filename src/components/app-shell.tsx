@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Icon } from "./icons";
 import { Avatar, Logo, MockBadge } from "./ui";
+import { WorkspaceSearch } from "./workspace-search";
 import { hasFleetAccess } from "@/lib/geotab/access";
 import { ROLE_LABEL, type Role, type SessionUser } from "@/lib/types";
 
@@ -86,6 +87,7 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { 
               {!!badges["/tasks"] && <span className="absolute top-0.5 right-0 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold text-[#3b2600]">{badges["/tasks"]}</span>}
             </Link>
           )}
+          <WorkspaceSearch />
           {mock && <span className="hidden sm:inline"><MockBadge /></span>}
           {roleSwitcher}
           <span className="hidden text-xs text-muted lg:inline">{ROLE_LABEL[user.role]}</span>

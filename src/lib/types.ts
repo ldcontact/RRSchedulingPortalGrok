@@ -127,6 +127,9 @@ export type Project = {
   value: number; est_rebate: number; timeline_sent_at: string | null; timeline_sent_via: Channel | null; timeline_approved_at: string | null;
   /** Warranty window in months from the project's completion (DEFAULT_WARRANTY_MONTHS). */
   warranty_months: number;
+  /** Housecall Pro job number when the project was imported; used in workspace and list search. */
+  hcp_job_number?: string | null;
+  site_address?: string | null; site_city?: string | null; site_state?: string | null; site_zip?: string | null;
   created_at: string; updated_at: string;
 };
 export type ProjectInput = Pick<Project, "customer_id" | "name" | "type" | "status" | "scope" | "value" | "est_rebate"> & { warranty_months?: number };
@@ -295,3 +298,18 @@ export type TaskPageFilter = {
   size?: number;
 };
 export type TaskPage = Paged<TaskView> & { counts: Record<string, number> };
+
+/** One row in the Quick Find modal. */
+export type WorkspaceSearchHit = {
+  id: string;
+  kind: "customer" | "project" | "person";
+  title: string;
+  subtitle: string;
+  href: string | null;
+};
+export type WorkspaceSearchGroup = { items: WorkspaceSearchHit[]; total: number };
+export type WorkspaceSearchResults = {
+  customers: WorkspaceSearchGroup;
+  projects: WorkspaceSearchGroup;
+  people: WorkspaceSearchGroup;
+};

@@ -59,6 +59,13 @@ describe("project matching", () => {
   it.each([["project name", "high-bay"], ["project number", "8241"], ["scope", "40 mh"], ["site address", "busse rd"], ["site city", "bensenville"],
     ["customer name", "precision"], ["customer address", "lunt ave"], ["contact name", "dave kowalski"], ["customer phone", "(847) 555-0174"], ["contact phone", "7735550199"]])(
     "%s: %s", (_l, q) => expect(m(q, p)).toBe(true));
+  it("matches a Housecall Pro job number and numbers that contain it", () => {
+    const p367 = projectSearchFields({ name: "LED retrofit", scope: "Panels", hcp_job_number: "367", site_address: "1420 W Algonquin Rd" }, c);
+    const pContain = projectSearchFields({ name: "Plant floor", scope: "High bays", hcp_job_number: "1367", site_address: "2250 Lunt Ave" }, c);
+    expect(matchesSearch(p367.doc, p367.digits, parseSearch("367"))).toBe(true);
+    expect(matchesSearch(pContain.doc, pContain.digits, parseSearch("367"))).toBe(true);
+    expect(matchesSearch(p.doc, p.digits, parseSearch("367"))).toBe(false);
+  });
 });
 
 describe("applySearch", () => {

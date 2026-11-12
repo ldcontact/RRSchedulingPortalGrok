@@ -2,13 +2,14 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
-import type { FleetVehicleRow, AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskCommentView, TaskView } from "@/lib/types";
+import type { FleetVehicleRow, AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, Role, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskCommentView, TaskView, WorkspaceSearchHit } from "@/lib/types";
 import { derivePhotoPhase, kindForPhase } from "@/lib/photo-phase";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { applySearch, parseSearch } from "@/lib/search";
+import { customerSubtitle, emptyWorkspaceSearch, personHref, personSubtitle, projectSubtitle, WORKSPACE_SEARCH_LIMIT } from "@/lib/workspace-search";
 import { applyTicketVisits } from "@/lib/tickets";
 import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 import type { TicketVisitCrew } from "@/lib/types";
@@ -270,6 +271,62 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const merged = mergeTeam((profiles ?? []) as Profile[], invites ?? []);
       const signed = await signAvatarPaths(s, merged.map((m) => (m.avatar_source === "upload" ? m.avatar_path : null)));
       return merged.map((m) => ({ ...m, avatar_url: resolveAvatarUrl(m, m.avatar_path ? signed.get(m.avatar_path) : null) }));
+    },
+    async searchWorkspace(q) {
+      const parsed = parseSearch(q);
+      if (!parsed) return emptyWorkspaceSearch();
+      const s = await db();
+      const [{ data: auth }, custQ, projQ] = await Promise.all([
+        s.auth.getUser(),
+        (async () => {
+          let query = s.from("customers").select("id, name, phone, email, address, city, state, zip, customer_search!inner()", { count: "exact" });
+          query = applySearch(query, "customer_search", parsed);
+          return query.order("name").order("id").range(0, WORKSPACE_SEARCH_LIMIT - 1);
+        })(),
+        (async () => {
+          let query = s.from("projects").select("id, name, hcp_job_number, customers(name, address, city, state, zip), project_search!inner()", { count: "exact" });
+          query = applySearch(query, "project_search", parsed);
+          return query.order("name").order("id").range(0, WORKSPACE_SEARCH_LIMIT - 1);
+        })(),
+      ]);
+      fail(custQ.error);
+      fail(projQ.error);
+      const uid = auth.user?.id ?? "";
+      let peopleQ = s.from("profiles").select("id, full_name, email, role, title, deleted_at", { count: "exact" }).is("deleted_at", null);
+      for (const token of parsed.tokens) {
+        peopleQ = peopleQ.or(`full_name.ilike."%${token}%",email.ilike."%${token}%"`);
+      }
+      const peopleRes = await peopleQ.order("full_name").order("id").range(0, WORKSPACE_SEARCH_LIMIT - 1);
+      fail(peopleRes.error);
+
+      const { data: me } = uid ? await s.from("profiles").select("id, role").eq("id", uid).maybeSingle() : { data: null };
+      const staff = (me as { role?: Role | null } | null)?.role === "admin" || (me as { role?: Role | null } | null)?.role === "manager";
+
+      type Cust = { id: string; name: string; phone: string | null; email: string | null; address: string | null; city: string | null; state: string | null; zip: string | null };
+      type CustAddr = { name: string; address: string | null; city: string | null; state: string | null; zip: string | null };
+      type Proj = { id: string; name: string; hcp_job_number?: string | null; customers: CustAddr | CustAddr[] | null };
+      type Pers = { id: string; full_name: string; email: string; role: Role | null; title: string | null };
+      const oneCust = (v: CustAddr | CustAddr[] | null | undefined): CustAddr | null => Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+
+      const customers: WorkspaceSearchHit[] = ((custQ.data ?? []) as Cust[]).map((c) => ({
+        id: c.id, kind: "customer", title: c.name, subtitle: customerSubtitle(c), href: `/customers/${c.id}`,
+      }));
+      const projects: WorkspaceSearchHit[] = ((projQ.data ?? []) as Proj[]).map((row) => {
+        const c = oneCust(row.customers);
+        return {
+          id: row.id, kind: "project", title: row.name,
+          subtitle: projectSubtitle({ customer_name: c?.name, hcp_job_number: row.hcp_job_number, address: formatAddress(c) }),
+          href: `/projects/${row.id}`,
+        };
+      });
+      const people: WorkspaceSearchHit[] = ((peopleRes.data ?? []) as Pers[]).map((row) => ({
+        id: row.id, kind: "person", title: row.full_name, subtitle: personSubtitle(row), href: personHref({ profileId: row.id, viewerId: uid, staff }),
+      }));
+      return {
+        customers: { items: customers, total: custQ.count ?? customers.length },
+        projects: { items: projects, total: projQ.count ?? projects.length },
+        people: { items: people, total: peopleRes.count ?? people.length },
+      };
     },
     async getProfile(id) {
       const s = await db();
