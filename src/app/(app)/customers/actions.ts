@@ -38,6 +38,16 @@ export async function saveCustomer(_: CustomerFormState, fd: FormData): Promise<
   }
   // Geocode after the row is saved so a Census timeout/error never blocks the customer.
   await geocodeCustomerById(targetId, prev, !id);
+  const pickedLat = Number(s(fd, "geo_lat"));
+  const pickedLng = Number(s(fd, "geo_lng"));
+  if (Number.isFinite(pickedLat) && Number.isFinite(pickedLng)) {
+    const row = await repo.getCustomer(targetId).catch(() => null);
+    if (row && row.geocode_status !== "matched") {
+      await repo.setCustomerGeocode(targetId, {
+        lat: pickedLat, lng: pickedLng, geocoded_at: new Date().toISOString(), geocode_status: "matched",
+      }).catch(() => {});
+    }
+  }
   revalidatePath("/customers");
   revalidatePath("/fleet");
   revalidatePath("/schedule");
