@@ -79,7 +79,7 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
 
           <div className="card p-4">
             <div className="mb-3 font-semibold">Conversation</div>
-            <p className="mb-3 text-xs text-muted">Outgoing email uses the existing Gmail setup when a rep clicks Send. SMS is disabled until Twilio is approved. Nothing auto-sends to the customer.</p>
+            <p className="mb-3 text-xs text-muted">Outgoing email uses the existing Gmail setup when a rep clicks Send. SMS is wired to Twilio but stays off until A2P 10DLC registration is approved. Nothing auto-sends to the customer.</p>
             <form action={draftMessage.bind(null, deal.id)} className="mb-4 grid gap-2 rounded-lg border border-dashed border-line p-3">
               <div className="flex flex-wrap gap-3">
                 <label className="text-sm font-semibold"><input type="radio" name="kind" value="email" defaultChecked className="mr-1" />Email draft</label>
