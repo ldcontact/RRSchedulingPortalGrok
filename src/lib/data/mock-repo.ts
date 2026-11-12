@@ -91,6 +91,7 @@ function seed(): DB {
     c("c6", "Northwest Fitness Studio", "(847) 555-0196", "jamal@nwfitness.example", "3315 Kirchoff Rd", "Rolling Meadows", "60008", ["Lead", "HVAC"], "Wants HVAC tune-up + lighting assessment. Busy 5–8pm.", 6),
     c("c7", "Itasca Print & Sign", "(630) 555-0127", "rosa@itascaprint.example", "510 W Irving Park Rd", "Itasca", "60143", ["Lead"], "Referred by Golf Road Auto Body.", 3),
     c("c8", "Roselle Family Pharmacy", "(630) 555-0138", "ken@rosellerx.example", "122 E Irving Park Rd", "Roselle", "60172", ["Lead", "Lighting"], "Asked about the free ComEd assessment.", 2),
+    c("c-glen", "367 Glen Leven ct", "(847) 555-0367", "edyta@retrofitrebates.example", "367 Glen Leven ct", "Schaumburg", "60193", ["Lighting"], "Owner is Edyta Dlugosz.", 2),
   ].map((row) => withGeocode(row));
   const k = (customer_id: string, name: string, title: string, phone: string, email: string, is_primary = true): Contact =>
     ({ id: randomUUID(), customer_id, name, title, phone, email, is_primary });
@@ -104,6 +105,7 @@ function seed(): DB {
     k("c6", "Jamal Carter", "Owner", "(847) 555-0196", "jamal@nwfitness.example"),
     k("c7", "Rosa Delgado", "Owner", "(630) 555-0127", "rosa@itascaprint.example"),
     k("c8", "Ken Yamamoto", "Pharmacist / Owner", "(630) 555-0138", "ken@rosellerx.example"),
+    k("c-glen", "Edyta Dlugosz", "Owner", "(847) 555-0367", "edyta@retrofitrebates.example"),
   ];
   const maria = profiles.find((x) => x.id === "u-manager");
   if (maria) maria.fleet_access = true; // operations manager — used for manager fleet demos
@@ -139,6 +141,9 @@ function seedPhase2(): P2 {
       "Buildings A–E: replace 120 hallway fixtures and 22 exterior wall packs with LED + photocells.", 22600, 11800),
     pr("p6", "c6", "HVAC tune-up + lighting assessment", "lighting_hvac",
       "Free ComEd lighting assessment + tune-up of 1 RTU. Quote LED retrofit for the studio floor.", 4800, 2100, { timeline_sent_at: ago(1), timeline_sent_via: "email" }),
+    // Repro: visit scheduled 18 days out (Mon Nov 30 when "today" is Thu Nov 12) but already started.
+    pr("p-glen", "c-glen", "367 Glen Leven ct LED Project", "lighting",
+      "LED retrofit at 367 Glen Leven ct. Call the owner 20 minutes before arrival.", 0, 0, { status: "in_progress" }),
   ];
   const ms = (project_id: string, rows: [string, number, boolean][]): Milestone[] =>
     rows.map(([name, off, done], i) => ({ id: randomUUID(), project_id, name, due_date: addDays(T, off), done, sort_order: i }));
@@ -164,10 +169,11 @@ function seedPhase2(): P2 {
     jb("j5", "p3", "RTU tune-up + thermostats", -1, 9, 13, "completed", "Roof ladder at rear; lockbox code from Maria.", { started_at: at(-1, 9), completed_at: at(-1, 12, 40), completed_by: "u-tech3" }),
     jb("j6", "p4", "Phase A – high bays (day 1)", 2, 7, 16, "scheduled", "Safety glasses + steel toes. Check in at the guard shack."),
     jb("j7", "p4", "Phase A – high bays (day 2)", 3, 7, 16, "scheduled", null),
+    jb("j-glen", "p-glen", "367 Glen Leven ct LED", 18, 8, 12, "in_progress", "Call customer 20 minutes before arrival", { started_at: at(0, 11, 51) }),
   ];
   const as = (job_id: string, ...ids: string[]) => ids.map((profile_id) => ({ job_id, profile_id }));
   const assignments = [...as("j1", "u-tech1", "u-tech2"), ...as("j2", "u-tech1", "u-tech2"), ...as("j3", "u-tech4"), ...as("j8", "u-tech2"), ...as("j4", "u-tech4", "u-tech1"),
-    ...as("j5", "u-tech3"), ...as("j13", "u-tech3"), ...as("j6", "u-tech1", "u-tech2", "u-tech3"), ...as("j7", "u-tech1", "u-tech2")];
+    ...as("j5", "u-tech3"), ...as("j13", "u-tech3"), ...as("j6", "u-tech1", "u-tech2", "u-tech3"), ...as("j7", "u-tech1", "u-tech2"), ...as("j-glen", "u-tech1")];
   const ph = (project_id: string, job_id: string | null, kind: Photo["kind"], caption: string, days: number, by: string, requirement_id: string | null = null, phase?: Photo["phase"]): PhotoRow => {
     const resolved = derivePhotoPhase({ kind, requirement_id, phase });
     return { id: randomUUID(), project_id, job_id, kind: kindForPhase(resolved, kind), phase: resolved, storage_path: `seed/${kind}/${encodeURIComponent(caption)}.svg`, caption, requirement_id, uploaded_by: by, created_at: ago(days) };
@@ -462,6 +468,17 @@ function load(): DB {
   if (!db.task_comments) {
     db.task_comments = [];
     if (db.tasks.some((row) => row.id === "t2")) seedTaskComments(db, (d, h = 9) => zonedToUtc(addDays(todayKey(), d), h * 60));
+    save(db);
+  }
+  if (!db.customers.some((c) => c.id === "c-glen")) {
+    const fresh = seed();
+    const add = <T extends { id: string }>(into: T[], row: T | undefined) => { if (row && !into.some((x) => x.id === row.id)) into.push(row); };
+    add(db.customers, fresh.customers.find((c) => c.id === "c-glen"));
+    const contact = fresh.contacts.find((c) => c.customer_id === "c-glen");
+    if (contact && !db.contacts.some((c) => c.customer_id === "c-glen")) db.contacts.push(contact);
+    add(db.projects, fresh.projects.find((pr) => pr.id === "p-glen"));
+    add(db.jobs, fresh.jobs.find((j) => j.id === "j-glen"));
+    if (!db.assignments.some((a) => a.job_id === "j-glen")) db.assignments.push({ job_id: "j-glen", profile_id: "u-tech1" });
     save(db);
   }
   return db;
@@ -853,7 +870,9 @@ export const mockRepo: Repo = {
   async listJobs(f = {}) {
     const w = await who(); const db = load();
     return db.jobs
-      .filter((j) => w.canJob(j.id) && (!f.projectId || j.project_id === f.projectId) && (!f.serviceRequestId || j.service_request_id === f.serviceRequestId) && (!f.status || f.status.includes(j.status))
+      .filter((j) => w.canJob(j.id) && (!f.projectId || j.project_id === f.projectId)
+        && (!f.customerId || db.projects.find((p) => p.id === j.project_id)?.customer_id === f.customerId)
+        && (!f.serviceRequestId || j.service_request_id === f.serviceRequestId) && (!f.status || f.status.includes(j.status))
         && (!f.from || j.ends_at > f.from) && (!f.to || j.starts_at < f.to))
       .map((j) => viewJob(db, j))
       .filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee))

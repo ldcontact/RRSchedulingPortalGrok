@@ -188,7 +188,7 @@ export type Job = {
 };
 export type JobInput = Pick<Job, "project_id" | "title" | "starts_at" | "ends_at" | "instructions"> & { kind?: JobKind; service_request_id?: string | null };
 export type JobView = Job & { project_name: string; project_type: ProjectType; customer_id: string; customer_name: string; address: string | null; assignees: Person[]; latitude: number | null; longitude: number | null };
-export type JobFilter = { from?: string; to?: string; projectId?: string; assignee?: string; status?: JobStatus[]; serviceRequestId?: string };
+export type JobFilter = { from?: string; to?: string; projectId?: string; customerId?: string; assignee?: string; status?: JobStatus[]; serviceRequestId?: string };
 
 export type PhotoKind = "before" | "completion";
 /** Visit/project photo category. kind stays before|completion for existing RLS and storage paths. */

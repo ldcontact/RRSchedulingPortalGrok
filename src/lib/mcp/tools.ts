@@ -11,6 +11,7 @@ import { z } from "zod";
 import { findConflicts, type Repo } from "@/lib/data/repo";
 import { formatAddress } from "@/lib/project-row";
 import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, monthStart, todayKey, TZ, validDay, weekStart, zonedToUtc } from "@/lib/time";
+import { partitionMyJobs } from "@/lib/my-jobs";
 import {
   CHANNEL_LABEL, JOB_STATUS_LABEL, PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, ROLE_LABEL,
   type CustomerSort, type JobStatus, type JobView, type Message, type Note, type Person, type Photo, type PhotoRequirement, type ProjectSort, type Role, type SessionUser,
@@ -135,12 +136,13 @@ export const TOOLS = {
         // Same window as My Jobs: a week back so in-progress / recently submitted still show.
         const jobs = (await ctx.repo.listJobs({ from: zonedToUtc(addDays(T, -7), 0), assignee: u.id }))
           .filter((j) => j.status !== "cancelled" && j.assignees.some((a) => a.id === u.id));
+        const { today, upcoming, submitted, sentBack } = partitionMyJobs(jobs, T);
         return {
           today: T, time_zone: TZ, link: link(ctx, "/"),
-          sent_back: jobs.filter((j) => j.status === "in_progress" && j.review_note).map((j) => ({ ...visit(ctx, j), review_note: j.review_note })),
-          today_visits: jobs.filter((j) => dayKey(j.starts_at) === T || (j.status === "in_progress" && dayKey(j.starts_at) < T)).map((j) => visit(ctx, j)),
-          coming_up: jobs.filter((j) => dayKey(j.starts_at) > T && j.status === "scheduled").sort((a, b) => a.starts_at.localeCompare(b.starts_at)).slice(0, 50).map((j) => visit(ctx, j)),
-          recently_submitted: jobs.filter((j) => (j.status === "completed" || j.status === "approved") && dayKey(j.starts_at) < T).map((j) => visit(ctx, j)),
+          sent_back: sentBack.map((j) => ({ ...visit(ctx, j), review_note: j.review_note })),
+          today_visits: today.map((j) => visit(ctx, j)),
+          coming_up: upcoming.slice(0, 50).map((j) => visit(ctx, j)),
+          recently_submitted: submitted.map((j) => visit(ctx, j)),
         };
       }
       const [c, review, today] = await Promise.all([

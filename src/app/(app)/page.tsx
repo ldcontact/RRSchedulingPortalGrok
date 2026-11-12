@@ -7,9 +7,10 @@ import { isStaff, requireMember } from "@/lib/auth";
 import { fleetScope } from "@/lib/geotab/access";
 import { CrewCard } from "@/components/fleet/crew-card";
 import { getRepo } from "@/lib/data/repo";
-import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
+import { addDays, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
 import { ComingUpList } from "@/components/coming-up-list";
 import { TechJobCard } from "@/components/tech-job-card";
+import { partitionMyJobs } from "@/lib/my-jobs";
 import type { JobView } from "@/lib/types";
 
 function JobRow({ j, showCrew = true }: { j: JobView; showCrew?: boolean }) {
@@ -37,12 +38,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
     // No upper date bound: Coming up lists every future assigned visit (jobs.starts_at index).
     // Look back 7 days so in-progress / recently submitted still appear in Today / Recently submitted.
     const jobs = (await repo.listJobs({ from: zonedToUtc(addDays(T, -7), 0), assignee: user.id })).filter((j) => j.status !== "cancelled");
-    const sentBack = jobs.filter((j) => j.status === "in_progress" && j.review_note);
-    const today = jobs.filter((j) => dayKey(j.starts_at) === T || (j.status === "in_progress" && dayKey(j.starts_at) < T));
-    const upcoming = jobs
-      .filter((j) => dayKey(j.starts_at) > T && j.status === "scheduled")
-      .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-    const submitted = jobs.filter((j) => (j.status === "completed" || j.status === "approved") && dayKey(j.starts_at) < T);
+    const { today, upcoming, submitted, sentBack } = partitionMyJobs(jobs, T);
     return (
       <>
         {deniedBanner}

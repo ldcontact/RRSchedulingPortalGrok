@@ -17,6 +17,7 @@ import { JobStatusPill, ProjectStatusPill } from "@/components/status";
 import { fmtDateTime, fmtDay, fmtWhen, money, dayKey } from "@/lib/time";
 import { deriveCustomerActivity } from "@/lib/activity";
 import { customerProjectStats } from "@/lib/customer-project-stats";
+import { liveVisitsForProject } from "@/lib/my-jobs";
 import {
   ActionMenu, CommunicateMenu, ProfileHeader, ProfileTabs, RailCard, StatsStrip,
   formatStreetAddress, mapsSearchUrl, menuLink, telHref, smsHref,
@@ -55,7 +56,8 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
   ]);
   if (!c) notFound();
   const [allJobs, taskPage] = await Promise.all([
-    repo.listJobs({}),
+    // Scope to this customer — unscoped listJobs({}) is capped at 1,000 rows by PostgREST and drops later visits.
+    repo.listJobs({ customerId: id }),
     repo.pageTasks({ customerId: id, tab: "all", page: 1, size: 25 }).catch(() => null),
   ]);
   const visits = allJobs.filter((j) => j.customer_id === id);
@@ -196,7 +198,7 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
           {projects.length === 0 && <div className="p-6 text-center text-sm text-muted">No projects yet. <Link href={`/projects/new?customer=${c.id}`} className="font-semibold text-brand">Create a project</Link> to schedule visits.</div>}
           <div className="divide-y divide-line">
             {projects.map((p) => {
-              const pVisits = visits.filter((j) => j.project_id === p.id && j.status !== "cancelled");
+              const pVisits = liveVisitsForProject(visits, p.id);
               return (
                 <div key={p.id} className="px-4 py-3 sm:px-5">
                   <Link href={`/projects/${p.id}`} className="flex min-w-0 items-center gap-3 hover:text-brand">
