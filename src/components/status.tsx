@@ -1,5 +1,6 @@
-import { JOB_KIND_LABEL, JOB_STATUS_LABEL, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_PRIORITY_LABEL, SR_STATUS_LABEL, TASK_PRIORITY_LABEL, TASK_STATUS_LABEL, WARRANTY_LABEL,
+import { JOB_KIND_LABEL, JOB_STATUS_LABEL, PROJECT_STATUS_LABEL, SR_CHANNEL_LABEL, SR_PRIORITY_LABEL, SR_STATUS_LABEL, TASK_PRIORITY_LABEL, TASK_STATUS_LABEL, WARRANTY_LABEL,
   type JobKind, type JobStatus, type Person, type ProjectStatus, type ProjectType, type SRChannel, type SRPriority, type SRStatus, type TaskPriority, type TaskStatus, type WarrantyState } from "@/lib/types";
+import { TypeChip } from "./project-type-chip";
 import { Avatar } from "./ui";
 import { Icon } from "./icons";
 
@@ -18,10 +19,7 @@ export const JOB_BAR: Record<JobStatus, string> = {
 
 export const ProjectStatusPill = ({ status }: { status: ProjectStatus }) => <span className={`pill ${PROJECT_TONE[status]}`}>{PROJECT_STATUS_LABEL[status]}</span>;
 export const JobStatusPill = ({ status }: { status: JobStatus }) => <span className={`pill ${JOB_TONE[status]}`}>{JOB_STATUS_LABEL[status]}</span>;
-export const TypeTag = ({ type }: { type: ProjectType }) => {
-  const label = PROJECT_TYPE_LABEL[type] ?? type;
-  return <span className="tag max-w-full truncate" title={label}>{label}</span>;
-};
+export const TypeTag = ({ type }: { type: ProjectType }) => <TypeChip type={type} />;
 
 export function AvatarStack({ people, max = 4 }: { people: (Person & { title?: string })[]; max?: number }) {
   if (!people.length) return <span className="shrink-0 text-xs text-muted">Unassigned</span>;

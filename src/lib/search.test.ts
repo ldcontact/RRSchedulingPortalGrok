@@ -73,6 +73,8 @@ describe("project matching", () => {
     expect(matchesSearch(whe.doc, whe.digits, parseSearch("LED lighting"))).toBe(false);
     const led = projectSearchFields({ name: "Office panels", scope: "Troffers", type: "lighting" }, c);
     expect(matchesSearch(led.doc, led.digits, parseSearch("LED Lighting"))).toBe(true);
+    const pipe = projectSearchFields({ name: "Boiler room wrap", scope: "Insulate 80 ft of steam pipe", type: "pipe_insulation" }, c);
+    expect(matchesSearch(pipe.doc, pipe.digits, parseSearch("pipe insulation"))).toBe(true);
   });
 });
 

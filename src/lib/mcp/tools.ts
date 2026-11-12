@@ -207,7 +207,7 @@ export const TOOLS = {
 
   search_projects: tool({
     title: "Search projects",
-    description: "One page (50) of the Projects list with per-status counts. Search matches project name, type, HCP job number, scope, job-site address, plus the customer name, contact names, address and phone (any format). Default status is all active (everything but cancelled). Admin and manager only.",
+    description: "One page (50) of the Projects list with per-status counts. Search matches project name, type label (for example LED Lighting or Pipe Insulation), HCP job number, scope, job-site address, plus the customer name, contact names, address and phone (any format). Default status is all active (everything but cancelled). Admin and manager only.",
     input: z.object({
       query: z.string().max(100).optional().describe("Search text"),
       status: z.enum(["active", ...PROJECT_STATUSES]).optional().describe("active (default) or one status"),

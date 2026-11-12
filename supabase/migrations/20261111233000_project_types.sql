@@ -12,6 +12,7 @@ alter type public.project_type add value if not exists 'whe_multifamily';
 alter type public.project_type add value if not exists 'ac';
 alter type public.project_type add value if not exists 'ptac_to_hpac';
 alter type public.project_type add value if not exists 'weatherization';
+alter type public.project_type add value if not exists 'pipe_insulation';
 alter type public.project_type add value if not exists 'steam_traps';
 alter type public.project_type add value if not exists 'boiler_tune_up';
 alter type public.project_type add value if not exists 'hot_water_controllers';
@@ -45,6 +46,7 @@ begin
                                              when 'ac' then 'ac'
                                              when 'ptac_to_hpac' then 'ptac to hpac'
                                              when 'weatherization' then 'weatherization'
+                                             when 'pipe_insulation' then 'pipe insulation'
                                              when 'steam_traps' then 'steam traps'
                                              when 'boiler_tune_up' then 'boiler tune up'
                                              when 'hot_water_controllers' then 'hot water controllers'

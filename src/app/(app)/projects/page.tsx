@@ -55,14 +55,15 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
       <div className="card divide-y divide-line">
         {list.length === 0 && <div className="p-8 text-center text-muted">{q ? "No projects match your search." : "No projects here yet."}</div>}
         {list.map((p) => (
-          <Link key={p.id} href={`/projects/${p.id}`} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-[#fafbf9] sm:px-5 xl:grid-cols-[minmax(0,2fr)_130px_115px_100px_150px_120px_16px]">
+          <Link key={p.id} href={`/projects/${p.id}`} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 px-4 py-3 hover:bg-[#fafbf9] sm:px-5 xl:grid-cols-[minmax(0,2fr)_130px_90px_100px_150px_120px_16px]">
             <div className="min-w-0">
               <div className="truncate font-semibold">{p.name}</div>
               <div className="truncate text-[12.5px] text-muted">{p.customer_name}</div>
               <div className="flex min-w-0 items-center gap-1 text-[12.5px] text-muted"><Icon name="pin" className="size-3.5 shrink-0" /><span className="truncate" title={p.address || undefined}>{p.address || "No address on file"}</span></div>
+              <div className="mt-1.5"><TypeTag type={p.type} /></div>
             </div>
             <div className="justify-self-end xl:justify-self-start"><ProjectStatusPill status={p.status} /></div>
-            <div className="flex items-center gap-2 text-[12.5px] text-muted xl:block"><TypeTag type={p.type} /><span className="xl:mt-1 xl:block">{p.done_milestones}/{p.total_milestones} milestones</span></div>
+            <div className="text-[12.5px] text-muted">{p.done_milestones}/{p.total_milestones} milestones</div>
             <div className="text-[12.5px]"><div className="font-semibold">{money(p.value)}</div><div className="text-muted">{money(p.est_rebate)} rebate</div></div>
             <div className="text-[12.5px] text-muted">
               <div><span className="font-semibold text-ink">Start</span> {fmtDate(p.start_date)}</div>
