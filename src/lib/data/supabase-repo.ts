@@ -578,23 +578,21 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     },
     async listJobs(f = {}) {
       const s = await db();
-      // PostgREST caps a single select at 1,000 rows; page so filtered lists stay complete.
-      const JOB_PAGE = 1000;
-      const rows: JobRow[] = [];
-      for (let from = 0; ; from += JOB_PAGE) {
-        let q = s.from("jobs").select(JOB_SELECT).order("starts_at").order("id").range(from, from + JOB_PAGE - 1);
-        if (f.from) q = q.gt("ends_at", f.from);
-        if (f.to) q = q.lt("starts_at", f.to);
-        if (f.projectId) q = q.eq("project_id", f.projectId);
-        if (f.customerId) q = q.eq("projects.customer_id", f.customerId);
-        if (f.serviceRequestId) q = q.eq("service_request_id", f.serviceRequestId);
-        if (f.status) q = q.in("status", f.status);
-        const { data, error } = await q; fail(error);
-        const batch = (data ?? []) as unknown as JobRow[];
-        rows.push(...batch);
-        if (batch.length < JOB_PAGE) break;
-      }
-      const jobs = rows.map(toJobView).filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee));
+      // Single page only — do not walk every matching row. PostgREST caps a select at 1,000;
+      // callers that need a complete list must pass a tight filter (customer, project, date window).
+      const cap = Math.min(Math.max(f.limit ?? 1000, 1), 1000);
+      let q = s.from("jobs").select(JOB_SELECT);
+      if (f.order === "completed_at") q = q.order("completed_at", { ascending: false, nullsFirst: false }).order("id");
+      else q = q.order("starts_at").order("id");
+      q = q.range(0, cap - 1);
+      if (f.from) q = q.gt("ends_at", f.from);
+      if (f.to) q = q.lt("starts_at", f.to);
+      if (f.projectId) q = q.eq("project_id", f.projectId);
+      if (f.customerId) q = q.eq("projects.customer_id", f.customerId);
+      if (f.serviceRequestId) q = q.eq("service_request_id", f.serviceRequestId);
+      if (f.status) q = q.in("status", f.status);
+      const { data, error } = await q; fail(error);
+      const jobs = ((data ?? []) as unknown as JobRow[]).map(toJobView).filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee));
       const flat = jobs.flatMap((j) => j.assignees as (Person & AvatarFields)[]);
       const signed = await signAvatarPaths(s, flat.map((p) => (p.avatar_source === "upload" ? p.avatar_path : null)));
       for (const j of jobs) {

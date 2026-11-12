@@ -11,7 +11,7 @@ import { addDays, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/
 import { ComingUpList } from "@/components/coming-up-list";
 import { TechJobCard } from "@/components/tech-job-card";
 import { partitionMyJobs } from "@/lib/my-jobs";
-import type { JobView } from "@/lib/types";
+import { HOME_REVIEW_LIMIT, type JobView } from "@/lib/types";
 
 function JobRow({ j, showCrew = true }: { j: JobView; showCrew?: boolean }) {
   return (
@@ -67,7 +67,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   }
 
   const [c, review, today, openSr] = await Promise.all([
-    repo.counts(), repo.listJobs({ status: ["completed"] }), repo.listJobs({ from: zonedToUtc(T, 0), to: zonedToUtc(addDays(T, 1), 0) }),
+    repo.counts(), repo.listJobs({ status: ["completed"], limit: HOME_REVIEW_LIMIT, order: "completed_at" }), repo.listJobs({ from: zonedToUtc(T, 0), to: zonedToUtc(addDays(T, 1), 0) }),
     repo.countOpenServiceRequests().catch(() => 0),
   ]);
   const stat = (n: number | string, label: string, icon: string, href: string, tone: string, className = "", testId?: string) => (
@@ -98,9 +98,12 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
       </div>
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <div className="card min-w-0" id="review" data-testid="awaiting-review">
-          <div className="card-hd"><h3 className="min-w-0 truncate font-semibold">Awaiting your review</h3><span className="pill shrink-0 bg-violet-100 text-violet-800">{review.length}</span></div>
+          <div className="card-hd"><h3 className="min-w-0 truncate font-semibold">Awaiting your review</h3><span className="pill shrink-0 bg-violet-100 text-violet-800">{c.awaitingReview}</span></div>
           <div className="divide-y divide-line">
             {!review.length && <div className="p-6 text-center text-sm text-muted">All caught up.</div>}
+            {c.awaitingReview > review.length && (
+              <div className="px-4 py-2 text-[12.5px] text-muted">Showing the {review.length} most recent of {c.awaitingReview}.</div>
+            )}
             {review.map((j) => (
               <Link key={j.id} href={`/jobs/${j.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-[#fafbf9]">
                 <div className="min-w-0 flex-1"><div className="truncate font-semibold">{j.title}</div><div className="truncate text-[12.5px] text-muted">{j.customer_name} · submitted {j.completed_at ? fmtDateTime(j.completed_at) : ""}</div></div>

@@ -188,7 +188,16 @@ export type Job = {
 };
 export type JobInput = Pick<Job, "project_id" | "title" | "starts_at" | "ends_at" | "instructions"> & { kind?: JobKind; service_request_id?: string | null };
 export type JobView = Job & { project_name: string; project_type: ProjectType; customer_id: string; customer_name: string; address: string | null; assignees: Person[]; latitude: number | null; longitude: number | null };
-export type JobFilter = { from?: string; to?: string; projectId?: string; customerId?: string; assignee?: string; status?: JobStatus[]; serviceRequestId?: string };
+/** Max rows for the staff Home / MCP "awaiting review" list. The badge uses counts().awaitingReview. */
+export const HOME_REVIEW_LIMIT = 50;
+export type JobFilter = {
+  from?: string; to?: string; projectId?: string; customerId?: string; assignee?: string;
+  status?: JobStatus[]; serviceRequestId?: string;
+  /** Cap the result (PostgREST also caps a single select at 1,000). */
+  limit?: number;
+  /** Default is starts_at ascending. completed_at is newest-first (review queue). */
+  order?: "starts_at" | "completed_at";
+};
 
 export type PhotoKind = "before" | "completion";
 /** Visit/project photo category. kind stays before|completion for existing RLS and storage paths. */

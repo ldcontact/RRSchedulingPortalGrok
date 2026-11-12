@@ -14,7 +14,7 @@ import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, monthStart, todayKey, T
 import { partitionMyJobs } from "@/lib/my-jobs";
 import {
   CHANNEL_LABEL, JOB_STATUS_LABEL, PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, ROLE_LABEL,
-  type CustomerSort, type JobStatus, type JobView, type Message, type Note, type Person, type Photo, type PhotoRequirement, type ProjectSort, type Role, type SessionUser,
+  HOME_REVIEW_LIMIT, type CustomerSort, type JobStatus, type JobView, type Message, type Note, type Person, type Photo, type PhotoRequirement, type ProjectSort, type Role, type SessionUser,
 } from "@/lib/types";
 
 export const DEFAULT_PORTAL_URL = "https://rr-scheduling-portal-grokv1.vercel.app";
@@ -146,7 +146,7 @@ export const TOOLS = {
         };
       }
       const [c, review, today] = await Promise.all([
-        ctx.repo.counts(), ctx.repo.listJobs({ status: ["completed"] }), ctx.repo.listJobs({ from: zonedToUtc(T, 0), to: zonedToUtc(addDays(T, 1), 0) }),
+        ctx.repo.counts(), ctx.repo.listJobs({ status: ["completed"], limit: HOME_REVIEW_LIMIT, order: "completed_at" }), ctx.repo.listJobs({ from: zonedToUtc(T, 0), to: zonedToUtc(addDays(T, 1), 0) }),
       ]);
       return {
         today: T, time_zone: TZ, link: link(ctx, "/"),

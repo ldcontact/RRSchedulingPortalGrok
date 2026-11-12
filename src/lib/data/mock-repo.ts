@@ -869,14 +869,19 @@ export const mockRepo: Repo = {
   },
   async listJobs(f = {}) {
     const w = await who(); const db = load();
-    return db.jobs
+    const rows = db.jobs
       .filter((j) => w.canJob(j.id) && (!f.projectId || j.project_id === f.projectId)
         && (!f.customerId || db.projects.find((p) => p.id === j.project_id)?.customer_id === f.customerId)
         && (!f.serviceRequestId || j.service_request_id === f.serviceRequestId) && (!f.status || f.status.includes(j.status))
         && (!f.from || j.ends_at > f.from) && (!f.to || j.starts_at < f.to))
       .map((j) => viewJob(db, j))
-      .filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee))
-      .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+      .filter((j) => !f.assignee || j.assignees.some((a) => a.id === f.assignee));
+    if (f.order === "completed_at") {
+      rows.sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? "") || b.id.localeCompare(a.id));
+    } else {
+      rows.sort((a, b) => a.starts_at.localeCompare(b.starts_at) || a.id.localeCompare(b.id));
+    }
+    return f.limit && f.limit > 0 ? rows.slice(0, f.limit) : rows;
   },
   async getJob(id) { const w = await who(); const db = load(); const j = db.jobs.find((x) => x.id === id); return j && w.canJob(id) ? viewJob(db, j) : null; },
   async createJob(input, assignees) {
