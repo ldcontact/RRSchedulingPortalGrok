@@ -18,7 +18,10 @@ export const JOB_BAR: Record<JobStatus, string> = {
 
 export const ProjectStatusPill = ({ status }: { status: ProjectStatus }) => <span className={`pill ${PROJECT_TONE[status]}`}>{PROJECT_STATUS_LABEL[status]}</span>;
 export const JobStatusPill = ({ status }: { status: JobStatus }) => <span className={`pill ${JOB_TONE[status]}`}>{JOB_STATUS_LABEL[status]}</span>;
-export const TypeTag = ({ type }: { type: ProjectType }) => <span className="tag">{PROJECT_TYPE_LABEL[type]}</span>;
+export const TypeTag = ({ type }: { type: ProjectType }) => {
+  const label = PROJECT_TYPE_LABEL[type] ?? type;
+  return <span className="tag max-w-full truncate" title={label}>{label}</span>;
+};
 
 export function AvatarStack({ people, max = 4 }: { people: (Person & { title?: string })[]; max?: number }) {
   if (!people.length) return <span className="shrink-0 text-xs text-muted">Unassigned</span>;

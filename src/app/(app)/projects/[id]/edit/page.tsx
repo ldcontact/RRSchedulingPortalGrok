@@ -19,7 +19,7 @@ export default async function EditProjectPage({ params }: PageProps<"/projects/[
   return (
     <>
       <PageHeader back={{ href: `/projects/${id}`, label: p.name }} title="Edit project" />
-      <div className="max-w-3xl"><ProjectForm project={p} initialCustomer={initialCustomer} /></div>
+      <div className="min-w-0 max-w-3xl"><ProjectForm project={p} initialCustomer={initialCustomer} /></div>
     </>
   );
 }

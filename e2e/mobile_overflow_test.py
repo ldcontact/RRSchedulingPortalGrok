@@ -52,7 +52,7 @@ async def main():
     os.makedirs(OUT, exist_ok=True)
     d=seed_long_names()
     sr=(d.get('service_requests') or [{}])[0].get('id')
-    staff=['/','/schedule','/schedule?view=day','/customers','/customers/c1','/projects','/projects/p1','/jobs/j2','/jobs/j1','/jobs/new','/jobs/j2/edit','/service-requests','/team','/fleet','/account']
+    staff=['/','/schedule','/schedule?view=day','/customers','/customers/c1','/projects','/projects/p1','/projects/new','/projects/p1/edit','/jobs/j2','/jobs/j1','/jobs/new','/jobs/j2/edit','/service-requests','/team','/fleet','/account']
     if sr: staff.append(f'/service-requests/{sr}')
     tech=['/','/schedule','/jobs/j2','/account']
     async with async_playwright() as p:
@@ -76,6 +76,14 @@ async def main():
                         await pg.wait_for_selector('[data-testid=project-search-list]')
                         m=await pg.evaluate(MEASURE, w)
                         ok(f'{uid} {path} typeahead @{w}px: scrollWidth {m["sw"]} / innerWidth {m["vw"]} <= {w}, {m["n"]} overflowing elements', m['sw']<=w and m['vw']==w and m['n']==0, ' | '.join(m['off']))
+                    if path=='/projects/new':
+                        loc=pg.locator('[data-testid=project-type]')
+                        await loc.wait_for(state='visible')
+                        await pg.wait_for_timeout(250)
+                        await loc.click()
+                        await pg.wait_for_selector('[data-testid=project-type-list]')
+                        m=await pg.evaluate(MEASURE, w)
+                        ok(f'{uid} {path} type picker @{w}px: scrollWidth {m["sw"]} / innerWidth {m["vw"]} <= {w}, {m["n"]} overflowing elements', m['sw']<=w and m['vw']==w and m['n']==0, ' | '.join(m['off']))
                     if SHOT and uid=='u-admin' and path=='/':
                         await pg.screenshot(path=f'{OUT}{SHOT}home-{w}.png')
                         await pg.screenshot(path=f'{OUT}{SHOT}home-{w}-full.png', full_page=True)

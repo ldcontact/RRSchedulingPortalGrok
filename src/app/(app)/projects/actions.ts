@@ -6,12 +6,11 @@ import { getRepo } from "@/lib/data/repo";
 import { scopeItemsFromForm, serializeScopeItems } from "@/lib/scope-items";
 import { sendCustomerMessage } from "@/lib/messaging";
 import { fmtDay } from "@/lib/time";
-import { CHANNEL_LABEL, PROJECT_STATUSES, type Channel, type ProjectInput, type ProjectStatus, type ProjectType } from "@/lib/types";
+import { CHANNEL_LABEL, PROJECT_STATUSES, PROJECT_TYPES, type Channel, type ProjectInput, type ProjectStatus, type ProjectType } from "@/lib/types";
 
 export type ProjectFormState = { error?: string; values?: Record<string, string> } | undefined;
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const num = (v: string) => { const x = Number(v.replace(/[$,\s]/g, "")); return Number.isFinite(x) && x >= 0 ? Math.round(x * 100) / 100 : 0; };
-const TYPES: ProjectType[] = ["lighting", "hvac", "lighting_hvac", "other"];
 const staff = () => requireRole("admin", "manager");
 const refresh = (id: string) => { revalidatePath(`/projects/${id}`); revalidatePath("/projects"); };
 
@@ -23,7 +22,7 @@ export async function saveProject(_: ProjectFormState, fd: FormData): Promise<Pr
   const status = s(fd, "status") as ProjectStatus;
   const input: ProjectInput = {
     customer_id: s(fd, "customer_id"), name: s(fd, "name"), scope: s(fd, "scope"),
-    type: TYPES.includes(type) ? type : "lighting", status: PROJECT_STATUSES.includes(status) ? status : "proposed",
+    type: (PROJECT_TYPES as readonly string[]).includes(type) ? type : "lighting", status: PROJECT_STATUSES.includes(status) ? status : "proposed",
     value: num(s(fd, "value")), est_rebate: num(s(fd, "est_rebate")),
     ...(s(fd, "warranty_months") !== "" ? { warranty_months: Math.min(600, Math.max(0, Math.round(Number(s(fd, "warranty_months")) || 0))) } : {}),
   };

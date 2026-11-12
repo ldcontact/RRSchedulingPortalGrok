@@ -4,13 +4,14 @@ import { useActionState } from "react";
 import { CustomerPicker, type CustomerHit } from "@/components/customer-picker";
 import { SubmitButton } from "@/components/submit-button";
 import { saveProject } from "./actions";
-import { DEFAULT_WARRANTY_MONTHS, PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, type Project, type ProjectType } from "@/lib/types";
+import { ProjectTypePicker } from "@/components/project-type-picker";
+import { DEFAULT_WARRANTY_MONTHS, PROJECT_STATUSES, PROJECT_STATUS_LABEL, type Project } from "@/lib/types";
 
 export function ProjectForm({ project, initialCustomer, customerId }: { project?: Project; initialCustomer?: CustomerHit | null; customerId?: string }) {
   const [state, action] = useActionState(saveProject, undefined);
   const v = (k: string, fallback = "") => state?.values?.[k] ?? (project ? String((project as Record<string, unknown>)[k] ?? "") : fallback);
   return (
-    <form action={action} className="card grid gap-4 p-5 sm:grid-cols-2">
+    <form action={action} className="card grid min-w-0 w-full gap-4 p-5 sm:grid-cols-2">
       {project && <input type="hidden" name="id" value={project.id} />}
       <div className="label sm:col-span-2">Customer *
         <CustomerPicker
@@ -21,10 +22,8 @@ export function ProjectForm({ project, initialCustomer, customerId }: { project?
         />
       </div>
       <label className="label sm:col-span-2">Project name *<input className="input" name="name" required defaultValue={v("name")} placeholder="e.g. LED retrofit – warehouse" /></label>
-      <label className="label">Type
-        <select className="input" name="type" defaultValue={v("type", "lighting")}>
-          {(Object.keys(PROJECT_TYPE_LABEL) as ProjectType[]).map((t) => <option key={t} value={t}>{PROJECT_TYPE_LABEL[t]}</option>)}
-        </select>
+      <label className="label min-w-0">Type
+        <ProjectTypePicker name="type" defaultValue={v("type", "lighting")} />
       </label>
       <label className="label">Status
         <select className="input" name="status" defaultValue={v("status", "proposed")}>

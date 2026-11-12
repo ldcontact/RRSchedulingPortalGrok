@@ -5,10 +5,12 @@
  *
  * - Text queries are split into words; every word must appear in the row's search text
  *   (customer name, company, contact names, email, address/city/state/zip, phone as typed,
- *   plus project name, number, scope and job-site address for projects).
+ *   plus project name, number, type, scope and job-site address for projects).
  * - Phone-like queries ("847-555-0174", "(847) 555 0174", "8475550174", "0174") with 4+ digits
  *   also match any phone number by digits only (US leading 1 ignored).
  */
+import { PROJECT_TYPE_LABEL, type ProjectType } from "@/lib/types";
+
 export type ParsedSearch = { tokens: string[]; text: string; digits: string | null };
 
 const MAX_TOKENS = 6;
@@ -51,10 +53,11 @@ export function customerSearchFields(c: CustomerLike, contacts: ContactLike[]) {
   return { doc, digits };
 }
 
-type ProjectLike = { name: string; scope: string; hcp_job_number?: string | null; site_address?: string | null; site_city?: string | null; site_state?: string | null; site_zip?: string | null };
+type ProjectLike = { name: string; scope: string; type?: ProjectType | null; hcp_job_number?: string | null; site_address?: string | null; site_city?: string | null; site_state?: string | null; site_zip?: string | null };
 
 export function projectSearchFields(p: ProjectLike, customer: { doc: string; digits: string }) {
-  const doc = searchNorm([p.name, p.hcp_job_number, p.site_address, p.site_city, p.site_state, p.site_zip, customer.doc, p.scope].filter(Boolean).join(" "));
+  const typeDoc = p.type ? [p.type.replace(/_/g, " "), PROJECT_TYPE_LABEL[p.type]] : [];
+  const doc = searchNorm([p.name, p.hcp_job_number, p.site_address, p.site_city, p.site_state, p.site_zip, customer.doc, p.scope, ...typeDoc].filter(Boolean).join(" "));
   return { doc, digits: customer.digits };
 }
 
@@ -71,4 +74,4 @@ export function applySearch<Q extends Filterable<Q>>(q: Q, table: "customer_sear
 }
 
 export const CUSTOMER_SEARCH_HINT = "Search name, contact, address, phone…";
-export const PROJECT_SEARCH_HINT = "Search project #, name, contact, address, phone…";
+export const PROJECT_SEARCH_HINT = "Search project #, name, type, contact, address, phone…";

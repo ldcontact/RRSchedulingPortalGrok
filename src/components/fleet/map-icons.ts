@@ -15,6 +15,15 @@ export const JOB_SITE_FILL_BY_TYPE: Record<ProjectType, string> = {
   lighting: "#d97706",
   hvac: "#2563eb",
   lighting_hvac: "#7c3aed",
+  whe_single_family: "#0f766e",
+  whe_multifamily: "#0e7490",
+  ac: "#0284c7",
+  ptac_to_hpac: "#4f46e5",
+  weatherization: "#65a30d",
+  steam_traps: "#e11d48",
+  boiler_tune_up: "#b45309",
+  hot_water_controllers: "#c026d3",
+  audit: "#64748b",
   other: "#57534e",
 };
 

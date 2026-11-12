@@ -23,7 +23,7 @@ describe("fleet filter query", () => {
     expect(qs).toBe("types=lighting,warranty&vehicles=driving");
     const parsed = parseFilterQuery(new URLSearchParams(qs));
     expect(parsed).toEqual({ types: ["lighting", "warranty"], vehicles: ["driving"] });
-    expect(parseFilterQuery(new URLSearchParams("types=lighting,audit,weatherization&vehicles=offline,stopped"))).toEqual({
+    expect(parseFilterQuery(new URLSearchParams("types=lighting,not_a_type,unknown&vehicles=offline,stopped"))).toEqual({
       types: ["lighting"],
       vehicles: ["stopped"],
     });

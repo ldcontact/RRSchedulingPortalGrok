@@ -16,7 +16,7 @@ export default async function NewProjectPage({ searchParams }: PageProps<"/proje
   return (
     <>
       <PageHeader back={{ href: "/projects", label: "Projects" }} title="New project" sub="Scope, value and rebate. Add the proposed timeline and visits next." />
-      <div className="max-w-3xl"><ProjectForm initialCustomer={initialCustomer} customerId={customerId} /></div>
+      <div className="min-w-0 max-w-3xl"><ProjectForm initialCustomer={initialCustomer} customerId={customerId} /></div>
     </>
   );
 }

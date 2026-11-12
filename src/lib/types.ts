@@ -105,8 +105,38 @@ export type InviteInput = { email: string; role: Role; full_name: string; title:
 export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean; avatar_url?: string | null; avatar_source?: AvatarSource; google_avatar_url?: string | null; fleet_access: boolean; can_delete: boolean };
 
 // ---------------------------------------------------------------- phase 2
-export type ProjectType = "lighting" | "hvac" | "lighting_hvac" | "other";
-export const PROJECT_TYPE_LABEL: Record<ProjectType, string> = { lighting: "Lighting", hvac: "HVAC", lighting_hvac: "Lighting + HVAC", other: "Other" };
+/** Canonical order for pickers, filters, and Fleet job-type chips. `lighting` is stored as-is (relabel only). */
+export const PROJECT_TYPES = [
+  "lighting",
+  "hvac",
+  "lighting_hvac",
+  "whe_single_family",
+  "whe_multifamily",
+  "ac",
+  "ptac_to_hpac",
+  "weatherization",
+  "steam_traps",
+  "boiler_tune_up",
+  "hot_water_controllers",
+  "audit",
+  "other",
+] as const;
+export type ProjectType = (typeof PROJECT_TYPES)[number];
+export const PROJECT_TYPE_LABEL: Record<ProjectType, string> = {
+  lighting: "LED Lighting",
+  hvac: "HVAC",
+  lighting_hvac: "Lighting + HVAC",
+  whe_single_family: "Whole Home Electric – Single Family",
+  whe_multifamily: "Whole Home Electric – Multifamily",
+  ac: "AC",
+  ptac_to_hpac: "PTAC to HPAC",
+  weatherization: "Weatherization",
+  steam_traps: "Steam Traps",
+  boiler_tune_up: "Boiler Tune Up",
+  hot_water_controllers: "Hot Water Controllers",
+  audit: "Audit",
+  other: "Other",
+};
 export type ProjectStatus = "proposed" | "scheduled" | "in_progress" | "awaiting_review" | "complete" | "cancelled";
 export const PROJECT_STATUSES: ProjectStatus[] = ["proposed", "scheduled", "in_progress", "awaiting_review", "complete", "cancelled"];
 export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {

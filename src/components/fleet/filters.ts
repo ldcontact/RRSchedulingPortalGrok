@@ -1,11 +1,10 @@
-import { JOB_KIND_LABEL, PROJECT_TYPE_LABEL, type ProjectType } from "@/lib/types";
+import { JOB_KIND_LABEL, PROJECT_TYPES, PROJECT_TYPE_LABEL, type ProjectType } from "@/lib/types";
 import type { FleetStatus, FleetVehicle, FleetVisitPin } from "@/lib/geotab/types";
 
-export const PROJECT_TYPES = ["lighting", "hvac", "lighting_hvac", "other"] as const satisfies readonly ProjectType[];
 export type JobFilterKey = ProjectType | "warranty" | "service";
 export type VehicleFilterKey = Extract<FleetStatus, "driving" | "stopped">;
 
-export const JOB_FILTER_ORDER: JobFilterKey[] = ["lighting", "hvac", "lighting_hvac", "other", "warranty", "service"];
+export const JOB_FILTER_ORDER: JobFilterKey[] = [...PROJECT_TYPES, "warranty", "service"];
 export const VEHICLE_FILTER_ORDER: VehicleFilterKey[] = ["driving", "stopped"];
 
 export const JOB_FILTER_LABEL: Record<JobFilterKey, string> = {

@@ -66,6 +66,14 @@ describe("project matching", () => {
     expect(matchesSearch(pContain.doc, pContain.digits, parseSearch("367"))).toBe(true);
     expect(matchesSearch(p.doc, p.digits, parseSearch("367"))).toBe(false);
   });
+  it("matches a project type label and slug", () => {
+    const whe = projectSearchFields({ name: "Oak Ave electrification", scope: "Panel and heat pump", type: "whe_single_family" }, c);
+    expect(matchesSearch(whe.doc, whe.digits, parseSearch("whole home electric"))).toBe(true);
+    expect(matchesSearch(whe.doc, whe.digits, parseSearch("single family"))).toBe(true);
+    expect(matchesSearch(whe.doc, whe.digits, parseSearch("LED lighting"))).toBe(false);
+    const led = projectSearchFields({ name: "Office panels", scope: "Troffers", type: "lighting" }, c);
+    expect(matchesSearch(led.doc, led.digits, parseSearch("LED Lighting"))).toBe(true);
+  });
 });
 
 describe("applySearch", () => {
