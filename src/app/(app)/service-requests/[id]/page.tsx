@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner, PageHeader } from "@/components/ui";
@@ -247,7 +248,7 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
             <div className="flex flex-col gap-2 p-4">
               {open ? <>
                 {sr.project_id
-                  ? <Link href={`${base}?schedule=1`} scroll={false} className="btn btn-primary" data-testid="schedule-visit"><Icon name="calendar" />Schedule {defaults.kind === "warranty" ? "warranty" : "service"} visit</Link>
+                  ? <PendingLink href={`${base}?schedule=1`} scroll={false} className="btn btn-primary" data-testid="schedule-visit"><Icon name="calendar" />Schedule {defaults.kind === "warranty" ? "warranty" : "service"} visit</PendingLink>
                   : <span className="btn btn-primary pointer-events-none opacity-50" aria-disabled="true" title="Link the original project first"><Icon name="calendar" />Schedule visit</span>}
                 {!sr.project_id && <p className="-mt-1 text-center text-xs text-muted">Link the original project first, or convert to a new project.</p>}
                 {sr.status === "new" && <form action={markTriaged.bind(null, id)} className="contents"><SubmitButton className="btn"><Icon name="flag" />Mark triaged</SubmitButton></form>}

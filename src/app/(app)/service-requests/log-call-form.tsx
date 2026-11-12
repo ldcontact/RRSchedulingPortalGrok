@@ -7,13 +7,14 @@ import { ageText, warrantyFor } from "@/lib/project-row";
 import { dayKey, fmtDay } from "@/lib/time";
 import { PROJECT_TYPE_LABEL, type ProjectPick, type SRChannel } from "@/lib/types";
 import { CustomerPicker, type CustomerHit } from "@/components/customer-picker";
+import { SubmitButton } from "@/components/submit-button";
 import { createTicket, customerPrefill, type CustomerPrefill } from "./actions";
 
 const fmtD = (iso: string) => fmtDay(dayKey(iso), { month: "short", day: "numeric", year: "numeric" });
 
 /** Log a call / email as a new service request. Customer search is bounded (10 matches); suggestions are the customer's latest 10 projects. */
 export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: string }) {
-  const [state, action, pending] = useActionState(createTicket, undefined);
+  const [state, action] = useActionState(createTicket, undefined);
   const v = state?.values ?? {};
   const [channel, setChannel] = useState<SRChannel>((v.channel as SRChannel) || "call");
   const [q, setQ] = useState(v.customer_name ?? "");
@@ -121,7 +122,7 @@ export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: stri
       {state?.error && <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{state.error}</div>}
       <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
         <span className="text-[11.5px] text-muted">Nothing is emailed or texted to the customer.</span>
-        <div className="flex gap-2"><Link href={cancelHref} scroll={false} className="btn">Cancel</Link><button className="btn btn-primary" disabled={pending} data-testid="create-request">{pending ? "Creating…" : "Create request"}</button></div>
+        <div className="flex gap-2"><Link href={cancelHref} scroll={false} className="btn">Cancel</Link><SubmitButton className="btn btn-primary" pendingText="Creating…" data-testid="create-request">Create request</SubmitButton></div>
       </div>
     </form>
   );

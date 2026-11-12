@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { Icon } from "@/components/icons";
 import { Banner, PageHeader } from "@/components/ui";
 import { AvatarStack, ChannelIcon, SRStatusPill, WarrantyPill } from "@/components/status";
@@ -46,7 +47,7 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
     <>
       <PageHeader title="Service requests"
         sub={`${(counts.open ?? 0).toLocaleString("en-US")} open · ${(counts.new ?? 0).toLocaleString("en-US")} new · tickets stay off the Projects list until they are converted`}
-        actions={<Link href={newHref} scroll={false} className="btn btn-primary" data-testid="new-request"><Icon name="plus" />New request</Link>} />
+        actions={<PendingLink href={newHref} scroll={false} className="btn btn-primary" data-testid="new-request"><Icon name="plus" />New request</PendingLink>} />
       {str("ok") && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{str("ok")}</Banner></div>}
       {error && <div className="mb-3"><Banner tone="error"><Icon name="alert" />{error}</Banner></div>}
       <div className="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Filter by status">

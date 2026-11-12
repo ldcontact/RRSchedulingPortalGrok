@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type DragEvent } from "react";
 import { Icon } from "@/components/icons";
@@ -125,7 +126,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
           <h1 className="text-[22px] font-semibold tracking-tight sm:text-[26px]">{staff ? "Schedule" : "My schedule"}</h1>
           <div className="mt-1 text-sm font-medium text-muted">{title}</div>
         </div>
-        {staff && <Link href={`/jobs/new?date=${date}`} className="btn btn-primary self-start"><Icon name="plus" />New visit</Link>}
+        {staff && <PendingLink href={`/jobs/new?date=${date}`} className="btn btn-primary self-start"><Icon name="plus" />New visit</PendingLink>}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-white px-3 py-2.5">
         <div className="flex rounded-lg border border-line bg-canvas/60 p-0.5" role="tablist">

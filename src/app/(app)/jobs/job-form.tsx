@@ -3,13 +3,14 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { Icon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
 import { saveJob } from "./actions";
 import { ROLE_LABEL, type Person, type Role } from "@/lib/types";
 
 export type JobFormDefaults = { id?: string; project_id: string; title: string; date: string; start: string; end: string; assignees: string[]; instructions: string };
 
 export function JobForm({ d, projects, people, cancelHref }: { d: JobFormDefaults; projects: { id: string; name: string; customer_name: string }[]; people: (Person & { role: string })[]; cancelHref: string }) {
-  const [state, action, pending] = useActionState(saveJob, undefined);
+  const [state, action] = useActionState(saveJob, undefined);
   const v = (k: keyof JobFormDefaults) => state?.values?.[k] ?? String(d[k] ?? "");
   const chosen = new Set(state?.values ? state.values.assignees.split(",").filter(Boolean) : d.assignees);
   return (
@@ -43,13 +44,13 @@ export function JobForm({ d, projects, people, cancelHref }: { d: JobFormDefault
         <div role="alert" className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-accent-50 p-3 text-sm text-[#78350f] sm:col-span-2" data-testid="conflict-warning">
           <div className="flex items-center gap-2 font-semibold"><Icon name="alert" className="size-4" />Double-booking</div>
           <ul className="list-disc pl-5">{state.conflicts.map((c) => <li key={c}>{c}</li>)}</ul>
-          <div><button name="force" value="1" className="btn btn-sm btn-accent">Save anyway</button> <span className="text-xs">or change the time or crew above.</span></div>
+          <div><SubmitButton name="force" value="1" className="btn btn-sm btn-accent" pendingText="Saving…">Save anyway</SubmitButton> <span className="text-xs">or change the time or crew above.</span></div>
         </div>
       )}
       {state?.error && <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 sm:col-span-2">{state.error}</div>}
       <div className="flex justify-end gap-2 sm:col-span-2">
         <Link href={cancelHref} className="btn">Cancel</Link>
-        <button className="btn btn-primary" disabled={pending}>{pending ? "Saving…" : d.id ? "Save changes" : "Schedule visit"}</button>
+        <SubmitButton className="btn btn-primary">{d.id ? "Save changes" : "Schedule visit"}</SubmitButton>
       </div>
     </form>
   );

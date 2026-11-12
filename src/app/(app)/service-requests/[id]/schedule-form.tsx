@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Icon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
 import { scheduleTicketVisit } from "../actions";
 import { ROLE_LABEL, type JobKind, type Person, type Role } from "@/lib/types";
 
@@ -10,7 +11,7 @@ export type ScheduleDefaults = { title: string; kind: JobKind; date: string; sta
 
 export function ScheduleVisitForm({ requestId, d, people, projectName, projectComplete, cancelHref }:
   { requestId: string; d: ScheduleDefaults; people: (Person & { role: string })[]; projectName: string; projectComplete: boolean; cancelHref: string }) {
-  const [state, action, pending] = useActionState(scheduleTicketVisit, undefined);
+  const [state, action] = useActionState(scheduleTicketVisit, undefined);
   const v = (k: keyof ScheduleDefaults) => state?.values?.[k] ?? d[k];
   const [kind, setKind] = useState<JobKind>((state?.values?.kind as JobKind) || d.kind);
   const chosen = new Set(state?.values ? state.values.assignees.split(",").filter(Boolean) : []);
@@ -59,7 +60,7 @@ export function ScheduleVisitForm({ requestId, d, people, projectName, projectCo
       {state?.error && <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{state.error}</div>}
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Link href={cancelHref} scroll={false} className="btn">Cancel</Link>
-        <button className="btn btn-primary" disabled={pending} data-testid="schedule-submit"><Icon name="calendar" />{pending ? "Scheduling…" : "Schedule visit"}</button>
+        <SubmitButton className="btn btn-primary" pendingText="Scheduling…" data-testid="schedule-submit"><Icon name="calendar" />Schedule visit</SubmitButton>
       </div>
     </form>
   );

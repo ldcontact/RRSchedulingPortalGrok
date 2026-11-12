@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { Icon } from "@/components/icons";
 import { Banner, PageHeader } from "@/components/ui";
 import { Pager, pageParam } from "@/components/pager";
@@ -24,7 +25,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/custom
   return (
     <>
       <PageHeader title="Customers" sub={query ? `${total.toLocaleString("en-US")} match “${query}”` : `${total.toLocaleString("en-US")} customers and leads`}
-        actions={<Link href="/customers/new" className="btn btn-primary"><Icon name="plus" />Add customer</Link>} />
+        actions={<PendingLink href="/customers/new" className="btn btn-primary"><Icon name="plus" />Add customer</PendingLink>} />
       {typeof sp.ok === "string" && sp.ok && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{sp.ok}</Banner></div>}
       <form className="mb-4 flex flex-wrap gap-2" role="search">
         <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border border-line bg-white px-3 sm:basis-auto sm:max-w-md">

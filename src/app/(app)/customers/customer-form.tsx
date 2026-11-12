@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useActionState } from "react";
+import { SubmitButton } from "@/components/submit-button";
 import { saveCustomer } from "./actions";
 import type { Customer } from "@/lib/types";
 import { AddressFields } from "@/components/address-autocomplete";
 
 export function CustomerForm({ customer }: { customer?: Customer }) {
-  const [state, action, pending] = useActionState(saveCustomer, undefined);
+  const [state, action] = useActionState(saveCustomer, undefined);
   const v = (k: keyof Customer | string, fallback = "") =>
     state?.values?.[k] ?? (customer ? String((customer as Record<string, unknown>)[k] ?? "") : fallback);
   return (
@@ -25,7 +26,7 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
       {state?.error && <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 sm:col-span-2">{state.error}</div>}
       <div className="flex justify-end gap-2 sm:col-span-2">
         <Link href={customer ? `/customers/${customer.id}` : "/customers"} className="btn">Cancel</Link>
-        <button className="btn btn-primary" disabled={pending}>{pending ? "Saving…" : customer ? "Save changes" : "Add customer"}</button>
+        <SubmitButton className="btn btn-primary">{customer ? "Save changes" : "Add customer"}</SubmitButton>
       </div>
     </form>
   );

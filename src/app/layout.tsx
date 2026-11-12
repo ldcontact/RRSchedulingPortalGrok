@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { RegisterServiceWorker } from "@/components/register-sw";
+import { NavProgressProvider } from "@/components/nav-progress";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,8 +17,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full">
-        {children}
-        <RegisterServiceWorker />
+        <NavProgressProvider>
+          {children}
+          <RegisterServiceWorker />
+        </NavProgressProvider>
       </body>
     </html>
   );

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner } from "@/components/ui";
@@ -88,7 +89,7 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
         title={c.name}
         sub={<>{primary ? `${primary.name}${primary.title ? `, ${primary.title}` : ""}` : "No contact yet"} · Customer since {sinceDate(c.created_at)}</>}
         actions={<>
-          <Link href={`/customers/${c.id}/edit`} className="btn"><Icon name="edit" />Edit customer</Link>
+          <PendingLink href={`/customers/${c.id}/edit`} className="btn"><Icon name="edit" />Edit customer</PendingLink>
           <CommunicateMenu email={email} phone={phone} />
           {canDelete && (
             <ActionMenu>
@@ -190,7 +191,7 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
         <div className="card min-w-0">
           <div className="card-hd">
             <h3 className="font-semibold">Projects</h3>
-            <Link href={`/projects/new?customer=${c.id}`} className="btn btn-sm"><Icon name="plus" />New project</Link>
+            <PendingLink href={`/projects/new?customer=${c.id}`} className="btn btn-sm"><Icon name="plus" />New project</PendingLink>
           </div>
           {projects.length === 0 && <div className="p-6 text-center text-sm text-muted">No projects yet. <Link href={`/projects/new?customer=${c.id}`} className="font-semibold text-brand">Create a project</Link> to schedule visits.</div>}
           <div className="divide-y divide-line">

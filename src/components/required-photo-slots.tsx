@@ -3,6 +3,8 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "./icons";
+import { Spinner } from "./spinner";
+import { useOptionalNavProgress } from "./nav-progress";
 import type { Photo, PhotoRequirement } from "@/lib/types";
 import { deletePhoto, uploadPhotos } from "@/app/(app)/photo-actions";
 
@@ -33,6 +35,7 @@ export function RequiredPhotoSlots({
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<Photo | null>(null);
   const [, start] = useTransition();
+  const nav = useOptionalNavProgress();
 
   const byReq = useMemo(() => {
     const m = new Map<string, Photo[]>();
@@ -56,6 +59,7 @@ export function RequiredPhotoSlots({
   async function onFiles(list: FileList | null) {
     if (!list?.length || !targetReq) return;
     setErr(null);
+    nav?.start();
     try {
       const files = [...list];
       const fd = new FormData();
@@ -76,6 +80,7 @@ export function RequiredPhotoSlots({
       setErr((e as Error).message);
     } finally {
       setBusy(null);
+      nav?.done();
       setTargetReq(null);
       if (camRef.current) camRef.current.value = "";
       if (galRef.current) galRef.current.value = "";
@@ -136,10 +141,11 @@ export function RequiredPhotoSlots({
               ))}
               {canEdit && (
                 <>
-                  <button type="button" onClick={() => openPicker(r.id, "camera")} className="flex size-20 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-slate-300 bg-canvas text-muted hover:border-brand hover:text-brand" aria-label={`Take photo for ${r.label}`}>
-                    <Icon name="camera" className="size-5" /><span className="text-[11px] font-semibold">Camera</span>
+                  <button type="button" onClick={() => openPicker(r.id, "camera")} disabled={!!busy} aria-busy={busy != null && targetReq === r.id} className="flex size-20 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-slate-300 bg-canvas text-muted hover:border-brand hover:text-brand disabled:opacity-70" aria-label={`Take photo for ${r.label}`}>
+                    {busy && targetReq === r.id ? <Spinner className="size-5" /> : <Icon name="camera" className="size-5" />}
+                    <span className="text-[11px] font-semibold">{busy && targetReq === r.id ? (busy.startsWith("Uploading") ? "Uploading…" : "Preparing…") : "Camera"}</span>
                   </button>
-                  <button type="button" onClick={() => openPicker(r.id, "gallery")} className="flex size-20 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-slate-300 bg-canvas text-muted hover:border-brand hover:text-brand" aria-label={`Add photo for ${r.label}`} data-testid={`add-${r.id}`}>
+                  <button type="button" onClick={() => openPicker(r.id, "gallery")} disabled={!!busy} className="flex size-20 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-slate-300 bg-canvas text-muted hover:border-brand hover:text-brand disabled:opacity-70" aria-label={`Add photo for ${r.label}`} data-testid={`add-${r.id}`}>
                     <Icon name="plus" className="size-5" /><span className="text-[11px] font-semibold">Add</span>
                   </button>
                 </>

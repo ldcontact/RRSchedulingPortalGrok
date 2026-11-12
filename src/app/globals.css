@@ -58,3 +58,69 @@
   .profile-menu-panel { @apply z-30 mt-1 min-w-[12rem] max-w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-line bg-white py-1 shadow-lg; }
 }
 
+
+/* Loading feedback: top progress bar, pressed links, pending buttons */
+.rr-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 80;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0;
+}
+.rr-topbar.is-on { opacity: 1; }
+.rr-topbar-bar {
+  height: 100%;
+  background: var(--color-brand);
+  box-shadow: 0 0 8px var(--color-brand);
+  border-radius: 0 2px 2px 0;
+}
+.rr-spin {
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: rr-spin 0.7s linear infinite;
+  flex: none;
+}
+@keyframes rr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .rr-spin { animation: none; border-right-color: currentColor; opacity: 0.7; }
+  .rr-topbar-bar { transition: none; }
+}
+
+/* Sidebar / dark nav: keep the tap visible while the next page loads */
+aside a.is-nav-pending {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  transform: translateY(1px) scale(0.98);
+}
+
+/* Phone bottom nav */
+nav.fixed a.is-nav-pending {
+  background: #d5ebe8;
+  color: var(--color-brand-700);
+  transform: translateY(1px) scale(0.96);
+}
+
+/* List rows, tabs, and other in-page links */
+a.is-nav-pending:not(.btn) {
+  background-color: var(--color-brand-50);
+  box-shadow: inset 0 0 0 2px var(--color-brand);
+  position: relative;
+  z-index: 1;
+}
+
+/* Buttons and button-styled links: stay readable while pending (override disabled:opacity-50) */
+.btn.btn-pending,
+a.btn.is-nav-pending,
+.btn[aria-busy="true"] {
+  opacity: 0.92;
+  cursor: not-allowed;
+  pointer-events: none;
+}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner } from "@/components/ui";
@@ -88,7 +89,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
           {" · "}{fmtDay(dayKey(job.starts_at), { weekday: "short", month: "short", day: "numeric" })} · {fmtRange(job.starts_at, job.ends_at)}
         </>}
         actions={staff && <>
-          {job.status !== "approved" && job.status !== "cancelled" && <Link href={`/jobs/${id}/edit`} className="btn"><Icon name="edit" />Reschedule / reassign</Link>}
+          {job.status !== "approved" && job.status !== "cancelled" && <PendingLink href={`/jobs/${id}/edit`} className="btn"><Icon name="edit" />Reschedule / reassign</PendingLink>}
           {(job.status === "scheduled" || job.status === "cancelled" || canDelete) && (
             <ActionMenu>
               {job.status === "scheduled" && (
@@ -152,7 +153,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
                   <ul className="flex flex-col gap-1 text-sm">
                     <li className={notes.length ? "text-green-700" : "text-muted"}><Icon name={notes.length ? "check" : "note"} className="mr-1.5 inline size-4" />{notes.length ? `${notes.length} note${notes.length > 1 ? "s" : ""}` : "Add a note about the work done"}</li>
                   </ul>
-                  <Link href={`/jobs/${id}/required-photos`} className="btn btn-primary w-full py-3 text-base"><Icon name="camera" />Open required photos</Link>
+                  <PendingLink href={`/jobs/${id}/required-photos`} className="btn btn-primary w-full py-3 text-base"><Icon name="camera" />Open required photos</PendingLink>
                   <form action={addJobNote.bind(null, id)} className="flex flex-col gap-2">
                     <textarea name="body" required className="input min-h-20" placeholder="What did you do? Fixture counts, issues, anything the office should know…" aria-label="Note" />
                     <SubmitButton className="btn self-start"><Icon name="note" />Add note</SubmitButton>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { Icon } from "@/components/icons";
 import { Banner, PageHeader } from "@/components/ui";
 import { AvatarStack } from "@/components/status";
@@ -64,7 +65,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
     <>
       <PageHeader title="Tasks"
         sub={tab === "mine" ? "Tasks you are assigned to, earliest due date first." : "Every task the team can see, earliest due date first."}
-        actions={<Link href={href({ new: "1" })} scroll={false} className="btn btn-primary" data-testid="new-task"><Icon name="plus" />Add task</Link>} />
+        actions={<PendingLink href={href({ new: "1" })} scroll={false} className="btn btn-primary" data-testid="new-task"><Icon name="plus" />Add task</PendingLink>} />
       {str("ok") && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{str("ok")}</Banner></div>}
       {str("error") && <div className="mb-3"><Banner tone="error"><Icon name="alert" />{str("error")}</Banner></div>}
 

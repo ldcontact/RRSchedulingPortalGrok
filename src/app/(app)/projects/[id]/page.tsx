@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner } from "@/components/ui";
@@ -90,7 +91,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           <> · {p.warranty_months ?? DEFAULT_WARRANTY_MONTHS}-month warranty</>
         </>}
         actions={<>
-          <Link href={`/jobs/new?project=${p.id}`} className="btn btn-primary"><Icon name="plus" />Schedule visit</Link>
+          <PendingLink href={`/jobs/new?project=${p.id}`} className="btn btn-primary"><Icon name="plus" />Schedule visit</PendingLink>
           <ActionMenu>
             {menuLink(`/tasks?new=1&project_id=${p.id}&customer_id=${p.customer_id}`, <><Icon name="task" className="size-4" />Add task</>, { testid: "project-add-task" })}
             {menuLink(`/projects/${p.id}/edit`, <><Icon name="edit" className="size-4" />Edit project</>)}
@@ -123,7 +124,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                   <div className="text-base font-semibold">{next.title}</div>
                   <p className="mt-1 text-sm text-muted">{next.body}</p>
                 </div>
-                {next.href && next.hrefLabel && <Link href={next.href} className="btn btn-primary self-start">{next.hrefLabel}</Link>}
+                {next.href && next.hrefLabel && <PendingLink href={next.href} className="btn btn-primary self-start">{next.hrefLabel}</PendingLink>}
                 {next.extras.length > 0 && (
                   <ul className="divide-y divide-line rounded-lg border border-line">
                     {next.extras.map((x) => (
@@ -196,7 +197,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
         <div className="min-w-0" data-testid="project-visits">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">Visits</h3>
-            <Link href={`/jobs/new?project=${p.id}`} className="btn btn-sm"><Icon name="plus" />Schedule visit</Link>
+            <PendingLink href={`/jobs/new?project=${p.id}`} className="btn btn-sm"><Icon name="plus" />Schedule visit</PendingLink>
           </div>
           {jobs.length === 0 && <div className="card p-6 text-center text-sm text-muted">No visits yet. Schedule the first one.</div>}
           <div className="grid gap-3 sm:grid-cols-2">

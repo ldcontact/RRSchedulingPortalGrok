@@ -2,6 +2,8 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "./icons";
+import { Spinner } from "./spinner";
+import { useOptionalNavProgress } from "./nav-progress";
 import type { Photo, PhotoKind, PhotoPhase } from "@/lib/types";
 import { kindForPhase } from "@/lib/photo-phase";
 import { deletePhoto, movePhoto, uploadPhotos } from "@/app/(app)/photo-actions";
@@ -29,12 +31,14 @@ export function PhotoUploader({ projectId, jobId, kind, phase, label, requiremen
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [, start] = useTransition();
+  const nav = useOptionalNavProgress();
   const resolvedKind: PhotoKind = kind ?? kindForPhase(phase ?? "after");
   const testKey = phase ?? kind ?? "photo";
 
   async function onFiles(list: FileList | null) {
     if (!list?.length) return;
     setErr(null);
+    nav?.start();
     try {
       const files = [...list];
       const fd = new FormData();
@@ -52,6 +56,7 @@ export function PhotoUploader({ projectId, jobId, kind, phase, label, requiremen
       setErr((e as Error).message);
     } finally {
       setBusy(null);
+      nav?.done();
       if (camRef.current) camRef.current.value = "";
       if (galRef.current) galRef.current.value = "";
     }
@@ -59,8 +64,8 @@ export function PhotoUploader({ projectId, jobId, kind, phase, label, requiremen
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => camRef.current?.click()}><Icon name="camera" />{label ?? "Take photo"}</button>
-        <button type="button" className="btn" disabled={!!busy} onClick={() => galRef.current?.click()}><Icon name="image" />Choose from gallery</button>
+        <button type="button" className={`btn btn-primary${busy ? " btn-pending" : ""}`} disabled={!!busy} aria-busy={!!busy} onClick={() => camRef.current?.click()}>{busy ? <><Spinner />{busy.startsWith("Uploading") ? "Uploading…" : "Preparing…"}</> : <><Icon name="camera" />{label ?? "Take photo"}</>}</button>
+        <button type="button" className={`btn${busy ? " btn-pending" : ""}`} disabled={!!busy} aria-busy={!!busy} onClick={() => galRef.current?.click()}><Icon name="image" />Choose from gallery</button>
         <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" data-testid={`camera-${testKey}`} onChange={(e) => onFiles(e.target.files)} />
         <input ref={galRef} type="file" accept="image/*" multiple className="hidden" data-testid={`gallery-${testKey}`} onChange={(e) => onFiles(e.target.files)} />
       </div>

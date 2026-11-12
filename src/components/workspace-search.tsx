@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { searchWorkspaceAction } from "@/app/(app)/search-actions";
 import { Icon } from "@/components/icons";
+import { useOptionalNavProgress } from "@/components/nav-progress";
 import { highlightChunks } from "@/lib/highlight-match";
 import { emptyWorkspaceSearch, flattenWorkspaceHits, moveActive } from "@/lib/workspace-search";
 import type { WorkspaceSearchHit, WorkspaceSearchResults } from "@/lib/types";
@@ -31,6 +32,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
 
 export function WorkspaceSearch() {
   const router = useRouter();
+  const nav = useOptionalNavProgress();
   const titleId = useId();
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,8 +58,9 @@ export function WorkspaceSearch() {
   const go = useCallback((hit: WorkspaceSearchHit | undefined) => {
     if (!hit?.href) return;
     close();
+    nav?.start();
     router.push(hit.href);
-  }, [close, router]);
+  }, [close, nav, router]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

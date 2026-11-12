@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { CustomerPicker, type CustomerHit } from "@/components/customer-picker";
+import { SubmitButton } from "@/components/submit-button";
 import { saveProject } from "./actions";
 import { DEFAULT_WARRANTY_MONTHS, PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, type Project, type ProjectType } from "@/lib/types";
 
 export function ProjectForm({ project, initialCustomer, customerId }: { project?: Project; initialCustomer?: CustomerHit | null; customerId?: string }) {
-  const [state, action, pending] = useActionState(saveProject, undefined);
+  const [state, action] = useActionState(saveProject, undefined);
   const v = (k: string, fallback = "") => state?.values?.[k] ?? (project ? String((project as Record<string, unknown>)[k] ?? "") : fallback);
   return (
     <form action={action} className="card grid gap-4 p-5 sm:grid-cols-2">
@@ -42,7 +43,7 @@ export function ProjectForm({ project, initialCustomer, customerId }: { project?
       {state?.error && <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 sm:col-span-2">{state.error}</div>}
       <div className="flex justify-end gap-2 sm:col-span-2">
         <Link href={project ? `/projects/${project.id}` : "/projects"} className="btn">Cancel</Link>
-        <button className="btn btn-primary" disabled={pending}>{pending ? "Saving…" : project ? "Save changes" : "Create project"}</button>
+        <SubmitButton className="btn btn-primary">{project ? "Save changes" : "Create project"}</SubmitButton>
       </div>
     </form>
   );

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner, PageHeader } from "@/components/ui";
@@ -70,7 +71,7 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
           {canStatus && task.status === "done" && (
             <form action={setTaskStatusAction.bind(null, task.id, "open")}><SubmitButton className="btn"><Icon name="undo" />Reopen</SubmitButton></form>
           )}
-          {canEdit && <Link href={`/tasks/${task.id}?edit=1`} scroll={false} className="btn" data-testid="edit-task"><Icon name="edit" />Edit</Link>}
+          {canEdit && <PendingLink href={`/tasks/${task.id}?edit=1`} scroll={false} className="btn" data-testid="edit-task"><Icon name="edit" />Edit</PendingLink>}
           {canDelete && <Link href={`/tasks/${task.id}?delete=1`} scroll={false} className="btn btn-danger" data-testid="delete-task"><Icon name="trash" />Delete</Link>}
         </>} />
       {str("ok") && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{str("ok")}</Banner></div>}

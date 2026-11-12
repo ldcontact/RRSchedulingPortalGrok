@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { Icon } from "@/components/icons";
 import { Banner } from "@/components/ui";
 import { AvatarStack, JobStatusPill, JobKindBadge } from "@/components/status";
@@ -86,10 +87,10 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div><h1 className="text-[22px] font-semibold tracking-tight">Good {greet}, {user.name.split(" ")[0]}</h1><div className="text-muted">{dateLine}</div></div>
         <div className="grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:flex-nowrap">
-          <Link href="/jobs/new" className="btn btn-primary w-full lg:w-auto"><Icon name="plus" />New visit</Link>
-          <Link href="/projects/new" className="btn w-full lg:w-auto"><Icon name="plus" />New project</Link>
-          <Link href="/customers/new" className="btn w-full lg:w-auto"><Icon name="plus" />Customer</Link>
-          <Link href="/service-requests?new=1" className="btn w-full lg:w-auto" data-testid="home-new-service-request"><Icon name="wrench" />Service request</Link>
+          <PendingLink href="/jobs/new" className="btn btn-primary w-full lg:w-auto"><Icon name="plus" />New visit</PendingLink>
+          <PendingLink href="/projects/new" className="btn w-full lg:w-auto"><Icon name="plus" />New project</PendingLink>
+          <PendingLink href="/customers/new" className="btn w-full lg:w-auto"><Icon name="plus" />Customer</PendingLink>
+          <PendingLink href="/service-requests?new=1" className="btn w-full lg:w-auto" data-testid="home-new-service-request"><Icon name="wrench" />Service request</PendingLink>
         </div>
       </div>
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5" data-testid="dashboard-counts">

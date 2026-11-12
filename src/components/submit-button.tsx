@@ -1,8 +1,27 @@
 "use client";
 import { useFormStatus } from "react-dom";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { Spinner } from "./spinner";
+import { useOptionalNavProgress } from "./nav-progress";
 
-export function SubmitButton({ children, className = "btn btn-primary", pendingText = "Saving…", ...rest }: { children: ReactNode; className?: string; pendingText?: string; name?: string; value?: string; formAction?: (fd: FormData) => void }) {
+type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
+  children: ReactNode;
+  pendingText?: string;
+  formAction?: ((fd: FormData) => void) | string;
+};
+
+export function SubmitButton({ children, className = "btn btn-primary", pendingText = "Saving…", ...rest }: Props) {
   const { pending } = useFormStatus();
-  return <button type="submit" className={className} disabled={pending} {...rest}>{pending ? pendingText : children}</button>;
+  const nav = useOptionalNavProgress();
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (pending && !wasPending.current) nav?.start();
+    if (!pending && wasPending.current) nav?.done();
+    wasPending.current = pending;
+  }, [pending, nav]);
+  return (
+    <button type="submit" {...rest} className={`${className}${pending ? " btn-pending" : ""}`} disabled={pending} aria-busy={pending}>
+      {pending ? <><Spinner />{pendingText}</> : children}
+    </button>
+  );
 }

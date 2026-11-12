@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PendingLink } from "@/components/pending-link";
 import { Icon } from "@/components/icons";
 import { Banner, PageHeader } from "@/components/ui";
 import { AvatarStack, ProjectStatusPill, TypeTag } from "@/components/status";
@@ -28,7 +29,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
   return (
     <>
       <PageHeader title="Projects" sub={`${total.toLocaleString("en-US")} project${total === 1 ? "" : "s"}${q ? ` match “${q}”` : ""}`}
-        actions={<Link href="/projects/new" className="btn btn-primary"><Icon name="plus" />New project</Link>} />
+        actions={<PendingLink href="/projects/new" className="btn btn-primary"><Icon name="plus" />New project</PendingLink>} />
       <div className="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Filter by status">
         {[undefined, ...PROJECT_STATUSES].map((st) => (
           <Link key={st ?? "all"} href={href(st)} role="tab" aria-selected={status === st}
