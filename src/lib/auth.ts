@@ -94,6 +94,14 @@ export async function requireRole(...roles: Role[]) {
 
 export const isStaff = (r: Role | null | undefined) => r === "admin" || r === "manager";
 
+/** Require access to the Sales section (admin, manager, or sales). Techs are sent home. */
+export async function requireSales() {
+  const { canAccessSales } = await import("@/lib/sales/permissions");
+  const u = await requireMember();
+  if (!canAccessSales(u.role)) redirect("/?denied=1");
+  return u;
+}
+
 
 /** Require Geotab/fleet access (admin, or fleet_access). */
 export async function requireFleetAccess() {

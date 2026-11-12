@@ -41,6 +41,9 @@ const P: Record<string, string> = {
   download: "M12 3v12M7 10l5 5 5-5M5 21h14",
   upload: "M12 21V9M7 14l5-5 5 5M5 3h14",
   open: "M14 3h7v7M13 11l8-8M17 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h6",
+  funnel: "M3 4h18l-7 8v6l-4 2v-8z",
+  kanban: "M3 4h5v16H3zM10 4h4v10h-4zM16 4h5v7h-5z",
+  map: "M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15",
 };
 
 export function Icon({ name, className = "size-[18px]", ...rest }: { name: keyof typeof P | string } & SVGProps<SVGSVGElement>) {

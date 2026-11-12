@@ -38,7 +38,7 @@ const TABS = ["overview", "scope", "visits", "files", "costs", "team", "notes"] 
 type Tab = (typeof TABS)[number];
 
 export default async function ProjectPage({ params, searchParams }: PageProps<"/projects/[id]">) {
-  const user = await requireRole("admin", "manager");
+  const user = await requireRole("admin", "manager", "sales");
   const canDelete = hasDeleteAccess(user);
   const { id } = await params;
   const sp = await searchParams;

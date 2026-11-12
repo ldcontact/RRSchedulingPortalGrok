@@ -1,6 +1,6 @@
-export type Role = "admin" | "manager" | "tech";
-export const ROLES: Role[] = ["admin", "manager", "tech"];
-export const ROLE_LABEL: Record<Role, string> = { admin: "Admin", manager: "Manager", tech: "Field Tech" };
+export type Role = "admin" | "manager" | "sales" | "tech";
+export const ROLES: Role[] = ["admin", "manager", "sales", "tech"];
+export const ROLE_LABEL: Record<Role, string> = { admin: "Admin", manager: "Manager", sales: "Sales", tech: "Field Tech" };
 
 export type AvatarSource = "none" | "upload" | "google";
 export const AVATAR_SOURCES: AvatarSource[] = ["none", "upload", "google"];

@@ -18,7 +18,7 @@ export const metadata: Metadata = { title: "Projects" };
 const SORTS: Record<ProjectSort, string> = { updated: "Recently updated", newest: "Newest first", name: "Name A–Z", value: "Highest value" };
 
 export default async function ProjectsPage({ searchParams }: PageProps<"/projects">) {
-  await requireRole("admin", "manager");
+  const user = await requireRole("admin", "manager", "sales");
   const sp = await searchParams;
   const status = PROJECT_STATUSES.includes(sp.status as ProjectStatus) ? (sp.status as ProjectStatus) : undefined;
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
@@ -29,7 +29,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
   return (
     <>
       <PageHeader title="Projects" sub={`${total.toLocaleString("en-US")} project${total === 1 ? "" : "s"}${q ? ` match “${q}”` : ""}`}
-        actions={<PendingLink href="/projects/new" className="btn btn-primary"><Icon name="plus" />New project</PendingLink>} />
+        actions={user.role === "sales" ? undefined : <PendingLink href="/projects/new" className="btn btn-primary"><Icon name="plus" />New project</PendingLink>} />
       <div className="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Filter by status">
         {[undefined, ...PROJECT_STATUSES].map((st) => (
           <Link key={st ?? "all"} href={href(st)} role="tab" aria-selected={status === st}

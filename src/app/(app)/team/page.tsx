@@ -11,7 +11,7 @@ import { emailConfigured } from "@/lib/email";
 
 export const metadata: Metadata = { title: "Team" };
 
-const ROLE_HELP = { admin: "Everything, including team and roles", manager: "Customers, scheduling, approvals", tech: "Only their assigned jobs" };
+const ROLE_HELP = { admin: "Everything, including team and roles", manager: "Customers, scheduling, approvals", sales: "Pipeline, leads, and their own deals", tech: "Only their assigned visits" };
 
 export default async function TeamPage({ searchParams }: PageProps<"/team">) {
   const me = await requireRole("admin", "manager");

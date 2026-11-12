@@ -1,5 +1,5 @@
 /** Who can use Fleet: an admin, or any member an admin has granted fleet_access. */
-export type FleetActor = { id?: string; role: "admin" | "manager" | "tech" | null; fleet_access?: boolean | null };
+export type FleetActor = { id?: string; role: "admin" | "manager" | "sales" | "tech" | null; fleet_access?: boolean | null };
 
 export function hasFleetAccess(user: FleetActor | null | undefined): boolean {
   if (!user?.role) return false;

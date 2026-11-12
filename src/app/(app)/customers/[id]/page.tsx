@@ -41,7 +41,7 @@ const tabFromParam = (raw: unknown): Tab => {
 };
 
 export default async function CustomerPage({ params, searchParams }: PageProps<"/customers/[id]">) {
-  const user = await requireRole("admin", "manager");
+  const user = await requireRole("admin", "manager", "sales");
   const canDelete = hasDeleteAccess(user);
   const { id } = await params;
   const sp = await searchParams;

@@ -45,7 +45,7 @@ export function Logo({ dark = false, compact = false }: { dark?: boolean; compac
   );
 }
 
-const ROLE_STYLE: Record<Role, string> = { admin: "bg-brand-50 text-brand", manager: "bg-violet-100 text-violet-700", tech: "bg-orange-100 text-orange-700" };
+const ROLE_STYLE: Record<Role, string> = { admin: "bg-brand-50 text-brand", manager: "bg-violet-100 text-violet-700", sales: "bg-sky-100 text-sky-800", tech: "bg-orange-100 text-orange-700" };
 export function RolePill({ role }: { role: Role | null }) {
   if (!role) return <span className="pill bg-slate-100 text-slate-600">No role</span>;
   return <span className={`pill ${ROLE_STYLE[role]}`}>{ROLE_LABEL[role]}</span>;

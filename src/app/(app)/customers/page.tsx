@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Customers" };
 const SORTS: Record<CustomerSort, string> = { newest: "Newest first", name: "Name A–Z", name_desc: "Name Z–A" };
 
 export default async function CustomersPage({ searchParams }: PageProps<"/customers">) {
-  await requireRole("admin", "manager");
+  const user = await requireRole("admin", "manager", "sales");
   const sp = await searchParams;
   const query = typeof sp.q === "string" ? sp.q.trim() : "";
   const sort: CustomerSort = typeof sp.sort === "string" && sp.sort in SORTS ? (sp.sort as CustomerSort) : "newest";
@@ -25,7 +25,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/custom
   return (
     <>
       <PageHeader title="Customers" sub={query ? `${total.toLocaleString("en-US")} match “${query}”` : `${total.toLocaleString("en-US")} customers and leads`}
-        actions={<PendingLink href="/customers/new" className="btn btn-primary"><Icon name="plus" />Add customer</PendingLink>} />
+        actions={user.role === "sales" ? undefined : <PendingLink href="/customers/new" className="btn btn-primary"><Icon name="plus" />Add customer</PendingLink>} />
       {typeof sp.ok === "string" && sp.ok && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{sp.ok}</Banner></div>}
       <form className="mb-4 flex flex-wrap gap-2" role="search">
         <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border border-line bg-white px-3 sm:basis-auto sm:max-w-md">

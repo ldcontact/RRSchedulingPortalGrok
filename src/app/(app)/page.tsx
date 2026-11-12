@@ -34,6 +34,37 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const deniedBanner = denied ? <div className="mb-4"><Banner tone="warn"><Icon name="shield" />That page isn&apos;t available for your role.</Banner></div> : null;
   const repo = await getRepo();
 
+  if (user.role === "sales") {
+    const sales = await (await import("@/lib/sales/repo")).getSalesRepo();
+    const [deals, inbox, alerts] = await Promise.all([sales.listDeals(), sales.listInbox(), sales.listAlerts()]);
+    const open = deals.filter((d) => !["declined", "not_feasible", "project_completed", "permit_final"].includes(d.stage_slug));
+    const unread = alerts.filter((a) => !a.read_at).length;
+    return (
+      <>
+        {deniedBanner}
+        <div className="mb-4 rounded-2xl bg-gradient-to-br from-brand-900 to-brand p-5 text-white">
+          <div className="text-[19px] font-semibold">Good {greet}, {user.name.split(" ")[0]}</div>
+          <div className="text-sm text-[#b5d7d1]">{dateLine} · {open.length} open deal{open.length === 1 ? "" : "s"}</div>
+        </div>
+        <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3">
+          <Link href="/sales" className="card p-4 hover:border-[#bcc6bb]"><div className="text-[26px] font-bold">{open.length}</div><div className="text-[12.5px] font-medium text-muted">Open deals</div></Link>
+          <Link href="/sales?view=inbox" className="card p-4 hover:border-[#bcc6bb]"><div className="text-[26px] font-bold">{inbox.length}</div><div className="text-[12.5px] font-medium text-muted">Inbox</div></Link>
+          <Link href="/sales?view=aging" className="card p-4 hover:border-[#bcc6bb]"><div className="text-[26px] font-bold">{unread}</div><div className="text-[12.5px] font-medium text-muted">Alerts</div></Link>
+        </div>
+        <h2 className="mb-2 text-sm font-bold text-muted">Your deals</h2>
+        <div className="card divide-y divide-line">
+          {open.slice(0, 8).map((d) => (
+            <Link key={d.id} href={`/sales/deals/${d.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-[#fafbf9]">
+              <div className="min-w-0"><div className="truncate font-semibold">{d.title}</div><div className="truncate text-[12.5px] text-muted">{d.contact_name} · {d.stage_slug.replaceAll("_", " ")}</div></div>
+              <span className="text-sm text-muted">{d.city}</span>
+            </Link>
+          ))}
+          {open.length === 0 && <div className="p-6 text-center text-sm text-muted">No open deals.</div>}
+        </div>
+      </>
+    );
+  }
+
   if (!isStaff(user.role)) {
     // No upper date bound: Coming up lists every future assigned visit (jobs.starts_at index).
     // Look back 7 days so in-progress / recently submitted still appear in Today / Recently submitted.

@@ -7,7 +7,7 @@ import { updateSession } from "@/lib/supabase/proxy";
 // page/action and in Postgres row-level security.
 // /api/mcp checks its own bearer token; /.well-known is OAuth metadata; /oauth/consent sends
 // signed-out visitors to /login?next=… itself so they come back to the consent screen.
-const PUBLIC = ["/login", "/forgot-password", "/auth/", "/not-invited", "/account/password", "/offline", "/api/mcp", "/.well-known/", "/oauth/"];
+const PUBLIC = ["/login", "/forgot-password", "/auth/", "/not-invited", "/account/password", "/offline", "/api/mcp", "/.well-known/", "/oauth/", "/get-started", "/book", "/sign/", "/api/sales/leads", "/api/sales/inbound-email", "/api/sales/booking"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

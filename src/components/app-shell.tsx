@@ -12,6 +12,7 @@ type NavItem = { href: string; label: string; icon: string; soon?: boolean; shor
 const NAV: Record<Role, NavItem[]> = {
   admin: [
     { href: "/", label: "Home", icon: "home" },
+    { href: "/sales", label: "Sales", icon: "funnel" },
     { href: "/schedule", label: "Schedule", icon: "calendar" },
     { href: "/customers", label: "Customers", icon: "users" },
     { href: "/projects", label: "Projects", icon: "briefcase" },
@@ -20,6 +21,14 @@ const NAV: Record<Role, NavItem[]> = {
     { href: "/team", label: "Team", icon: "hardhat" },
   ],
   manager: [],
+  sales: [
+    { href: "/", label: "Home", icon: "home" },
+    { href: "/sales", label: "Sales", icon: "funnel" },
+    { href: "/customers", label: "Customers", icon: "users" },
+    { href: "/projects", label: "Projects", icon: "briefcase" },
+    { href: "/schedule", label: "Schedule", icon: "calendar" },
+    { href: "/account", label: "Profile", icon: "user" },
+  ],
   tech: [
     { href: "/", label: "My Jobs", icon: "wrench" },
     { href: "/schedule", label: "Schedule", icon: "calendar" },
@@ -47,7 +56,7 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { 
   }
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   // Staff bottom nav stays at 6 items (Fleet is desktop-sidebar + "Where's my crew"). Techs with access get Fleet in their shorter nav.
-  const bottom: NavItem[] = tech ? items : [...items.filter((i) => i.href !== "/team" && i.href !== "/fleet" && i.href !== "/tasks"), { href: "/account", label: "More", icon: "user" }];
+  const bottom: NavItem[] = tech ? items : [...items.filter((i) => i.href !== "/team" && i.href !== "/fleet" && i.href !== "/tasks" && i.href !== "/account"), { href: "/account", label: "More", icon: "user" }];
   const bottomActive = (href: string) => active(href) || (href === "/account" && path.startsWith("/team"));
 
   return (

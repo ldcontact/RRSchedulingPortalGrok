@@ -40,6 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .mock-db.json
+.mock-sales.json
 !.env.example
 .mock-uploads/
 supabase/.temp/

@@ -52,6 +52,12 @@ const CENSUS_SEED: Record<string, GeocodeFields> = {
   c6: { lat: 42.079082186161, lng: -88.02292446097, geocoded_at: CENSUS_AT, geocode_status: "matched" },
   c7: { lat: 41.971354670264, lng: -88.020444520251, geocoded_at: CENSUS_AT, geocode_status: "matched" },
   c8: { lat: 41.986558490764, lng: -88.085092482722, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  "c-sales-elena": { lat: 42.0334, lng: -88.0831, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  "c-sales-priya": { lat: 42.0336, lng: -87.9373, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  "c-sales-marcus": { lat: 42.0884, lng: -87.9806, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  "c-sales-nora": { lat: 42.0298, lng: -88.0942, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  "c-sales-owen": { lat: 41.9712, lng: -88.0208, geocoded_at: CENSUS_AT, geocode_status: "matched" },
+  "c-sales-linda": { lat: 41.9634, lng: -87.9789, geocoded_at: CENSUS_AT, geocode_status: "matched" },
 };
 function withGeocode<T extends { id: string }>(row: T, table: "customer" | "sr" = "customer"): T & GeocodeFields {
   const g = CENSUS_SEED[row.id] ?? (table === "sr" ? CENSUS_SEED[(row as { customer_id?: string }).customer_id ?? ""] : undefined);
@@ -73,6 +79,8 @@ function seed(): DB {
     p("u-tech2", "jake.sullivan@gmail.com", "Jake Sullivan", "tech", "Electrician", "(847) 555-0103", "#2563eb"),
     p("u-tech3", "andre.w@outlook.com", "Andre Williams", "tech", "HVAC Technician", "(847) 555-0104", "#db2777"),
     p("u-tech4", "emily.chen@icloud.com", "Emily Chen", "tech", "Electrician", "(847) 555-0105", "#16a34a", { avatar_source: "upload", avatar_path: "seed/avatar/Emily%20Chen.svg" }),
+    p("u-sales", "maya@retrofitrebates.com", "Maya Chen", "sales", "Sales Representative", "(847) 555-0201", "#0369a1", { avatar_source: "upload", avatar_path: "seed/avatar/Maya%20Chen.svg" }),
+    p("u-sales2", "jordan.hale@retrofitrebates.com", "Jordan Hale", "sales", "Sales Representative", "(847) 555-0202", "#7c3aed"),
     p("u-stranger", "someone.else@gmail.com", "Someone Else", null, "", "", "#64748b"),
   ];
   const invites: Invite[] = profiles.filter((x) => x.role).map((x) => ({
@@ -92,6 +100,12 @@ function seed(): DB {
     c("c7", "Itasca Print & Sign", "(630) 555-0127", "rosa@itascaprint.example", "510 W Irving Park Rd", "Itasca", "60143", ["Lead"], "Referred by Golf Road Auto Body.", 3),
     c("c8", "Roselle Family Pharmacy", "(630) 555-0138", "ken@rosellerx.example", "122 E Irving Park Rd", "Roselle", "60172", ["Lead", "Lighting"], "Asked about the free ComEd assessment.", 2),
     c("c-glen", "367 Glen Leven ct", "(847) 555-0367", "edyta@retrofitrebates.example", "367 Glen Leven ct", "Schaumburg", "60193", ["Lighting"], "Owner is Edyta Dlugosz.", 2),
+    c("c-sales-elena", "Elena Vasquez", "(847) 555-0142", "elena.vasquez@example.com", "4821 Birchwood Ave", "Schaumburg", "60193", ["WHE", "Sales"], "Single-family Whole Home Electric lead.", 38),
+    c("c-sales-priya", "Priya Shah", "(847) 555-0160", "priya.shah@example.com", "219 Oakton St", "Des Plaines", "60016", ["WHE", "Sales"], "Waiting on ComEd verification.", 22),
+    c("c-sales-marcus", "Marcus Reed", "(847) 555-0188", "marcus.reed@example.com", "14 S Mitchell Ave", "Arlington Heights", "60005", ["WHE", "Sales"], "Assessment completed; RISE data next.", 18),
+    c("c-sales-nora", "Nora Patel", "(224) 555-0119", "nora.patel@example.com", "880 Weathersfield Way", "Schaumburg", "60193", ["WHE", "Sales"], "Ready for a home assessment.", 9),
+    c("c-sales-owen", "Owen Blake", "(847) 555-0194", "owen.blake@example.com", "6N250 Pine Ave", "Itasca", "60143", ["WHE", "Sales"], "Assessment scheduled.", 12),
+    c("c-sales-linda", "Linda Cho", "(630) 555-0172", "linda.cho@example.com", "412 W Irving Park Rd", "Wood Dale", "60191", ["WHE", "Multifamily", "Sales"], "8-unit building, common-area WHE.", 20),
   ].map((row) => withGeocode(row));
   const k = (customer_id: string, name: string, title: string, phone: string, email: string, is_primary = true): Contact =>
     ({ id: randomUUID(), customer_id, name, title, phone, email, is_primary });
@@ -106,6 +120,12 @@ function seed(): DB {
     k("c7", "Rosa Delgado", "Owner", "(630) 555-0127", "rosa@itascaprint.example"),
     k("c8", "Ken Yamamoto", "Pharmacist / Owner", "(630) 555-0138", "ken@rosellerx.example"),
     k("c-glen", "Edyta Dlugosz", "Owner", "(847) 555-0367", "edyta@retrofitrebates.example"),
+    k("c-sales-elena", "Elena Vasquez", "Homeowner", "(847) 555-0142", "elena.vasquez@example.com"),
+    k("c-sales-priya", "Priya Shah", "Homeowner", "(847) 555-0160", "priya.shah@example.com"),
+    k("c-sales-marcus", "Marcus Reed", "Homeowner", "(847) 555-0188", "marcus.reed@example.com"),
+    k("c-sales-nora", "Nora Patel", "Homeowner", "(224) 555-0119", "nora.patel@example.com"),
+    k("c-sales-owen", "Owen Blake", "Homeowner", "(847) 555-0194", "owen.blake@example.com"),
+    k("c-sales-linda", "Linda Cho", "Property Manager", "(630) 555-0172", "linda.cho@example.com"),
   ];
   const maria = profiles.find((x) => x.id === "u-manager");
   if (maria) maria.fleet_access = true; // operations manager — used for manager fleet demos
@@ -505,10 +525,59 @@ async function who() {
   const canDelete = hasDeleteAccess({ role, can_delete: me?.can_delete });
   const myJobs = new Set(db.assignments.filter((a) => a.profile_id === uid).map((a) => a.job_id));
   const myProjects = new Set(db.jobs.filter((j) => myJobs.has(j.id)).map((j) => j.project_id));
-  return { uid, role, staff, fleetAccess, canDelete, canJob: (id: string) => staff || myJobs.has(id), canProject: (id: string) => staff || myProjects.has(id) };
+  const sales = role === "sales";
+  let salesProjectIds = new Set<string>();
+  let salesCustomerIds = new Set<string>();
+  try {
+    const access = await import("@/lib/sales/mock-store");
+    salesProjectIds = access.convertedProjectIds(uid, staff);
+    salesCustomerIds = access.visibleCustomerIds(uid, staff);
+  } catch { /* sales store not loaded */ }
+  for (const id of salesProjectIds) myProjects.add(id);
+  return {
+    uid, role, staff, sales, fleetAccess, canDelete, salesCustomerIds,
+    canJob: (id: string) => staff || sales || myJobs.has(id),
+    canProject: (id: string) => staff || myProjects.has(id),
+  };
 }
 function requireStaffMock(w: { staff: boolean }) { if (!w.staff) throw new Error("permission denied (mock RLS)"); }
 function requireDeleteMock(w: { canDelete: boolean }) { if (!w.canDelete) throw new Error("permission denied (mock RLS)"); }
+
+/** Sales convert-to-project path only. Callers must already have checked canConvertDeal. */
+export function mockCreateConvertedProject(input: import("@/lib/types").ProjectInput, visit?: { title: string; starts_at: string; ends_at: string } | null) {
+  return mutate((db) => {
+    const project: Project = { ...input, warranty_months: input.warranty_months ?? DEFAULT_WARRANTY_MONTHS, id: randomUUID(), timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, created_at: now(), updated_at: now() };
+    db.projects.push(project);
+    let jobId: string | null = null;
+    if (visit) {
+      const job: Job = {
+        id: randomUUID(), project_id: project.id, title: visit.title, starts_at: visit.starts_at, ends_at: visit.ends_at,
+        status: "scheduled", instructions: null, started_at: null, completed_at: null, completed_by: null,
+        approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null,
+      };
+      db.jobs.push(job);
+      jobId = job.id;
+      if (typeof syncProject === "function") syncProject(db, project.id);
+    }
+    return { project, jobId };
+  });
+}
+
+export function mockOccupiedJobWindows(fromIso: string, toIso: string) {
+  return load().jobs
+    .filter((j) => j.status !== "cancelled" && j.starts_at < toIso && j.ends_at > fromIso)
+    .map((j) => ({ starts_at: j.starts_at, ends_at: j.ends_at }));
+}
+
+export function mockEnsureCustomerFromDeal(input: { name: string; phone: string | null; email: string | null; address: string | null; city: string | null; state: string | null; zip: string | null }) {
+  return mutate((db) => {
+    const existing = db.customers.find((c) => input.email && c.email === input.email);
+    if (existing) return existing;
+    const c: Customer = { id: randomUUID(), name: input.name, phone: input.phone, email: input.email, address: input.address, city: input.city, state: input.state ?? "IL", zip: input.zip, notes: null, tags: ["Sales"], created_at: now(), updated_at: now(), ...emptyGeocode() };
+    db.customers.push(c);
+    return c;
+  });
+}
 function unlinkPhotoFiles(paths: string[]) {
   for (const path of [...new Set(paths.filter(Boolean))]) {
     const full = join(MOCK_UPLOADS, path);
@@ -571,9 +640,12 @@ function visibleTasks(db: DB, w: { uid: string; role: import("@/lib/types").Role
 export const mockRepo: Repo = {
   async listCustomers(q) {
     const db = load();
+    const w = await who();
+    const allowed = w.staff ? null : (w.sales ? w.salesCustomerIds : null);
     const search = parseSearch(q); // same rules as the customer_search table: src/lib/search.ts
     return db.customers
       .filter((c) => {
+        if (allowed && !allowed.has(c.id)) return false;
         if (!search) return true;
         const { doc, digits } = customerSearchFields(c, db.contacts.filter((x) => x.customer_id === c.id));
         return matchesSearch(doc, digits, search);
@@ -632,7 +704,10 @@ export const mockRepo: Repo = {
     if (!parsed) return emptyWorkspaceSearch();
     const w = await who();
     const db = load();
-    const myCustomers = w.staff ? null : new Set(db.projects.filter((proj) => w.canProject(proj.id)).map((proj) => proj.customer_id));
+    const myCustomers = w.staff ? null : new Set([
+      ...db.projects.filter((proj) => w.canProject(proj.id)).map((proj) => proj.customer_id),
+      ...((w.salesCustomerIds && [...w.salesCustomerIds]) || []),
+    ]);
     const custFields = (id: string) => {
       const c = db.customers.find((x) => x.id === id);
       return customerSearchFields(c ?? { name: "", phone: null, email: null, address: null, city: null, state: null, zip: null }, db.contacts.filter((x) => x.customer_id === id));
@@ -867,7 +942,7 @@ export const mockRepo: Repo = {
   async deleteMilestone(id) { requireStaffMock(await who()); mutate((db) => { db.milestones = db.milestones.filter((x) => x.id !== id); }); },
   async listAssignable() {
     const order = { tech: 0, manager: 1, admin: 2 } as Record<string, number>;
-    return load().profiles.filter((p) => p.role && p.active && !p.deleted_at).sort((a, b) => order[a.role!] - order[b.role!] || a.full_name.localeCompare(b.full_name))
+    return load().profiles.filter((p) => p.role && p.role !== "sales" && p.active && !p.deleted_at).sort((a, b) => (order[a.role!] ?? 9) - (order[b.role!] ?? 9) || a.full_name.localeCompare(b.full_name))
       .map((p) => ({
         id: p.id, full_name: p.full_name, color: p.color, role: p.role!,
         avatar_url: resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null),

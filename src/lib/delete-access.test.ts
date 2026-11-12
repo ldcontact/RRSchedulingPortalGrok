@@ -15,6 +15,7 @@ describe("hasDeleteAccess", () => {
   it("techs and others never have access, even if the flag is set", () => {
     expect(hasDeleteAccess({ role: "tech", can_delete: false })).toBe(false);
     expect(hasDeleteAccess({ role: "tech", can_delete: true })).toBe(false);
+    expect(hasDeleteAccess({ role: "sales", can_delete: true })).toBe(false);
     expect(hasDeleteAccess({ role: null, can_delete: true })).toBe(false);
   });
 });

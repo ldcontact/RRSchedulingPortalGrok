@@ -22,8 +22,8 @@ import { setDeleteAccess } from "@/app/(app)/delete-actions";
 const STORAGE_KEY = "rr-team-view";
 const STATUS = { active: "bg-green-100 text-green-800", invited: "bg-accent-50 text-amber-700", inactive: "bg-red-50 text-red-800" } as const;
 const STATUS_LABEL = { active: "Active", invited: "Invited", inactive: "Suspended" } as const;
-const ROLE_HELP = { admin: "Everything, including team and roles", manager: "Customers, scheduling, approvals", tech: "Only their assigned jobs" } as const;
-const ROLE_ORDER = { admin: 0, manager: 1, tech: 2 } as const;
+const ROLE_HELP = { admin: "Everything, including team and roles", manager: "Customers, scheduling, approvals", sales: "Pipeline, leads, and their own deals", tech: "Only their assigned visits" } as const;
+const ROLE_ORDER = { admin: 0, manager: 1, sales: 2, tech: 3 } as const;
 const STATUS_ORDER = { active: 0, invited: 1, inactive: 2 } as const;
 
 type ViewMode = "cards" | "list";

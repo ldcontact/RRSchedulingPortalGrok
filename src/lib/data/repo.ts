@@ -186,7 +186,7 @@ export function mergeTeam(
       can_delete: false,
     });
   }
-  const order = { admin: 0, manager: 1, tech: 2 } as const;
+  const order = { admin: 0, manager: 1, sales: 2, tech: 3 } as const;
   return [...byEmail.values()].sort((a, b) => (order[a.role ?? "tech"] - order[b.role ?? "tech"]) || a.full_name.localeCompare(b.full_name));
 }
 
