@@ -177,7 +177,7 @@ export function ProjectPicker({
   return (
     <div ref={rootRef} className="relative min-w-0">
       <input type="hidden" name={name} value={selected?.id ?? ""} />
-      <div className="relative">
+      <div className="relative min-w-0">
         <input
           ref={inputRef}
           className="input min-w-0 pr-9"

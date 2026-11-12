@@ -28,8 +28,9 @@
   .btn-accent { @apply border-accent bg-accent text-[#3b2600] hover:brightness-95; }
   .btn-danger { @apply text-red-700; }
   .btn-sm { @apply px-2.5 py-1.5 text-[13px]; }
-  .input { @apply w-full rounded-lg border border-[#d5dbd4] bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:ring-3 focus:ring-brand/15; }
-  .label { @apply flex flex-col gap-1.5 text-[12.5px] font-semibold text-[#3d4744]; }
+  .input { @apply w-full min-w-0 rounded-lg border border-[#d5dbd4] bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:ring-3 focus:ring-brand/15; }
+  .label { @apply flex min-w-0 flex-col gap-1.5 text-[12.5px] font-semibold text-[#3d4744]; }
+  input[type="date"], input[type="time"] { min-width: 0; max-width: 100%; }
   .pill { @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap; }
   .tag { @apply inline-block rounded-md border border-line bg-canvas px-2 py-0.5 text-[11.5px] font-semibold text-muted; }
   .btn-communicate { @apply border-sky-600 bg-sky-600 text-white hover:bg-sky-700; }

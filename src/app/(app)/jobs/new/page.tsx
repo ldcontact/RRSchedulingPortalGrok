@@ -20,7 +20,7 @@ export default async function NewJobPage({ searchParams }: PageProps<"/jobs/new"
     <>
       <PageHeader back={selected ? { href: `/projects/${selected.id}`, label: selected.name } : { href: "/schedule", label: "Schedule" }}
         title="Schedule a visit" sub={selected ? `${selected.customer_name} · ${selected.name}` : "Pick the project, time and crew."} />
-      <div className="max-w-3xl">
+      <div className="min-w-0 max-w-3xl">
         <JobForm selected={selected} customerId={customerId} people={people} cancelHref={selected ? `/projects/${selected.id}` : "/schedule"}
           d={{ project_id: selected?.id ?? "", title: "", date: validDay(str("date")) ? str("date") : todayKey(), start, end: `${String(endH).padStart(2, "0")}:${start.slice(3)}`,
             assignees: str("tech") ? [str("tech")] : [], instructions: "" }} />
