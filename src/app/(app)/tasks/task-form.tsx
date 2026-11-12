@@ -1,6 +1,11 @@
+"use client";
+
+import { useState } from "react";
+import { CustomerPicker } from "@/components/customer-picker";
+import { ProjectPicker } from "@/components/project-picker";
 import { SubmitButton } from "@/components/submit-button";
 import { Avatar } from "@/components/ui";
-import { TASK_PRIORITIES, TASK_PRIORITY_LABEL, TASK_STATUSES, TASK_STATUS_LABEL, ticketNo, type Person, type ProjectPick, type TaskView } from "@/lib/types";
+import { TASK_PRIORITIES, TASK_PRIORITY_LABEL, TASK_STATUSES, TASK_STATUS_LABEL, type Person, type TaskView } from "@/lib/types";
 import { createTaskAction, updateTaskAction } from "./actions";
 
 export type TaskFormOption = { id: string; label: string };
@@ -8,21 +13,19 @@ export type TaskFormOption = { id: string; label: string };
 export function TaskForm({
   task,
   people,
-  projects,
-  customers,
   requests,
   returnTo,
   defaults,
 }: {
   task?: TaskView;
   people: (Person & { role?: string })[];
-  projects: ProjectPick[];
-  customers: TaskFormOption[];
   requests: TaskFormOption[];
   returnTo: string;
   defaults?: { assignee_ids?: string[]; project_id?: string; customer_id?: string; service_request_id?: string };
 }) {
   const action = task ? updateTaskAction.bind(null, task.id) : createTaskAction;
+  const initialCustomerId = task?.customer_id ?? defaults?.customer_id ?? "";
+  const [customerId, setCustomerId] = useState(initialCustomerId);
   return (
     <form action={action} className="flex flex-col gap-3 p-5" data-testid="task-form">
       <input type="hidden" name="return_to" value={returnTo} />
@@ -70,20 +73,24 @@ export function TaskForm({
         </label>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block sm:col-span-2">
+        <div className="block sm:col-span-2">
           <span className="mb-1 block text-[12.5px] font-semibold">Customer <span className="font-normal text-muted">(optional)</span></span>
-          <select name="customer_id" defaultValue={task?.customer_id ?? defaults?.customer_id ?? ""} className="input w-full">
-            <option value="">None</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </label>
-        <label className="block sm:col-span-2">
+          <CustomerPicker
+            name="customer_id"
+            defaultSelected={task?.customer_id ? { id: task.customer_id, name: task.customer_name ?? "Customer", address: "" } : null}
+            defaultSelectedId={!task?.customer_id ? defaults?.customer_id : undefined}
+            onChange={(c) => setCustomerId(c?.id ?? "")}
+          />
+        </div>
+        <div className="block sm:col-span-2">
           <span className="mb-1 block text-[12.5px] font-semibold">Project <span className="font-normal text-muted">(optional)</span></span>
-          <select name="project_id" defaultValue={task?.project_id ?? defaults?.project_id ?? ""} className="input w-full">
-            <option value="">None</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.customer_name} · {p.name}</option>)}
-          </select>
-        </label>
+          <ProjectPicker
+            name="project_id"
+            customerId={customerId || undefined}
+            defaultSelected={task?.project_id ? { id: task.project_id, name: task.project_name ?? "Project", customer_name: task.customer_name ?? "", status: "proposed" } : null}
+            defaultSelectedId={!task?.project_id ? defaults?.project_id : undefined}
+          />
+        </div>
         {requests.length > 0 && (
           <label className="block sm:col-span-2">
             <span className="mb-1 block text-[12.5px] font-semibold">Service request <span className="font-normal text-muted">(optional)</span></span>
@@ -101,6 +108,3 @@ export function TaskForm({
   );
 }
 
-export function requestLabel(id: string, number: number | null, summary: string | null) {
-  return `${number != null ? ticketNo(number) : id}${summary ? ` · ${summary}` : ""}`;
-}

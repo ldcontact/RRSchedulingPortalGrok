@@ -232,6 +232,17 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       fail(error);
       return { items: mapCustomers(data), total: count ?? 0, page: p, size: n };
     },
+    async searchCustomerHits(q, limit = 10) {
+      const parsed = parseSearch(q);
+      if (!parsed) return [];
+      const n = Math.min(Math.max(1, limit), 10);
+      const s = await db();
+      let query = s.from("customers").select("id, name, address, city, state, zip, customer_search!inner()");
+      query = applySearch(query, "customer_search", parsed);
+      const { data, error } = await query.order("name").order("id").range(0, n - 1);
+      fail(error);
+      return (data ?? []).map((c) => ({ id: c.id as string, name: c.name as string, address: formatAddress(c) }));
+    },
     async getCustomer(id) {
       const { data, error } = await (await db()).from("customers").select("*").eq("id", id).maybeSingle();
       fail(error);
@@ -784,6 +795,17 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const { count, error } = await (await db()).from("service_requests").select("id", { count: "exact", head: true }).in("status", SR_OPEN);
       fail(error);
       return count ?? 0;
+    },
+    async listOpenServiceRequestPicks(limit = 25) {
+      const n = Math.min(Math.max(1, limit), 25);
+      const { data, error } = await (await db()).from("service_requests")
+        .select("id, number, summary")
+        .in("status", SR_OPEN)
+        .order("received_at", { ascending: false })
+        .order("id")
+        .limit(n);
+      fail(error);
+      return (data ?? []) as { id: string; number: number; summary: string | null }[];
     },
     async getServiceRequest(id) {
       const { data, error } = await (await db()).from("service_request_list").select("*").eq("id", id).maybeSingle();

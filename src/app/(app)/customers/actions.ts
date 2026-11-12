@@ -125,8 +125,7 @@ export async function searchCustomers(q: string): Promise<CustomerHit[]> {
   await staff();
   const term = q.trim();
   if (term.length < 2) return [];
-  const { items } = await (await getRepo()).pageCustomers({ q: term, page: 1, size: 10, sort: "name" });
-  return items.map((c) => ({ id: c.id, name: c.name, address: formatAddress(c) }));
+  return (await getRepo()).searchCustomerHits(term, 10);
 }
 
 /** Resolve one customer for a preselected id (e.g. /projects/new?customer=). */

@@ -11,8 +11,10 @@ import { isStaff, requireMember } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { fmtDay, todayKey } from "@/lib/time";
 import { isTaskOverdue } from "@/lib/tasks";
-import { PAGE_SIZE, TASK_STATUS_LABEL, TASK_STATUSES, ticketNo, type TaskDueFilter, type TaskPageFilter, type TaskStatus, type TaskTab, type TaskView } from "@/lib/types";
-import { TaskForm, requestLabel } from "./task-form";
+import { PAGE_SIZE, TASK_STATUS_LABEL, TASK_STATUSES, ticketNo, type TaskDueFilter, type TaskPage, type TaskPageFilter, type TaskStatus, type TaskTab, type TaskView } from "@/lib/types";
+import { settle } from "./settle";
+import { requestLabel } from "./request-label";
+import { TaskForm } from "./task-form";
 
 export const metadata: Metadata = { title: "Tasks" };
 
@@ -34,16 +36,19 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
   const assignee = str("assignee") === "me" ? user.id : str("assignee") || undefined;
   const q = str("q");
   const repo = await getRepo();
-  const [{ items, total, page, size, counts }, people, projects, customerPage] = await Promise.all([
-    repo.pageTasks({ tab, q, status: status ?? "active", assignee: tab === "mine" ? undefined : assignee, due, projectId: str("project_id") || undefined, page: pageParam(sp.page), size: PAGE_SIZE }),
-    repo.listAssignable(),
-    repo.findProjects({ limit: 25 }),
-    repo.pageCustomers({ q: "", page: 1, size: 50, sort: "name" }),
+  const emptyPage: TaskPage = { items: [], total: 0, page: 1, size: PAGE_SIZE, counts: { mine: 0, all: 0 } };
+  const showNew = str("new") === "1";
+  const [taskResult, peopleResult] = await Promise.all([
+    settle("pageTasks", repo.pageTasks({ tab, q, status: status ?? "active", assignee: tab === "mine" ? undefined : assignee, due, projectId: str("project_id") || undefined, page: pageParam(sp.page), size: PAGE_SIZE }), emptyPage),
+    settle("listAssignable", repo.listAssignable(), []),
   ]);
+  const { items, total, page, size, counts } = taskResult.value;
+  const people = peopleResult.value;
+  const tasksFailed = !taskResult.ok;
   let requests: { id: string; label: string }[] = [];
-  if (staff) {
-    const sr = await repo.pageServiceRequests({ status: "open", page: 1, size: 25 });
-    requests = sr.items.map((r) => ({ id: r.id, label: requestLabel(r.id, r.number, r.summary) }));
+  if (staff && showNew) {
+    const sr = (await settle("listOpenServiceRequestPicks", repo.listOpenServiceRequestPicks(25), [])).value;
+    requests = sr.map((r) => ({ id: r.id, label: requestLabel(r.id, r.number, r.summary) }));
   }
   const keep: Record<string, string> = {
     ...(tab === "all" ? { tab: "all" } : {}),
@@ -58,7 +63,6 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
     return u.toString();
   };
   const href = (extra: Record<string, string> = {}, p = 1) => `/tasks${qs(extra, p) ? `?${qs(extra, p)}` : ""}`;
-  const showNew = str("new") === "1";
   const filtered = !!(q || due || (tab === "all" && assignee) || (status && status !== "active"));
   const defaults = { assignee_ids: [str("assignee_id") || user.id].filter(Boolean), project_id: str("project_id"), customer_id: str("customer_id") };
   return (
@@ -68,6 +72,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
         actions={<PendingLink href={href({ new: "1" })} scroll={false} className="btn btn-primary" data-testid="new-task"><Icon name="plus" />Add task</PendingLink>} />
       {str("ok") && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{str("ok")}</Banner></div>}
       {str("error") && <div className="mb-3"><Banner tone="error"><Icon name="alert" />{str("error")}</Banner></div>}
+      {tasksFailed && <div className="mb-3"><Banner tone="error"><Icon name="alert" />Tasks could not load just now. Try again in a moment.</Banner></div>}
 
       <div className="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Task lists">
         <Link href={href({ tab: "" })} scroll={false} role="tab" aria-selected={tab === "mine"}
@@ -116,7 +121,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
 
       {showNew && (
         <Modal title="Add task" sub="Assign teammates. Everyone involved gets an email with a link, in one thread per task." closeHref={href()}>
-          <TaskForm people={people} projects={projects} customers={customerPage.items.map((c) => ({ id: c.id, label: c.name }))} requests={requests} returnTo={href()} defaults={defaults} />
+          <TaskForm people={people} requests={requests} returnTo={href()} defaults={defaults} />
         </Modal>
       )}
     </>

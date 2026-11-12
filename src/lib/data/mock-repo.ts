@@ -551,6 +551,11 @@ export const mockRepo: Repo = {
     const r = mockPage(all, f.page, f.size);
     return { ...r, items: r.items.map((c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, city: c.city, state: c.state, zip: c.zip, tags: c.tags, primary_contact: c.primary_contact })) };
   },
+  async searchCustomerHits(q, limit = 10) {
+    const n = Math.min(Math.max(1, limit), 10);
+    const { items } = await mockRepo.pageCustomers({ q, page: 1, size: n, sort: "name" });
+    return items.map((c) => ({ id: c.id, name: c.name, address: formatAddress(c) }));
+  },
   async getCustomer(id) { return load().customers.find((c) => c.id === id) ?? null; },
   async createCustomer(input) {
     return mutate((db) => { const c: Customer = { ...input, id: randomUUID(), created_at: now(), updated_at: now(), ...emptyGeocode() }; db.customers.push(c); return c; });
@@ -1031,6 +1036,14 @@ export const mockRepo: Repo = {
   async countOpenServiceRequests() {
     const w = await who(); if (!w.staff) return 0;
     return load().service_requests.filter((x) => SR_OPEN.includes(x.status)).length;
+  },
+  async listOpenServiceRequestPicks(limit = 25) {
+    const w = await who(); if (!w.staff) return [];
+    const n = Math.min(Math.max(1, limit), 25);
+    return load().service_requests.filter((x) => SR_OPEN.includes(x.status))
+      .sort((a, b) => b.received_at.localeCompare(a.received_at) || a.id.localeCompare(b.id))
+      .slice(0, n)
+      .map((x) => ({ id: x.id, number: x.number, summary: x.summary }));
   },
   async getServiceRequest(id) {
     const w = await who(); const db = load();

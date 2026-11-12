@@ -16,6 +16,8 @@ export interface Repo {
   listCustomers(q?: string): Promise<CustomerListItem[]>;
   /** Customers tab: one page from the database (range + exact count), search/sort server-side. */
   pageCustomers(f: CustomerPageFilter): Promise<Paged<CustomerRow>>;
+  /** Bounded customer typeahead (never the full list, no exact count; uses customer_search). */
+  searchCustomerHits(q: string, limit?: number): Promise<{ id: string; name: string; address: string }[]>;
   getCustomer(id: string): Promise<Customer | null>;
   createCustomer(input: CustomerInput): Promise<Customer>;
   updateCustomer(id: string, input: CustomerInput): Promise<void>;
@@ -86,6 +88,8 @@ export interface Repo {
   pageServiceRequests(f: SRPageFilter): Promise<SRPage>;
   /** new + triaged + scheduled (sidebar badge). */
   countOpenServiceRequests(): Promise<number>;
+  /** Open tickets for a task form picker (id, number, summary only; no exact count). */
+  listOpenServiceRequestPicks(limit?: number): Promise<{ id: string; number: number; summary: string | null }[]>;
   getServiceRequest(id: string): Promise<ServiceRequestView | null>;
   /** Creates the ticket and its "created" history entry. */
   createServiceRequest(input: ServiceRequestInput): Promise<ServiceRequest>;

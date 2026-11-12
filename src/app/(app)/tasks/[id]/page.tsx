@@ -16,7 +16,9 @@ import { fmtDateTime, fmtDay, todayKey } from "@/lib/time";
 import { canEditTask, canUpdateTaskStatus, isTaskOverdue } from "@/lib/tasks";
 import { ticketNo } from "@/lib/types";
 import { addTaskCommentAction, deleteTaskAction, setTaskStatusAction } from "../actions";
-import { TaskForm, requestLabel } from "../task-form";
+import { settle } from "../settle";
+import { requestLabel } from "../request-label";
+import { TaskForm } from "../task-form";
 
 export const metadata: Metadata = { title: "Task" };
 
@@ -26,9 +28,18 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string).trim() : "");
   const repo = await getRepo();
-  const task = await repo.getTask(id);
+  const taskResult = await settle("getTask", repo.getTask(id), null);
+  const task = taskResult.value;
+  if (!taskResult.ok) {
+    return (
+      <>
+        <PageHeader back={{ href: "/tasks", label: "Tasks" }} title="Task" />
+        <Banner tone="error"><Icon name="alert" />This task could not load just now. Try again in a moment.</Banner>
+      </>
+    );
+  }
   if (!task) notFound();
-  const comments = await repo.listTaskComments(id);
+  const comments = (await settle("listTaskComments", repo.listTaskComments(id), [])).value;
   const staff = isStaff(user.role);
   const canEdit = canEditTask(user);
   const canStatus = canUpdateTaskStatus(user, task);
@@ -37,19 +48,12 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
   const showEdit = str("edit") === "1" && canEdit;
   const showDelete = str("delete") === "1" && canDelete;
 
-  const formLists = { people: [] as Awaited<ReturnType<typeof repo.listAssignable>>, projects: [] as Awaited<ReturnType<typeof repo.findProjects>>, customers: [] as { id: string; label: string }[], requests: [] as { id: string; label: string }[] };
+  const formLists = { people: [] as Awaited<ReturnType<typeof repo.listAssignable>>, requests: [] as { id: string; label: string }[] };
   if (showEdit) {
-    const [people, projects, customerPage] = await Promise.all([
-      repo.listAssignable(),
-      repo.findProjects({ limit: 25 }),
-      repo.pageCustomers({ q: "", page: 1, size: 50, sort: "name" }),
-    ]);
-    formLists.people = people;
-    formLists.projects = projects;
-    formLists.customers = customerPage.items.map((c) => ({ id: c.id, label: c.name }));
+    formLists.people = (await settle("listAssignable", repo.listAssignable(), [])).value;
     if (staff) {
-      const sr = await repo.pageServiceRequests({ status: "open", page: 1, size: 25 });
-      formLists.requests = sr.items.map((r) => ({ id: r.id, label: requestLabel(r.id, r.number, r.summary) }));
+      const sr = (await settle("listOpenServiceRequestPicks", repo.listOpenServiceRequestPicks(25), [])).value;
+      formLists.requests = sr.map((r) => ({ id: r.id, label: requestLabel(r.id, r.number, r.summary) }));
       if (task.service_request_id && !formLists.requests.some((r) => r.id === task.service_request_id)) {
         formLists.requests.unshift({ id: task.service_request_id, label: requestLabel(task.service_request_id, task.service_request_number, task.service_request_summary) });
       }
@@ -122,7 +126,7 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
 
       {showEdit && (
         <Modal title="Edit task" closeHref={`/tasks/${task.id}`}>
-          <TaskForm task={task} people={formLists.people} projects={formLists.projects} customers={formLists.customers} requests={formLists.requests} returnTo={`/tasks/${task.id}`} />
+          <TaskForm task={task} people={formLists.people} requests={formLists.requests} returnTo={`/tasks/${task.id}`} />
         </Modal>
       )}
       {showDelete && (
