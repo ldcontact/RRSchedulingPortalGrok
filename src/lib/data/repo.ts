@@ -1,6 +1,6 @@
 import type {
   Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, CustomerPageFilter, CustomerRow, Paged, ProjectPage, ProjectPageFilter, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
-  Milestone, Note, Person, Photo, PhotoKind, PhotoPhase, PhotoRequirement, Profile, Project, ProjectInput, ProjectHit, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
+  Milestone, Note, Person, Photo, PhotoKind, PhotoPhase, PhotoRequirement, Profile, ProjectFile, Project, ProjectInput, ProjectHit, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
   ServiceRequest, ServiceRequestInput, ServiceRequestPatch, ServiceRequestView, SREvent, SREventKind, SRPage, SRPageFilter,
   FleetVehicleRow, GeocodeFields, Task, TaskCommentView, TaskInput, TaskPage, TaskPageFilter, TaskPatch, TaskView,
   WorkspaceSearchResults,
@@ -78,6 +78,9 @@ export interface Repo {
   updatePhotoRequirement(id: string, patch: Partial<Pick<PhotoRequirement, "label" | "note" | "sort_order">>): Promise<void>;
   deletePhotoRequirement(id: string): Promise<void>;
   reorderPhotoRequirements(projectId: string, orderedIds: string[]): Promise<void>;
+  listProjectFiles(f: { projectId: string; jobId?: string | null; projectOnly?: boolean }): Promise<ProjectFile[]>;
+  addProjectFile(meta: { project_id: string; job_id: string | null }, file: File): Promise<void>;
+  deleteProjectFile(id: string): Promise<void>;
   listNotes(f: { jobId?: string; projectId?: string; customerId?: string }): Promise<Note[]>;
   addNote(n: { job_id?: string; project_id?: string; customer_id?: string; body: string }): Promise<void>;
   listMessages(f: { customerId?: string; projectId?: string }): Promise<Message[]>;

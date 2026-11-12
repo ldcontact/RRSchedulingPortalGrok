@@ -198,6 +198,21 @@ export type Photo = {
   id: string; project_id: string; job_id: string | null; kind: PhotoKind; phase: PhotoPhase; storage_path: string; caption: string | null;
   requirement_id: string | null; uploaded_by: string | null; uploader_name: string; uploader_color: string; created_at: string; url: string;
 };
+export type ProjectFile = {
+  id: string;
+  project_id: string;
+  job_id: string | null;
+  filename: string;
+  mime: string;
+  size_bytes: number;
+  storage_path: string;
+  uploaded_by: string | null;
+  uploader_name: string;
+  created_at: string;
+  url: string;
+  download_url: string;
+};
+
 export type Note = {
   id: string; customer_id: string | null; project_id: string | null; job_id: string | null; body: string;
   author_id: string | null; author_name: string; author_color: string; created_at: string;

@@ -7,6 +7,7 @@ import { scopeItemsFromForm, serializeScopeItems } from "@/lib/scope-items";
 import { sendCustomerMessage } from "@/lib/messaging";
 import { fmtDay } from "@/lib/time";
 import { CHANNEL_LABEL, PROJECT_STATUSES, PROJECT_TYPES, type Channel, type ProjectInput, type ProjectStatus, type ProjectType } from "@/lib/types";
+import { validateProjectFile } from "@/lib/project-file";
 
 export type ProjectFormState = { error?: string; values?: Record<string, string> } | undefined;
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -17,7 +18,8 @@ const refresh = (id: string) => { revalidatePath(`/projects/${id}`); revalidateP
 export async function saveProject(_: ProjectFormState, fd: FormData): Promise<ProjectFormState> {
   await staff();
   const id = s(fd, "id");
-  const values = Object.fromEntries([...fd.entries()].map(([k, v]) => [k, String(v)]));
+  const values = Object.fromEntries([...fd.entries()].filter(([, v]) => typeof v === "string").map(([k, v]) => [k, String(v)]));
+  const attachments = fd.getAll("attachments").filter((f): f is File => f instanceof File && f.size > 0);
   const type = s(fd, "type") as ProjectType;
   const status = s(fd, "status") as ProjectStatus;
   const input: ProjectInput = {
@@ -39,7 +41,22 @@ export async function saveProject(_: ProjectFormState, fd: FormData): Promise<Pr
       for (const [name] of defaults) await repo.addMilestone(p.id, { name, due_date: null });
     }
   } catch (e) { return { error: (e as Error).message, values }; }
+  const failed: string[] = [];
+  if (!id && attachments.length) {
+    for (const file of attachments) {
+      const err = validateProjectFile(file) ?? null;
+      if (err) { failed.push(err); continue; }
+      try { await repo.addProjectFile({ project_id: target, job_id: null }, file); }
+      catch (e) { failed.push((e as Error).message); }
+    }
+  }
   refresh(target);
+  if (failed.length) {
+    redirect(`/projects/${target}?tab=files&ok=${encodeURIComponent(`Project created, but some files did not upload: ${failed[0]}`)}`);
+  }
+  if (!id && attachments.length) {
+    redirect(`/projects/${target}?tab=files&ok=${encodeURIComponent(`Project created with ${attachments.length} document${attachments.length === 1 ? "" : "s"}.`)}`);
+  }
   redirect(`/projects/${target}?saved=1`);
 }
 

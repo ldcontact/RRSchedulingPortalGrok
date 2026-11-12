@@ -2,8 +2,9 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
-import type { FleetVehicleRow, AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, Role, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskCommentView, TaskView, WorkspaceSearchHit } from "@/lib/types";
+import type { FleetVehicleRow, AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectFile, ProjectListItem, ProjectPick, ProjectRow, Role, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskCommentView, TaskView, WorkspaceSearchHit } from "@/lib/types";
 import { derivePhotoPhase, kindForPhase } from "@/lib/photo-phase";
+import { mimeForFile, projectFileStoragePath, sanitizeFilename, storageExtFor, validateProjectFile } from "@/lib/project-file";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
@@ -693,6 +694,53 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       for (let i = 0; i < orderedIds.length; i++) {
         fail((await s.from("project_photo_requirements").update({ sort_order: i }).eq("id", orderedIds[i]).eq("project_id", projectId)).error);
       }
+    },
+    async listProjectFiles(f) {
+      const s = await db();
+      let q = s.from("project_files").select("*, profiles:uploaded_by(full_name, color, deleted_at)").eq("project_id", f.projectId).order("created_at");
+      if (f.projectOnly) q = q.is("job_id", null);
+      else if (f.jobId) q = q.eq("job_id", f.jobId);
+      const { data, error } = await q; fail(error);
+      type FileJoin = Omit<ProjectFile, "url" | "download_url" | "uploader_name"> & { profiles: { full_name: string; color: string; deleted_at: string | null } | null };
+      const rows = (data ?? []) as FileJoin[];
+      if (!rows.length) return [];
+      const paths = rows.map((r) => r.storage_path);
+      const [{ data: preview }, { data: downloads }] = await Promise.all([
+        s.storage.from("project-files").createSignedUrls(paths, 3600),
+        s.storage.from("project-files").createSignedUrls(paths, 3600, { download: true }),
+      ]);
+      const previewMap = new Map((preview ?? []).map((x) => [x.path, x.signedUrl]));
+      const downloadMap = new Map((downloads ?? []).map((x) => [x.path, x.signedUrl]));
+      return rows.map(({ profiles, ...r }) => ({
+        ...r,
+        url: previewMap.get(r.storage_path) ?? "",
+        download_url: downloadMap.get(r.storage_path) ?? previewMap.get(r.storage_path) ?? "",
+        uploader_name: authorLabel(r.uploaded_by, profiles),
+      }));
+    },
+    async addProjectFile(meta, file) {
+      const err = validateProjectFile(file);
+      if (err) throw new Error(err);
+      const s = await db();
+      const filename = sanitizeFilename(file.name);
+      const mime = mimeForFile(file);
+      const path = projectFileStoragePath(meta.project_id, meta.job_id, storageExtFor(file));
+      fail((await s.storage.from("project-files").upload(path, file, { contentType: mime, upsert: false })).error);
+      const { error } = await s.from("project_files").insert({
+        project_id: meta.project_id,
+        job_id: meta.job_id,
+        filename,
+        mime,
+        size_bytes: file.size,
+        storage_path: path,
+      });
+      if (error) { await s.storage.from("project-files").remove([path]); fail(error); }
+    },
+    async deleteProjectFile(id) {
+      const s = await db();
+      const { data } = await s.from("project_files").select("storage_path").eq("id", id).maybeSingle();
+      fail((await s.from("project_files").delete().eq("id", id)).error);
+      if (data) await s.storage.from("project-files").remove([data.storage_path]);
     },
     async listNotes(f) {
       const s = await db();

@@ -6,6 +6,7 @@ import { Icon } from "@/components/icons";
 import { Avatar, Banner } from "@/components/ui";
 import { JobKindBadge, JobStatusPill, TypeTag } from "@/components/status";
 import { PhotoGrid, PhotoUploader } from "@/components/photos";
+import { ProjectFilePanel } from "@/components/project-files";
 import { RequiredPhotoSlots } from "@/components/required-photo-slots";
 import { SubmitButton } from "@/components/submit-button";
 import { isStaff, requireMember } from "@/lib/auth";
@@ -45,11 +46,13 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const canDelete = hasDeleteAccess(user);
   const mine = job.assignees.some((a) => a.id === user.id);
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
-  const [project, contacts, visitPhotos, projectPhotos, notes, requirements] = await Promise.all([
+  const [project, contacts, visitPhotos, projectPhotos, notes, requirements, projectDocs, visitDocs] = await Promise.all([
     repo.getProject(job.project_id), repo.listContacts(job.customer_id),
     repo.listPhotos({ jobId: id }), repo.listPhotos({ projectId: job.project_id }), repo.listNotes({ jobId: id }),
     // the project's required-photo checklist is for the install; warranty/service visits only need a photo + note
     job.kind === "install" ? repo.listPhotoRequirements(job.project_id) : Promise.resolve([]),
+    repo.listProjectFiles({ projectId: job.project_id, projectOnly: true }),
+    repo.listProjectFiles({ projectId: job.project_id, jobId: id }),
   ]);
   const phases = bucketPhotosByPhase(visitPhotos);
   const before = phases.before;
@@ -68,6 +71,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const ok = typeof sp.ok === "string" ? sp.ok : null, error = typeof sp.error === "string" ? sp.error : null;
   const dirs = job.address ? mapsDirUrl(job.address) : null;
   const photoCount = visitPhotos.length;
+  const fileTabCount = visitPhotos.length + visitDocs.length;
   const base = `/jobs/${id}`;
   const steps = visitStepper(job.status);
   const customer = await repo.getCustomer(job.customer_id).catch(() => null);
@@ -76,7 +80,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   return (
     <>
       <ProfileHeader
-        back={staff ? { href: `/projects/${job.project_id}`, label: job.project_name } : { href: "/", label: "My Jobs" }}
+        back={staff ? { href: `/projects/${job.project_id}`, label: job.project_name } : { href: "/", label: "Home" }}
         title={job.title}
         afterTitle={<>
           <JobKindBadge kind={job.kind} />
@@ -126,7 +130,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
       {job.status !== "cancelled" && <Stepper steps={steps} />}
       <ProfileTabs base={base} current={tab} tabs={[
         { id: "overview", label: "Overview" },
-        { id: "photos", label: "Photos", count: photoCount },
+        { id: "photos", label: "Files & photos", count: fileTabCount },
         { id: "notes", label: "Field notes", count: notes.length },
       ]} />
 
@@ -136,6 +140,17 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
             {(mine || staff) && job.status === "scheduled" && (
               <form action={startJob.bind(null, id)}><SubmitButton className="btn btn-accent w-full py-3 text-base" pendingText="Starting…"><Icon name="play" />Start job</SubmitButton></form>
             )}
+
+            <div className="card min-w-0" data-testid="project-documents">
+              <div className="card-hd">
+                <h3 className="font-semibold">Project documents</h3>
+                <span className="text-xs text-muted">{projectDocs.length} · from this project</span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-3 p-4">
+                <p className="text-sm text-muted">Read these before you start. Scope, fixture schedule, and site photos.</p>
+                <ProjectFilePanel files={projectDocs} projectId={job.project_id} canOpen empty="No project documents yet." />
+              </div>
+            </div>
 
             {canWork && requirements.length > 0 && (
               <div className="card border-amber-300" data-testid="completion">
@@ -242,6 +257,18 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
 
       {tab === "photos" && (
         <div className="flex min-w-0 flex-col gap-4" data-testid="visit-photos">
+          <div className="card min-w-0" data-testid="visit-documents">
+            <div className="card-hd">
+              <h3 className="font-semibold">Visit files</h3>
+              <span className="text-xs text-muted">{visitDocs.length} document{visitDocs.length === 1 ? "" : "s"} · {photoCount} photo{photoCount === 1 ? "" : "s"}</span>
+            </div>
+            <div className="flex min-w-0 flex-col gap-3 p-4">
+              <div className="text-xs font-semibold tracking-wide text-muted uppercase">Documents for this visit</div>
+              {canUploadPhotos
+                ? <ProjectFilePanel files={visitDocs} projectId={job.project_id} jobId={id} canUpload canDelete={canDelete} browseLabel="Attach PDF or Excel" />
+                : <ProjectFilePanel files={visitDocs} projectId={job.project_id} jobId={id} canDelete={canDelete} empty={job.status === "scheduled" ? "Start the visit to add PDF or Excel files." : "No documents on this visit."} />}
+            </div>
+          </div>
           <div className="card min-w-0" data-testid="visit-photos-before">
             <div className="card-hd"><h3 className="font-semibold">Before</h3><span className="text-xs text-muted">{before.length}</span></div>
             <div className="flex flex-col gap-3 p-4">

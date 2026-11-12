@@ -38,6 +38,9 @@ const P: Record<string, string> = {
   x: "M18 6 6 18M6 6l12 12",
   truck: "M3 7h11v10H3zM14 10h4l3 3v4h-7zM6 20a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17 20a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   task: "M9 5H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4M9 5V3h6v2M9 5h6M9 12l2 2 4-4",
+  download: "M12 3v12M7 10l5 5 5-5M5 21h14",
+  upload: "M12 21V9M7 14l5-5 5 5M5 3h14",
+  open: "M14 3h7v7M13 11l8-8M17 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h6",
 };
 
 export function Icon({ name, className = "size-[18px]", ...rest }: { name: keyof typeof P | string } & SVGProps<SVGSVGElement>) {

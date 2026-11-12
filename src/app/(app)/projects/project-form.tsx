@@ -5,6 +5,7 @@ import { CustomerPicker, type CustomerHit } from "@/components/customer-picker";
 import { SubmitButton } from "@/components/submit-button";
 import { saveProject } from "./actions";
 import { ProjectTypePicker } from "@/components/project-type-picker";
+import { ProjectFilePicker } from "@/components/project-files";
 import { DEFAULT_WARRANTY_MONTHS, PROJECT_STATUSES, PROJECT_STATUS_LABEL, type Project } from "@/lib/types";
 
 export function ProjectForm({ project, initialCustomer, customerId }: { project?: Project; initialCustomer?: CustomerHit | null; customerId?: string }) {
@@ -39,6 +40,12 @@ export function ProjectForm({ project, initialCustomer, customerId }: { project?
       <label className="label sm:col-span-2">Scope of work
         <textarea className="input min-h-40 font-normal" name="scope" defaultValue={v("scope")} placeholder={"Fixture counts, wattages, rooms, access notes…\nTechs on this project will see this."} />
       </label>
+      {!project && (
+        <div className="label min-w-0 sm:col-span-2">Attachments
+          <span className="font-normal text-muted">(optional) — PDFs, Excel, and images the crew should review before they start.</span>
+          <ProjectFilePicker />
+        </div>
+      )}
       {state?.error && <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 sm:col-span-2">{state.error}</div>}
       <div className="flex justify-end gap-2 sm:col-span-2">
         <Link href={project ? `/projects/${project.id}` : "/projects"} className="btn">Cancel</Link>

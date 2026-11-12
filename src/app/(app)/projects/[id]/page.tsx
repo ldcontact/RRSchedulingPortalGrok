@@ -6,6 +6,7 @@ import { Icon } from "@/components/icons";
 import { Avatar, Banner } from "@/components/ui";
 import { JobKindBadge, JobStatusPill, ProjectStatusPill, TypeTag } from "@/components/status";
 import { PhotoGrid, PhotoUploader } from "@/components/photos";
+import { ProjectFilePanel } from "@/components/project-files";
 import { MessageLog } from "@/components/messages";
 import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
@@ -45,13 +46,14 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const p = await repo.getProject(id);
   if (!p) notFound();
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
-  const [c, contacts, milestones, jobs, allPhotos, messages, notes, requirements] = await Promise.all([
+  const [c, contacts, milestones, jobs, allPhotos, messages, notes, requirements, allProjectFiles] = await Promise.all([
     repo.getCustomer(p.customer_id), repo.listContacts(p.customer_id), repo.listMilestones(id), repo.listJobs({ projectId: id }),
     repo.listPhotos({ projectId: id }), repo.listMessages({ projectId: id }), repo.listNotes({ projectId: id }),
-    repo.listPhotoRequirements(id),
+    repo.listPhotoRequirements(id), repo.listProjectFiles({ projectId: id }),
   ]);
   const completionPhotos = allPhotos.filter((ph) => ph.kind === "completion");
-  const fileCount = allPhotos.length;
+  const projectDocs = allProjectFiles.filter((f) => !f.job_id);
+  const fileCount = allPhotos.length + allProjectFiles.length;
   const photoGroups = groupPhotosByVisitAndPhase(jobs, allPhotos);
   const reqIds = requirements.map((r) => r.id);
   const team = new Map<string, Person & { visits: number }>();
@@ -227,6 +229,16 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
 
       {tab === "files" && (
         <div className="flex min-w-0 flex-col gap-4">
+          <div className="card min-w-0" data-testid="project-documents">
+            <div className="card-hd">
+              <h3 className="font-semibold">Project documents</h3>
+              <span className="text-xs text-muted">{projectDocs.length} · visible to assigned techs</span>
+            </div>
+            <div className="flex min-w-0 flex-col gap-3 p-4">
+              <p className="text-sm text-muted">Scope, schedules, and photos that explain the work. These stay with the project, not a single visit.</p>
+              <ProjectFilePanel files={projectDocs} projectId={p.id} canUpload canDelete={canDelete} browseLabel="Add documents" />
+            </div>
+          </div>
           <PhotoRequirementsEditor projectId={p.id} items={requirements} />
           <div className="card" data-testid="project-completion-photos">
             <div className="card-hd">

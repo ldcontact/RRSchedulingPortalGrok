@@ -69,11 +69,11 @@ select pg_temp.fails('tech cannot reschedule', $$update jobs set starts_at=start
 select pg_temp.fails('tech cannot approve', $$update jobs set status='approved' where id='30000000-0000-0000-0000-000000000001'$$);
 update jobs set status='in_progress' where id='30000000-0000-0000-0000-000000000001';
 select pg_temp.fails('tech cannot submit without photo + note', $$update jobs set status='completed' where id='30000000-0000-0000-0000-000000000001'$$);
-insert into photos (project_id, job_id, kind, storage_path, uploaded_by) values
-  ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','completion','20000000-0000-0000-0000-000000000001/completion/c1.jpg', auth.uid());
+insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by) values
+  ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','completion','after','20000000-0000-0000-0000-000000000001/completion/c1.jpg', auth.uid());
 insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000001','24 of 42 panels done');
 insert into storage.objects (bucket_id, name) values ('photos','20000000-0000-0000-0000-000000000001/completion/c1.jpg');
-select pg_temp.fails('tech cannot upload before photo row', $$insert into photos (project_id, job_id, kind, storage_path, uploaded_by) values ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','before','x/before/z.jpg', auth.uid())$$);
+select pg_temp.fails('tech cannot upload a project-level photo', $$insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by) values ('20000000-0000-0000-0000-000000000001',null,'before','before','x/before/z.jpg', auth.uid())$$);
 select pg_temp.fails('tech cannot upload to other job', $$insert into photos (project_id, job_id, kind, storage_path, uploaded_by) values ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','y.jpg', auth.uid())$$);
 select pg_temp.fails('tech cannot store object in other project', $$insert into storage.objects (bucket_id, name) values ('photos','20000000-0000-0000-0000-000000000002/completion/x.jpg')$$);
 select pg_temp.fails('tech cannot note other job', $$insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000002','x')$$);
@@ -121,12 +121,12 @@ select pg_temp.check('tech can read project photo requirements', (select count(*
 select pg_temp.fails('tech cannot add photo requirements', $$insert into project_photo_requirements(project_id, label) values ('20000000-0000-0000-0000-000000000002','Extra')$$);
 insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000002','Started high bays');
 select pg_temp.fails('tech cannot submit with checklist incomplete', $$update jobs set status='completed' where id='30000000-0000-0000-0000-000000000002'$$);
-insert into photos (project_id, job_id, kind, storage_path, uploaded_by, requirement_id) values
-  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','20000000-0000-0000-0000-000000000002/completion/mh.jpg', auth.uid(), '40000000-0000-0000-0000-000000000001');
+insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by, requirement_id) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','required','20000000-0000-0000-0000-000000000002/completion/mh.jpg', auth.uid(), '40000000-0000-0000-0000-000000000001');
 select pg_temp.fails('still blocked when one checklist item missing', $$update jobs set status='completed' where id='30000000-0000-0000-0000-000000000002'$$);
 select pg_temp.fails('cannot link requirement from other project', $$insert into photos (project_id, job_id, kind, storage_path, uploaded_by, requirement_id) values ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','20000000-0000-0000-0000-000000000002/completion/bad.jpg', auth.uid(), '40000000-0000-0000-0000-000000000003')$$);
-insert into photos (project_id, job_id, kind, storage_path, uploaded_by, requirement_id) values
-  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','20000000-0000-0000-0000-000000000002/completion/wp.jpg', auth.uid(), '40000000-0000-0000-0000-000000000002');
+insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by, requirement_id) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','completion','required','20000000-0000-0000-0000-000000000002/completion/wp.jpg', auth.uid(), '40000000-0000-0000-0000-000000000002');
 update jobs set status='completed' where id='30000000-0000-0000-0000-000000000002';
 select pg_temp.check('checklist complete allows submit', (select status from jobs where id='30000000-0000-0000-0000-000000000002')='completed');
 reset role;
@@ -316,8 +316,8 @@ select pg_temp.fails('tech cannot retag a visit', $$update jobs set kind='instal
 update jobs set status='in_progress' where id='30000000-0000-0000-0000-000000000009';
 select pg_temp.check('starting a warranty visit keeps project Complete', (select status from projects where id='20000000-0000-0000-0000-000000000001')='complete');
 insert into notes (job_id, body) values ('30000000-0000-0000-0000-000000000009','Swapped the lobby driver');
-insert into photos (project_id, job_id, kind, storage_path) values
-  ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000009','completion','20000000-0000-0000-0000-000000000001/completion/w1.jpg');
+insert into photos (project_id, job_id, kind, phase, storage_path) values
+  ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000009','completion','after','20000000-0000-0000-0000-000000000001/completion/w1.jpg');
 -- project 1 has an install checklist (Lobby panel, Operatory troffer); a warranty visit doesn't need it
 update jobs set status='completed' where id='30000000-0000-0000-0000-000000000009';
 select pg_temp.check('warranty visit submits without the install checklist', (select status from jobs where id='30000000-0000-0000-0000-000000000009')='completed');
@@ -395,3 +395,67 @@ select pg_temp.check('stranger sees no search rows', (select count(*) from custo
 reset role;
 select pg_temp.check('anon has no access to search tables', not has_table_privilege('anon', 'public.customer_search', 'select') and not has_table_privilege('anon', 'public.project_search', 'select'));
 select pg_temp.check('authenticated cannot run search refresh', not has_function_privilege('authenticated', 'private.refresh_customer_search(uuid[])', 'execute'));
+
+-- ---- project / visit documents (project_files)
+select pg_temp.as_user(null);
+insert into projects (id, customer_id, name, scope) values
+  ('20000000-0000-0000-0000-0000000000d1','10000000-0000-0000-0000-000000000001','Document packet','Scope in the attached PDF');
+insert into jobs (id, project_id, title, starts_at, ends_at, status) values
+  ('30000000-0000-0000-0000-0000000000d1','20000000-0000-0000-0000-0000000000d1','Install','2026-11-12 14:00Z','2026-11-12 20:00Z','in_progress');
+insert into job_assignments values ('30000000-0000-0000-0000-0000000000d1','00000000-0000-0000-0000-00000000000d'); -- Emily
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a'); -- Luke admin
+insert into project_files (id, project_id, filename, mime, size_bytes, storage_path, uploaded_by)
+  values ('50000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-0000000000d1','Lighting_scope_SOW.pdf','application/pdf',1200,'20000000-0000-0000-0000-0000000000d1/project/scope.pdf','00000000-0000-0000-0000-00000000000b');
+select pg_temp.check('admin uploaded_by forced to auth.uid',
+  (select uploaded_by = auth.uid() from project_files where id='50000000-0000-0000-0000-000000000001'));
+insert into storage.objects (bucket_id, name) values ('project-files','20000000-0000-0000-0000-0000000000d1/project/scope.pdf');
+select pg_temp.check('admin can delete a project file', (select count(*) from project_files where id='50000000-0000-0000-0000-000000000001')=1);
+-- re-add a file to leave one for later select tests after a delete check
+insert into project_files (id, project_id, filename, mime, size_bytes, storage_path)
+  values ('50000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-0000000000d1','Fixture_schedule.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',800,'20000000-0000-0000-0000-0000000000d1/project/sheet.xlsx');
+delete from project_files where id='50000000-0000-0000-0000-000000000001';
+select pg_temp.check('admin deleted the first document', (select count(*) from project_files where project_id='20000000-0000-0000-0000-0000000000d1')=1);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager, can_delete default false
+insert into project_files (id, project_id, filename, mime, size_bytes, storage_path)
+  values ('50000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-0000000000d1','Site_plan.pdf','application/pdf',900,'20000000-0000-0000-0000-0000000000d1/project/site.pdf');
+select pg_temp.check('manager can add a project document', (select count(*) from project_files where id='50000000-0000-0000-0000-000000000003')=1);
+delete from project_files where id='50000000-0000-0000-0000-000000000002';
+delete from storage.objects where bucket_id='project-files' and name='20000000-0000-0000-0000-0000000000d1/project/scope.pdf';
+select pg_temp.check('manager without delete access cannot delete a document', (select count(*) from project_files where id='50000000-0000-0000-0000-000000000002')=1);
+select pg_temp.check('manager without delete access cannot remove storage object', exists (select 1 from storage.objects where bucket_id='project-files' and name='20000000-0000-0000-0000-0000000000d1/project/scope.pdf'));
+select pg_temp.as_user(null);
+update profiles set can_delete=true where id='00000000-0000-0000-0000-00000000000b';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+delete from project_files where id='50000000-0000-0000-0000-000000000003';
+select pg_temp.check('manager with delete access can delete a document', (select count(*) from project_files where id='50000000-0000-0000-0000-000000000003')=0);
+select pg_temp.as_user(null);
+update profiles set can_delete=false where id='00000000-0000-0000-0000-00000000000b';
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d'); -- Emily tech, assigned
+select pg_temp.check('assigned tech can read project documents', (select count(*) from project_files where project_id='20000000-0000-0000-0000-0000000000d1')=1);
+select pg_temp.check('assigned tech can read the storage object', (select count(*) from storage.objects where bucket_id='project-files' and name='20000000-0000-0000-0000-0000000000d1/project/scope.pdf')=1);
+select pg_temp.fails('tech cannot add a project-level document', $$insert into project_files (project_id, filename, mime, size_bytes, storage_path, uploaded_by) values ('20000000-0000-0000-0000-0000000000d1','crew.pdf','application/pdf',10,'20000000-0000-0000-0000-0000000000d1/project/crew.pdf', auth.uid())$$);
+select pg_temp.fails('tech cannot store a project-level object', $$insert into storage.objects (bucket_id, name) values ('project-files','20000000-0000-0000-0000-0000000000d1/project/crew.pdf')$$);
+insert into project_files (project_id, job_id, filename, mime, size_bytes, storage_path, uploaded_by)
+  values ('20000000-0000-0000-0000-0000000000d1','30000000-0000-0000-0000-0000000000d1','Install_notes.pdf','application/pdf',200,'20000000-0000-0000-0000-0000000000d1/visit/30000000-0000-0000-0000-0000000000d1/notes.pdf', auth.uid());
+insert into storage.objects (bucket_id, name) values ('project-files','20000000-0000-0000-0000-0000000000d1/visit/30000000-0000-0000-0000-0000000000d1/notes.pdf');
+select pg_temp.check('tech can add a visit document', (select count(*) from project_files where filename='Install_notes.pdf')=1);
+delete from project_files where id='50000000-0000-0000-0000-000000000002';
+delete from project_files where filename='Install_notes.pdf';
+delete from storage.objects where bucket_id='project-files';
+select pg_temp.check('tech cannot delete a project document', (select count(*) from project_files where id='50000000-0000-0000-0000-000000000002')=1);
+select pg_temp.check('tech cannot delete their own visit document', (select count(*) from project_files where filename='Install_notes.pdf')=1);
+select pg_temp.check('tech cannot delete a storage object', exists (select 1 from storage.objects where bucket_id='project-files'));
+select pg_temp.fails('tech cannot attach a file to someone else''s visit', $$insert into project_files (project_id, job_id, filename, mime, size_bytes, storage_path, uploaded_by) values ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','x.pdf','application/pdf',10,'20000000-0000-0000-0000-000000000001/visit/30000000-0000-0000-0000-000000000001/x.pdf', auth.uid())$$);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c'); -- Carlos (manager after earlier tests) — not assigned as tech; still staff so can see
+-- If Carlos is still a manager he can read. Use a user who is a tech on the other project only: none left.
+-- Stranger has no role? 00e was invited as tech later. Use uninvited-style: 000...099
+select pg_temp.as_user('00000000-0000-0000-0000-000000000099');
+select pg_temp.check('signed-in user with no role sees no documents', (select count(*) from project_files)=0);
+reset role;
+select pg_temp.check('anon cannot read project_files', not has_table_privilege('anon', 'public.project_files', 'select'));

@@ -7,8 +7,9 @@ import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
 import { PROJECT_HIT_LIMIT, toProjectHit } from "@/lib/project-hit";
 import { customerSubtitle, emptyWorkspaceSearch, matchesProfile, personHref, personSubtitle, projectSubtitle, WORKSPACE_SEARCH_LIMIT, workspaceQuery } from "@/lib/workspace-search";
-import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskComment, TaskCommentView, TaskView } from "@/lib/types";
+import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectFile, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskComment, TaskCommentView, TaskView } from "@/lib/types";
 import { derivePhotoPhase, kindForPhase } from "@/lib/photo-phase";
+import { mimeForFile, projectFileStoragePath, sanitizeFilename, storageExtFor, validateProjectFile } from "@/lib/project-file";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
@@ -27,9 +28,10 @@ import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
  * NEXT_PUBLIC_RR_MOCK_MODE is unset.
  */
 type PhotoRow = Omit<Photo, "url" | "uploader_name" | "uploader_color">;
+type ProjectFileRow = Omit<ProjectFile, "url" | "download_url" | "uploader_name">;
 type NoteRow = Omit<Note, "author_name" | "author_color">;
 type MessageRow = Omit<Message, "sender_name" | "sender_color">;
-type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[] };
+type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[]; project_files: ProjectFileRow[] };
 type SREventRow = Omit<SREvent, "actor_name" | "actor_color">;
 type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[] };
 type Tasks = { tasks: Task[]; task_comments: TaskComment[] };
@@ -208,7 +210,17 @@ function seedPhase2(): P2 {
     msg("c6", "p6", "timeline", "outbound", "Proposed timeline: HVAC tune-up + lighting assessment", "Sent via email", 1, "u-manager"),
     msg("c7", null, "call", "inbound", null, "Rosa called after a referral from Golf Road Auto Body. Interested in a lighting assessment.", 3, "u-admin"),
   ];
-  const db = { projects, milestones, jobs, assignments, photos, notes, messages, photo_requirements };
+  const pf = (id: string, project_id: string, job_id: string | null, filename: string, mime: string, size_bytes: number, by: string, days: number): ProjectFileRow =>
+    ({ id, project_id, job_id, filename, mime, size_bytes, storage_path: `seed/documents/${filename}`, uploaded_by: by, created_at: ago(days) });
+  const project_files: ProjectFileRow[] = [
+    pf("pf1", "p1", null, "Lighting_scope_SOW.pdf", "application/pdf", 1_200_000, "u-admin", 10),
+    pf("pf2", "p1", null, "Fixture_schedule.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 84_000, "u-admin", 10),
+    pf("pf3", "p1", null, "Existing_panel.jpg", "image/jpeg", 640_000, "u-admin", 10),
+    pf("pf4", "p1", null, "ComEd_rebate_worksheet.csv", "text/csv", 18_000, "u-manager", 5),
+    pf("pf5", "p1", null, "Site_plan.pdf", "application/pdf", 3_400_000, "u-admin", 8),
+    pf("pf6", "p1", "j1", "Install_notes.pdf", "application/pdf", 220_000, "u-tech1", 2),
+  ];
+  const db = { projects, milestones, jobs, assignments, photos, notes, messages, photo_requirements, project_files };
   for (const p of projects) syncProject(db, p.id);
   return db;
 }
@@ -393,6 +405,11 @@ function load(): DB {
   const db = JSON.parse(readFileSync(FILE, "utf8")) as DB;
   if (!db.projects) { Object.assign(db, seedPhase2()); save(db); } // upgrade a phase-1 mock DB
   if (!db.photo_requirements) { db.photo_requirements = []; save(db); }
+  if (!db.project_files) {
+    const fresh = seedPhase2();
+    db.project_files = fresh.project_files;
+    save(db);
+  }
   for (const p of db.photos) {
     if (p.requirement_id === undefined) (p as PhotoRow).requirement_id = null;
     if (!p.phase) p.phase = derivePhotoPhase(p);
@@ -994,6 +1011,70 @@ export const mockRepo: Repo = {
       });
     });
   },
+  async listProjectFiles(f) {
+    const w = await who(); const db = load();
+    if (!w.canProject(f.projectId)) return [];
+    return db.project_files
+      .filter((row) => row.project_id === f.projectId)
+      .filter((row) => f.projectOnly ? row.job_id == null : f.jobId ? row.job_id === f.jobId : true)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+      .map((row) => ({
+        ...row,
+        url: `/api/mock-file/${row.storage_path}`,
+        download_url: `/api/mock-file/${row.storage_path}?download=1`,
+        uploader_name: labelOf(db, row.uploaded_by),
+      }));
+  },
+  async addProjectFile(meta, file) {
+    const w = await who();
+    const err = validateProjectFile(file);
+    if (err) throw new Error(err);
+    const db0 = load();
+    const project = db0.projects.find((p) => p.id === meta.project_id);
+    if (!project) throw new Error("Project not found");
+    if (meta.job_id) {
+      const job = db0.jobs.find((j) => j.id === meta.job_id);
+      if (!job || job.project_id !== meta.project_id) throw new Error("That visit isn't available to you.");
+      if (!w.staff) {
+        if (!w.canJob(meta.job_id)) throw new Error("permission denied (mock RLS)");
+        if (job.status !== "in_progress") throw new Error("Start the visit before adding files.");
+      }
+    } else if (!w.staff) {
+      throw new Error("permission denied (mock RLS)");
+    } else if (!w.canProject(meta.project_id) && !w.staff) {
+      throw new Error("permission denied (mock RLS)");
+    }
+    const path = projectFileStoragePath(meta.project_id, meta.job_id, storageExtFor(file));
+    const full = join(MOCK_UPLOADS, path);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, Buffer.from(await file.arrayBuffer()));
+    mutate((db) => {
+      db.project_files.push({
+        id: randomUUID(),
+        project_id: meta.project_id,
+        job_id: meta.job_id,
+        filename: sanitizeFilename(file.name),
+        mime: mimeForFile(file),
+        size_bytes: file.size,
+        storage_path: path,
+        uploaded_by: w.uid,
+        created_at: now(),
+      });
+    });
+  },
+  async deleteProjectFile(id) {
+    const w = await who();
+    requireDeleteMock(w);
+    const paths: string[] = [];
+    mutate((db) => {
+      const row = db.project_files.find((x) => x.id === id);
+      if (!row) return;
+      if (!w.canProject(row.project_id)) throw new Error("permission denied (mock RLS)");
+      paths.push(row.storage_path);
+      db.project_files = db.project_files.filter((x) => x.id !== id);
+    });
+    unlinkPhotoFiles(paths);
+  },
   async listNotes(f) {
     const w = await who(); const db = load();
     const jobIds = f.projectId ? new Set(db.jobs.filter((j) => j.project_id === f.projectId).map((j) => j.id)) : null;
@@ -1159,7 +1240,9 @@ export const mockRepo: Repo = {
     mutate((db) => {
       const jobIds = new Set(db.jobs.filter((j) => j.project_id === id).map((j) => j.id));
       paths.push(...db.photos.filter((p) => p.project_id === id).map((p) => p.storage_path));
+      paths.push(...db.project_files.filter((p) => p.project_id === id).map((p) => p.storage_path));
       db.photos = db.photos.filter((p) => p.project_id !== id);
+      db.project_files = db.project_files.filter((p) => p.project_id !== id);
       db.photo_requirements = db.photo_requirements.filter((r) => r.project_id !== id);
       db.milestones = db.milestones.filter((m) => m.project_id !== id);
       db.notes = db.notes.filter((n) => n.project_id !== id);
@@ -1181,7 +1264,9 @@ export const mockRepo: Repo = {
     const paths: string[] = [];
     mutate((db) => {
       paths.push(...db.photos.filter((p) => p.job_id === id).map((p) => p.storage_path));
+      paths.push(...db.project_files.filter((p) => p.job_id === id).map((p) => p.storage_path));
       db.photos = db.photos.filter((p) => p.job_id !== id);
+      db.project_files = db.project_files.filter((p) => p.job_id !== id);
       db.notes = db.notes.filter((n) => n.job_id !== id);
       db.assignments = db.assignments.filter((a) => a.job_id !== id);
       for (const r of db.service_requests) if (r.resolved_job_id === id) r.resolved_job_id = null;
