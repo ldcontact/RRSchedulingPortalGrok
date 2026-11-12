@@ -230,6 +230,10 @@ export type ProjectPick = {
   id: string; name: string; type: ProjectType; status: ProjectStatus; customer_id: string; customer_name: string;
   completed_at: string | null; warranty_months: number;
 };
+/** Slim project row for the Schedule-a-visit typeahead (no jobs, milestones, or HCP extra JSON). */
+export type ProjectHit = {
+  id: string; name: string; customer_name: string; status: ProjectStatus; hcp_job_number?: string | null;
+};
 
 /** Geotab device ↔ team-member mapping (public.fleet_vehicles). */
 export type FleetVehicleRow = { geotab_device_id: string; label: string | null; profile_id: string | null };

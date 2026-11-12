@@ -1,6 +1,6 @@
 import type {
   Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, CustomerPageFilter, CustomerRow, Paged, ProjectPage, ProjectPageFilter, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
-  Milestone, Note, Person, Photo, PhotoKind, PhotoPhase, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
+  Milestone, Note, Person, Photo, PhotoKind, PhotoPhase, PhotoRequirement, Profile, Project, ProjectInput, ProjectHit, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
   ServiceRequest, ServiceRequestInput, ServiceRequestPatch, ServiceRequestView, SREvent, SREventKind, SRPage, SRPageFilter,
   FleetVehicleRow, GeocodeFields, Task, TaskCommentView, TaskInput, TaskPage, TaskPageFilter, TaskPatch, TaskView,
   WorkspaceSearchResults,
@@ -50,6 +50,10 @@ export interface Repo {
   /** Projects tab: one page from the database (range + exact count) plus per-status counts for the same search. */
   pageProjects(f: ProjectPageFilter): Promise<ProjectPage>;
   getProject(id: string): Promise<Project | null>;
+  /** One project for the visit form preselect (id + name + customer only). */
+  getProjectHit(id: string): Promise<ProjectHit | null>;
+  /** Bounded project typeahead for the visit form (never the full list; uses project_search). */
+  searchProjectHits(f: { q?: string; customerId?: string; limit?: number }): Promise<ProjectHit[]>;
   createProject(input: ProjectInput): Promise<Project>;
   updateProject(id: string, patch: Partial<Omit<Project, "id" | "created_at" | "updated_at">>): Promise<void>;
   listMilestones(projectId: string): Promise<Milestone[]>;

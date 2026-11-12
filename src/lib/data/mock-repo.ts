@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
+import { PROJECT_HIT_LIMIT, toProjectHit } from "@/lib/project-hit";
 import { customerSubtitle, emptyWorkspaceSearch, matchesProfile, personHref, personSubtitle, projectSubtitle, WORKSPACE_SEARCH_LIMIT, workspaceQuery } from "@/lib/workspace-search";
 import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskComment, TaskCommentView, TaskView } from "@/lib/types";
 import { derivePhotoPhase, kindForPhase } from "@/lib/photo-phase";
@@ -768,6 +769,35 @@ export const mockRepo: Repo = {
     return { ...pg, items, counts };
   },
   async getProject(id) { const w = await who(); return w.canProject(id) ? load().projects.find((p) => p.id === id) ?? null : null; },
+  async getProjectHit(id) {
+    const w = await who();
+    if (!w.canProject(id)) return null;
+    const db = load();
+    const p = db.projects.find((x) => x.id === id);
+    if (!p) return null;
+    const c = db.customers.find((x) => x.id === p.customer_id);
+    return toProjectHit({ id: p.id, name: p.name, status: p.status, hcp_job_number: p.hcp_job_number, customer_name: c?.name ?? "" });
+  },
+  async searchProjectHits(f) {
+    const w = await who();
+    const parsed = parseSearch(f.q);
+    if (!parsed && !f.customerId) return [];
+    const db = load();
+    const limit = Math.min(Math.max(1, f.limit ?? PROJECT_HIT_LIMIT), PROJECT_HIT_LIMIT);
+    const fieldsOf = (cid: string) => {
+      const c = db.customers.find((x) => x.id === cid);
+      return c ? customerSearchFields(c, db.contacts.filter((k) => k.customer_id === cid)) : { doc: "", digits: "" };
+    };
+    return db.projects
+      .filter((p) => w.canProject(p.id) && p.status !== "cancelled" && (!f.customerId || p.customer_id === f.customerId))
+      .filter((p) => { if (!parsed) return true; const s = projectSearchFields(p, fieldsOf(p.customer_id)); return matchesSearch(s.doc, s.digits, parsed); })
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id))
+      .slice(0, limit)
+      .map((p) => toProjectHit({
+        id: p.id, name: p.name, status: p.status, hcp_job_number: p.hcp_job_number,
+        customer_name: db.customers.find((c) => c.id === p.customer_id)?.name ?? "",
+      }));
+  },
   async createProject(input) {
     requireStaffMock(await who());
     return mutate((db) => {

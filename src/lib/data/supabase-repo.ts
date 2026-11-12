@@ -9,6 +9,7 @@ import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { applySearch, parseSearch } from "@/lib/search";
+import { PROJECT_HIT_LIMIT, toProjectHit } from "@/lib/project-hit";
 import { customerSubtitle, emptyWorkspaceSearch, personHref, personSubtitle, projectSubtitle, WORKSPACE_SEARCH_LIMIT } from "@/lib/workspace-search";
 import { applyTicketVisits } from "@/lib/tickets";
 import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
@@ -514,6 +515,29 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     async getProject(id) {
       const { data, error } = await (await db()).from("projects").select("*").eq("id", id).maybeSingle(); fail(error);
       return data ? { ...(data as Project), value: Number(data.value), est_rebate: Number(data.est_rebate) } : null;
+    },
+    async getProjectHit(id) {
+      const { data, error } = await (await db()).from("projects")
+        .select("id, name, status, hcp_job_number, customers(name)").eq("id", id).maybeSingle();
+      fail(error);
+      return data ? toProjectHit(data as Parameters<typeof toProjectHit>[0]) : null;
+    },
+    async searchProjectHits(f) {
+      const parsed = parseSearch(f.q);
+      if (!parsed && !f.customerId) return [];
+      const s = await db();
+      const limit = Math.min(Math.max(1, f.limit ?? PROJECT_HIT_LIMIT), PROJECT_HIT_LIMIT);
+      const embed = parsed ? ", project_search!inner()" : "";
+      let q = s.from("projects")
+        .select(`id, name, status, hcp_job_number, customers(name)${embed}`)
+        .neq("status", "cancelled")
+        .order("updated_at", { ascending: false })
+        .order("id")
+        .limit(limit);
+      if (f.customerId) q = q.eq("customer_id", f.customerId);
+      if (parsed) q = applySearch(q, "project_search", parsed);
+      const { data, error } = await q; fail(error);
+      return ((data ?? []) as unknown as Parameters<typeof toProjectHit>[0][]).map(toProjectHit);
     },
     async createProject(input) {
       const { data, error } = await (await db()).from("projects").insert(input).select().single(); fail(error);

@@ -5,22 +5,21 @@ import { Icon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveJob } from "./actions";
-import { ROLE_LABEL, type Person, type Role } from "@/lib/types";
+import { ROLE_LABEL, type Person, type ProjectHit, type Role } from "@/lib/types";
+import { ProjectPicker } from "@/components/project-picker";
 
 export type JobFormDefaults = { id?: string; project_id: string; title: string; date: string; start: string; end: string; assignees: string[]; instructions: string };
 
-export function JobForm({ d, projects, people, cancelHref }: { d: JobFormDefaults; projects: { id: string; name: string; customer_name: string }[]; people: (Person & { role: string })[]; cancelHref: string }) {
+export function JobForm({ d, selected, customerId, people, cancelHref }: { d: JobFormDefaults; selected?: ProjectHit | null; customerId?: string; people: (Person & { role: string })[]; cancelHref: string }) {
   const [state, action] = useActionState(saveJob, undefined);
   const v = (k: keyof JobFormDefaults) => state?.values?.[k] ?? String(d[k] ?? "");
   const chosen = new Set(state?.values ? state.values.assignees.split(",").filter(Boolean) : d.assignees);
+  const preselected = selected && selected.id === v("project_id") ? selected : null;
   return (
     <form action={action} className="card grid gap-4 p-5 sm:grid-cols-2" key={state?.conflicts ? "c" : "n"}>
       {d.id && <input type="hidden" name="id" value={d.id} />}
-      <label className="label sm:col-span-2">Project *
-        <select className="input" name="project_id" required defaultValue={v("project_id")}>
-          <option value="" disabled>Choose a project…</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.customer_name} · {p.name}</option>)}
-        </select>
+      <label className="label min-w-0 sm:col-span-2">Project *
+        <ProjectPicker name="project_id" required defaultSelected={preselected} defaultSelectedId={!preselected && v("project_id") ? v("project_id") : undefined} customerId={customerId} />
       </label>
       <label className="label sm:col-span-2">Visit title *<input className="input" name="title" required defaultValue={v("title")} placeholder="e.g. Install – warehouse high bays (day 1)" /></label>
       <div className="grid grid-cols-[1.4fr_1fr_1fr] gap-3 sm:col-span-2">
@@ -34,7 +33,7 @@ export function JobForm({ d, projects, people, cancelHref }: { d: JobFormDefault
           {people.map((p) => (
             <label key={p.id} className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-line px-3 py-2 text-sm has-[:checked]:border-brand has-[:checked]:bg-brand-50">
               <input type="checkbox" name="assignees" value={p.id} defaultChecked={chosen.has(p.id)} className="size-4 accent-[var(--color-brand)]" />
-              <Avatar name={p.full_name} color={p.color} size="sm" /><span className="flex-1 font-medium">{p.full_name}</span><span className="text-[11px] text-muted">{ROLE_LABEL[p.role as Role]}</span>
+              <Avatar name={p.full_name} color={p.color} size="sm" src={p.avatar_url} /><span className="flex-1 font-medium">{p.full_name}</span><span className="text-[11px] text-muted">{ROLE_LABEL[p.role as Role]}</span>
             </label>
           ))}
         </div>

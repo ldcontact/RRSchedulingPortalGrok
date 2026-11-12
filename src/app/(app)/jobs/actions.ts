@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { isStaff, requireMember, requireRole } from "@/lib/auth";
 import { findConflicts, getRepo } from "@/lib/data/repo";
 import { dayKey, fmtRange, fmtDay, minutesOfDay, parseHHMM, validDay, zonedToUtc } from "@/lib/time";
-import type { JobView } from "@/lib/types";
+import type { JobView, ProjectHit } from "@/lib/types";
+import { PROJECT_HIT_LIMIT } from "@/lib/project-hit";
+
+export type { ProjectHit };
 
 export type JobFormState = { error?: string; conflicts?: string[]; values?: Record<string, string> } | undefined;
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -159,3 +162,24 @@ export async function reopenJob(id: string) {
   await attempt(job, () => repo.updateJob(id, { status: "scheduled", started_at: null, completed_at: null, approved_at: null, approved_by: null }), "Visit reopened.");
 }
 
+
+
+// ---------------------------------------------------------------- typeahead (Schedule a visit)
+const staff = () => requireRole("admin", "manager");
+
+/** Bounded project search for the visit form: at most 10 matches, never the whole list. */
+export async function searchProjects(q: string, customerId?: string): Promise<ProjectHit[]> {
+  await staff();
+  const term = (q ?? "").trim();
+  const cid = (customerId ?? "").trim() || undefined;
+  if (term.length < 2 && !cid) return [];
+  return (await getRepo()).searchProjectHits({ q: term || undefined, customerId: cid, limit: PROJECT_HIT_LIMIT });
+}
+
+/** Resolve one project for a preselected id (e.g. /jobs/new?project=). */
+export async function getProjectHit(id: string): Promise<ProjectHit | null> {
+  await staff();
+  const term = id.trim();
+  if (!term) return null;
+  return (await getRepo()).getProjectHit(term);
+}
