@@ -21,7 +21,7 @@ const project: Project = {
 };
 const req: PhotoRequirement = { id: U(40), project_id: PROJECT, label: "Panel", note: null, sort_order: 0, created_at: "2026-10-01T00:00:00Z" };
 const photo = (over: Partial<Photo>): Photo => ({
-  id: U(50), project_id: PROJECT, job_id: JOB, kind: "completion", storage_path: "p/x.jpg", caption: null, requirement_id: req.id,
+  id: U(50), project_id: PROJECT, job_id: JOB, kind: "completion", phase: over.requirement_id === null || over.kind === "before" ? "before" : "required", storage_path: "p/x.jpg", caption: null, requirement_id: req.id,
   uploaded_by: TECH, uploader_name: "Carlos Tech", uploader_color: "#111", created_at: "2026-11-10T15:00:00Z", url: "https://signed.example/x", ...over,
 });
 const team: TeamMember[] = [

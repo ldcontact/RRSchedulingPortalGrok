@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
 import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskComment, TaskCommentView, TaskView } from "@/lib/types";
+import { derivePhotoPhase, kindForPhase } from "@/lib/photo-phase";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import { formatAddress, projectDates, warrantyFor } from "@/lib/project-row";
 import { resolveAvatarUrl } from "@/lib/avatar";
@@ -163,8 +164,10 @@ function seedPhase2(): P2 {
   const as = (job_id: string, ...ids: string[]) => ids.map((profile_id) => ({ job_id, profile_id }));
   const assignments = [...as("j1", "u-tech1", "u-tech2"), ...as("j2", "u-tech1", "u-tech2"), ...as("j3", "u-tech4"), ...as("j8", "u-tech2"), ...as("j4", "u-tech4", "u-tech1"),
     ...as("j5", "u-tech3"), ...as("j13", "u-tech3"), ...as("j6", "u-tech1", "u-tech2", "u-tech3"), ...as("j7", "u-tech1", "u-tech2")];
-  const ph = (project_id: string, job_id: string | null, kind: Photo["kind"], caption: string, days: number, by: string, requirement_id: string | null = null): PhotoRow =>
-    ({ id: randomUUID(), project_id, job_id, kind, storage_path: `seed/${kind}/${encodeURIComponent(caption)}.svg`, caption, requirement_id, uploaded_by: by, created_at: ago(days) });
+  const ph = (project_id: string, job_id: string | null, kind: Photo["kind"], caption: string, days: number, by: string, requirement_id: string | null = null, phase?: Photo["phase"]): PhotoRow => {
+    const resolved = derivePhotoPhase({ kind, requirement_id, phase });
+    return { id: randomUUID(), project_id, job_id, kind: kindForPhase(resolved, kind), phase: resolved, storage_path: `seed/${kind}/${encodeURIComponent(caption)}.svg`, caption, requirement_id, uploaded_by: by, created_at: ago(days) };
+  };
   const req = (id: string, project_id: string, label: string, sort_order: number, note: string | null = null): PhotoRequirement =>
     ({ id, project_id, label, note, sort_order, created_at: ago(14) });
   const photo_requirements: PhotoRequirement[] = [
@@ -182,6 +185,11 @@ function seedPhase2(): P2 {
     ph("p3", "j5", "completion", "RTU #1 new filters", 1, "u-tech3"), ph("p3", "j5", "completion", "Smart thermostat installed", 1, "u-tech3"),
     ph("p1", "j1", "completion", "Lobby LED panels", 2, "u-tech1", "r4"),
     ph("p2", "j3", "completion", "T12 bay 1 done", 0, "u-tech4", "r1"),
+    ph("p1", "j1", "before", "Lobby before – this visit", 3, "u-tech1"),
+    ph("p1", "j1", "before", "Operatory 1 before", 3, "u-tech2"),
+    ph("p1", "j1", "completion", "Lobby after panels", 2, "u-tech1"),
+    ph("p1", "j1", "completion", "Imported from Housecall Pro", 30, "u-manager", null, "other"),
+    ph("p1", "j2", "before", "Exam room 3 before", 1, "u-tech1"),
   ];
   const notes: NoteRow[] = [
     { id: randomUUID(), customer_id: null, project_id: null, job_id: "j5", body: "Replaced filters on both RTUs, cleaned condenser coils, new belt on RTU #2. Refrigerant OK. Thermostats installed and scheduled (6a–7p M–Sa).", author_id: "u-tech3", created_at: at(-1, 12, 35) },
@@ -383,7 +391,10 @@ function load(): DB {
   const db = JSON.parse(readFileSync(FILE, "utf8")) as DB;
   if (!db.projects) { Object.assign(db, seedPhase2()); save(db); } // upgrade a phase-1 mock DB
   if (!db.photo_requirements) { db.photo_requirements = []; save(db); }
-  for (const p of db.photos) if (p.requirement_id === undefined) (p as PhotoRow).requirement_id = null;
+  for (const p of db.photos) {
+    if (p.requirement_id === undefined) (p as PhotoRow).requirement_id = null;
+    if (!p.phase) p.phase = derivePhotoPhase(p);
+  }
   for (const j of db.jobs) { j.kind ??= "install"; if (j.service_request_id === undefined) j.service_request_id = null; }
   for (const p of db.projects) p.warranty_months ??= DEFAULT_WARRANTY_MONTHS;
   if (!db.service_requests) { db.service_requests = []; db.sr_events = []; seedServiceRequests(db); save(db); } // upgrade an older mock DB
@@ -810,6 +821,7 @@ export const mockRepo: Repo = {
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
       .map((p) => ({
         ...p,
+        phase: derivePhotoPhase(p),
         url: `/api/mock-photo/${p.storage_path}`,
         uploader_name: labelOf(db, p.uploaded_by),
         uploader_color: colorOf(db, p.uploaded_by),
@@ -817,23 +829,48 @@ export const mockRepo: Repo = {
   },
   async addPhoto(meta, file) {
     const w = await who();
-    if (!w.staff && !(meta.kind === "completion" && meta.job_id && w.canJob(meta.job_id))) throw new Error("permission denied (mock RLS)");
+    const phase = derivePhotoPhase({ kind: meta.kind, requirement_id: meta.requirement_id ?? null, phase: meta.phase });
+    const kind = kindForPhase(phase, meta.kind);
+    if (!w.staff) {
+      if (!meta.job_id || !w.canJob(meta.job_id) || (phase !== "before" && phase !== "after" && phase !== "required")) throw new Error("permission denied (mock RLS)");
+      const job = load().jobs.find((j) => j.id === meta.job_id);
+      if (!job || job.status !== "in_progress") throw new Error("permission denied (mock RLS)");
+    }
     if (meta.requirement_id) {
-      if (meta.kind !== "completion" || !meta.job_id) throw new Error("required photo items only apply to completion photos");
+      if (phase !== "required" || kind !== "completion" || !meta.job_id) throw new Error("required photo items only apply to required photos");
       const db0 = load();
       const req = db0.photo_requirements.find((r) => r.id === meta.requirement_id);
       if (!req) throw new Error("unknown required photo item");
       if (req.project_id !== meta.project_id) throw new Error("required photo item belongs to a different project");
     }
-    const path = `${meta.project_id}/${meta.kind}/${randomUUID()}.jpg`;
+    if ((phase === "after" || phase === "required") && !meta.job_id) throw new Error("after photos belong to a visit");
+    const path = `${meta.project_id}/${kind}/${randomUUID()}.jpg`;
     const full = join(MOCK_UPLOADS, path);
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, Buffer.from(await file.arrayBuffer()));
     mutate((db) => {
       db.photos.push({
-        id: randomUUID(), project_id: meta.project_id, job_id: meta.job_id, kind: meta.kind, caption: meta.caption,
-        requirement_id: meta.requirement_id ?? null, storage_path: path, uploaded_by: w.uid, created_at: now(),
+        id: randomUUID(), project_id: meta.project_id, job_id: meta.job_id, kind, phase,
+        caption: meta.caption, requirement_id: phase === "required" ? (meta.requirement_id ?? null) : null,
+        storage_path: path, uploaded_by: w.uid, created_at: now(),
       });
+    });
+  },
+  async updatePhotoPhase(id, phase) {
+    const w = await who();
+    if (phase !== "before" && phase !== "after") throw new Error("photos can only move between Before and After");
+    mutate((db) => {
+      const p = db.photos.find((x) => x.id === id);
+      if (!p) throw new Error("Photo not found");
+      if (!w.staff) {
+        if (!p.job_id || !w.canJob(p.job_id)) throw new Error("permission denied (mock RLS)");
+        const job = db.jobs.find((j) => j.id === p.job_id);
+        if (!job || job.status !== "in_progress") throw new Error("permission denied (mock RLS)");
+      }
+      if (phase === "after" && !p.job_id) throw new Error("after photos belong to a visit");
+      p.phase = phase;
+      p.kind = kindForPhase(phase, p.kind);
+      p.requirement_id = null;
     });
   },
   async deletePhoto(id) {
@@ -842,7 +879,8 @@ export const mockRepo: Repo = {
       const p = db.photos.find((x) => x.id === id);
       if (!p) return;
       if (!w.staff) {
-        if (p.kind !== "completion" || p.uploaded_by !== w.uid) throw new Error("permission denied (mock RLS)");
+        const phase = derivePhotoPhase(p);
+        if (p.uploaded_by !== w.uid || (phase !== "before" && phase !== "after" && phase !== "required")) throw new Error("permission denied (mock RLS)");
         const job = p.job_id ? db.jobs.find((j) => j.id === p.job_id) : null;
         if (!job || job.status !== "in_progress") throw new Error("permission denied (mock RLS)");
       }
@@ -869,7 +907,7 @@ export const mockRepo: Repo = {
     requireStaffMock(await who());
     mutate((db) => {
       db.photo_requirements = db.photo_requirements.filter((r) => r.id !== id);
-      for (const p of db.photos) if (p.requirement_id === id) p.requirement_id = null;
+      for (const p of db.photos) if (p.requirement_id === id) { p.requirement_id = null; if (p.phase === "required") { p.phase = "after"; p.kind = "completion"; } }
     });
   },
   async reorderPhotoRequirements(projectId, orderedIds) {

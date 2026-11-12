@@ -153,9 +153,11 @@ export type JobView = Job & { project_name: string; project_type: ProjectType; c
 export type JobFilter = { from?: string; to?: string; projectId?: string; assignee?: string; status?: JobStatus[]; serviceRequestId?: string };
 
 export type PhotoKind = "before" | "completion";
+/** Visit/project photo category. kind stays before|completion for existing RLS and storage paths. */
+export type PhotoPhase = "before" | "after" | "required" | "other";
 export type PhotoRequirement = { id: string; project_id: string; label: string; note: string | null; sort_order: number; created_at: string };
 export type Photo = {
-  id: string; project_id: string; job_id: string | null; kind: PhotoKind; storage_path: string; caption: string | null;
+  id: string; project_id: string; job_id: string | null; kind: PhotoKind; phase: PhotoPhase; storage_path: string; caption: string | null;
   requirement_id: string | null; uploaded_by: string | null; uploader_name: string; uploader_color: string; created_at: string; url: string;
 };
 export type Note = {

@@ -18,8 +18,8 @@ import { addMilestone, addProjectNote, deleteMilestone, markTimelineApproved, sa
 import { MilestoneRow } from "./milestone-row";
 import { ScopeEditor } from "./scope-editor";
 import { PhotoRequirementsEditor } from "@/components/photo-requirements-editor";
-import { groupCompletionPhotos } from "@/lib/photo-groups";
 import { parseScopeItems } from "@/lib/scope-items";
+import { groupPhotosByVisitAndPhase, PHOTO_PHASE_LABEL, visitPhotoCounts } from "@/lib/photo-phase";
 import { projectDates } from "@/lib/project-row";
 import { projectStepper, projectWhatsNext } from "@/lib/project-progress";
 import {
@@ -44,14 +44,15 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const p = await repo.getProject(id);
   if (!p) notFound();
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
-  const [c, contacts, milestones, jobs, photos, messages, notes, requirements, completionPhotos] = await Promise.all([
+  const [c, contacts, milestones, jobs, allPhotos, messages, notes, requirements] = await Promise.all([
     repo.getCustomer(p.customer_id), repo.listContacts(p.customer_id), repo.listMilestones(id), repo.listJobs({ projectId: id }),
-    repo.listPhotos({ projectId: id, kind: "before" }), repo.listMessages({ projectId: id }), repo.listNotes({ projectId: id }),
-    repo.listPhotoRequirements(id), repo.listPhotos({ projectId: id, kind: "completion" }),
+    repo.listPhotos({ projectId: id }), repo.listMessages({ projectId: id }), repo.listNotes({ projectId: id }),
+    repo.listPhotoRequirements(id),
   ]);
-  const completionGroups = groupCompletionPhotos(jobs, completionPhotos);
-  const completionTotal = completionGroups.reduce((n, g) => n + g.total, 0);
-  const fileCount = photos.length + completionTotal;
+  const completionPhotos = allPhotos.filter((ph) => ph.kind === "completion");
+  const fileCount = allPhotos.length;
+  const photoGroups = groupPhotosByVisitAndPhase(jobs, allPhotos);
+  const reqIds = requirements.map((r) => r.id);
   const team = new Map<string, Person & { visits: number }>();
   for (const j of jobs) if (j.status !== "cancelled") for (const a of j.assignees) team.set(a.id, { ...a, visits: (team.get(a.id)?.visits ?? 0) + 1 });
   const today = todayKey();
@@ -192,17 +193,33 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
       )}
 
       {tab === "visits" && (
-        <div className="card min-w-0">
-          <div className="card-hd"><h3 className="font-semibold">Visits</h3><Link href={`/jobs/new?project=${p.id}`} className="btn btn-sm"><Icon name="plus" />Schedule visit</Link></div>
-          <div className="divide-y divide-line">
-            {jobs.length === 0 && <div className="p-6 text-center text-sm text-muted">No visits yet. Schedule the first one.</div>}
-            {jobs.map((j) => (
-              <Link key={j.id} href={`/jobs/${j.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-[#fafbf9]">
-                <div className="w-24 text-[12.5px]"><div className="font-semibold">{fmtDay(dayKey(j.starts_at))}</div><div className="text-muted">{fmtRange(j.starts_at, j.ends_at)}</div></div>
-                <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span className="truncate font-medium">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div><div className="truncate text-xs text-muted">{j.assignees.map((a) => a.full_name).join(", ") || "Unassigned"}</div></div>
-                <JobStatusPill status={j.status} />
-              </Link>
-            ))}
+        <div className="min-w-0" data-testid="project-visits">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold">Visits</h3>
+            <Link href={`/jobs/new?project=${p.id}`} className="btn btn-sm"><Icon name="plus" />Schedule visit</Link>
+          </div>
+          {jobs.length === 0 && <div className="card p-6 text-center text-sm text-muted">No visits yet. Schedule the first one.</div>}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {jobs.map((j) => {
+              const counts = visitPhotoCounts(allPhotos, reqIds, j.id);
+              return (
+                <Link key={j.id} href={`/jobs/${j.id}?tab=photos`} className="card min-w-0 p-4 transition hover:bg-[#fafbf9]" data-testid={`visit-card-${j.id}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[12.5px] font-semibold text-muted">{fmtDay(dayKey(j.starts_at))} · {fmtRange(j.starts_at, j.ends_at)}</div>
+                      <div className="mt-0.5 flex min-w-0 items-center gap-1.5"><span className="truncate font-semibold">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div>
+                    </div>
+                    <JobStatusPill status={j.status} />
+                  </div>
+                  <div className="mt-2 truncate text-xs text-muted">{j.assignees.map((a) => a.full_name).join(", ") || "Unassigned"}</div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <span className="pill bg-canvas text-muted">Before {counts.before}</span>
+                    <span className="pill bg-canvas text-muted">After {counts.after}</span>
+                    {counts.requiredTotal > 0 && <span className="pill bg-canvas text-muted">Required {counts.requiredDone}/{counts.requiredTotal}</span>}
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}
@@ -210,28 +227,49 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
       {tab === "files" && (
         <div className="flex min-w-0 flex-col gap-4">
           <PhotoRequirementsEditor projectId={p.id} items={requirements} />
-          <div className="card">
-            <div className="card-hd"><h3 className="font-semibold">Before photos</h3><span className="text-xs text-muted">{photos.length} · techs on this project can see them</span></div>
-            <div className="flex flex-col gap-3 p-4">
-              <PhotoUploader projectId={p.id} kind="before" label="Add before photos" />
-              <PhotoGrid photos={photos} canDelete empty="No before photos yet. Snap the existing fixtures, panels and equipment." />
-            </div>
-          </div>
           <div className="card" data-testid="project-completion-photos">
-            <div className="card-hd"><h3 className="font-semibold">Completion photos</h3><span className="text-xs text-muted" data-testid="project-completion-count">{completionTotal} · from {completionGroups.length} visit{completionGroups.length === 1 ? "" : "s"}</span></div>
-            <div className="flex flex-col gap-4 p-4">
-              {completionGroups.length === 0 && <div className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-muted">No completion photos yet. Techs add them on each visit.</div>}
-              {completionGroups.map((g) => (
-                <section key={g.job.id} className="flex flex-col gap-2" data-testid="project-completion-group">
+            <div className="card-hd">
+              <h3 className="font-semibold">Files & photos</h3>
+              <span className="text-xs text-muted" data-testid="project-completion-count">{fileCount} · grouped by visit</span>
+            </div>
+            <div className="flex flex-col gap-6 p-4">
+              {fileCount === 0 && <div className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-muted">No photos yet. Add project before photos below, or capture before/after shots on each visit.</div>}
+              {photoGroups.visits.map((g) => (
+                <section key={g.job.id} className="flex min-w-0 flex-col gap-3" data-testid="project-completion-group">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                    <Link href={`/jobs/${g.job.id}`} className="min-w-0 truncate font-semibold text-brand">{g.job.title}</Link>
+                    <Link href={`/jobs/${g.job.id}?tab=photos`} className="min-w-0 truncate font-semibold text-brand">{g.job.title}</Link>
                     <JobKindBadge kind={g.job.kind} size="sm" />
                     <span className="text-xs text-muted">{fmtDay(dayKey(g.job.starts_at))} · {g.total} photo{g.total === 1 ? "" : "s"}</span>
-                    {g.total > g.photos.length && <Link href={`/jobs/${g.job.id}`} className="ml-auto text-xs font-semibold text-brand" data-testid="project-completion-more">View all {g.total} on the visit</Link>}
+                    <Link href={`/jobs/${g.job.id}?tab=photos`} className="ml-auto text-xs font-semibold text-brand" data-testid="project-completion-more">View visit photos</Link>
                   </div>
-                  <PhotoGrid photos={g.photos} />
+                  {(["before", "after", "required", "other"] as const).map((phase) => {
+                    const list = g.phases[phase];
+                    if (!list.length) return null;
+                    return (
+                      <div key={phase} className="min-w-0">
+                        <div className="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">{PHOTO_PHASE_LABEL[phase]} · {list.length}</div>
+                        <PhotoGrid photos={list} canDelete canMove={phase !== "required"} jobId={g.job.id} projectId={p.id} />
+                      </div>
+                    );
+                  })}
                 </section>
               ))}
+              <section className="flex min-w-0 flex-col gap-3" data-testid="project-unassigned-photos">
+                <div className="text-sm font-semibold">Project photos (no visit)</div>
+                <p className="text-xs text-muted">Shots that are not attached to a visit, including older project before photos and imported Housecall Pro files. They stay here so nothing disappears.</p>
+                <PhotoUploader projectId={p.id} kind="before" phase="before" label="Add project before photos" />
+                {photoGroups.unassignedTotal === 0 && <div className="text-sm text-muted">None yet.</div>}
+                {(["before", "after", "required", "other"] as const).map((phase) => {
+                  const list = photoGroups.unassigned[phase];
+                  if (!list.length) return null;
+                  return (
+                    <div key={phase} className="min-w-0">
+                      <div className="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">{PHOTO_PHASE_LABEL[phase]} · {list.length}</div>
+                      <PhotoGrid photos={list} canDelete projectId={p.id} />
+                    </div>
+                  );
+                })}
+              </section>
             </div>
           </div>
         </div>
@@ -300,7 +338,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           action={deleteProjectAction.bind(null, p.id)}
           consequences={[
             `${countLabel(jobs.filter((j) => j.status !== "cancelled").length, "visit", "visits")} (and their assignments)`,
-            `${countLabel(photos.length + completionPhotos.length, "photo", "photos")} (files are removed from storage)`,
+            `${countLabel(allPhotos.length, "photo", "photos")} (files are removed from storage)`,
             "Milestones, notes, and the required-photo checklist",
             "Service requests stay in the inbox, unlinked from this project",
             "Customer messages stay on the customer (the project link is cleared)",

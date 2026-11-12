@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
 import type { FleetVehicleRow, AvatarSource, Contact, Customer, CustomerListItem, CustomerRow, Job, JobView, Message, Milestone, Note, Person, Photo, PhotoRequirement, Profile, Project, ProjectListItem, ProjectPick, ProjectRow, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskCommentView, TaskView } from "@/lib/types";
+import { derivePhotoPhase, kindForPhase } from "@/lib/photo-phase";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
@@ -546,6 +547,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const urls = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
       return rows.map(({ profiles, ...r }) => ({
         ...r,
+        phase: derivePhotoPhase(r),
         url: urls.get(r.storage_path) ?? "",
         uploader_name: authorLabel(r.uploaded_by, profiles),
         uploader_color: authorColor(profiles),
@@ -553,11 +555,23 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     },
     async addPhoto(meta, file) {
       const s = await db();
-      const path = `${meta.project_id}/${meta.kind}/${crypto.randomUUID()}.jpg`;
+      const phase = derivePhotoPhase({ kind: meta.kind, requirement_id: meta.requirement_id ?? null, phase: meta.phase });
+      const kind = kindForPhase(phase, meta.kind);
+      const path = `${meta.project_id}/${kind}/${crypto.randomUUID()}.jpg`;
       fail((await s.storage.from("photos").upload(path, file, { contentType: file.type || "image/jpeg", upsert: false })).error);
-      const row = { project_id: meta.project_id, job_id: meta.job_id, kind: meta.kind, caption: meta.caption, requirement_id: meta.requirement_id ?? null, storage_path: path };
+      const row = {
+        project_id: meta.project_id, job_id: meta.job_id, kind, phase,
+        caption: meta.caption,
+        requirement_id: phase === "required" ? (meta.requirement_id ?? null) : null,
+        storage_path: path,
+      };
       const { error } = await s.from("photos").insert(row);
       if (error) { await s.storage.from("photos").remove([path]); fail(error); }
+    },
+    async updatePhotoPhase(id, phase) {
+      const s = await db();
+      const kind = kindForPhase(phase);
+      fail((await s.from("photos").update({ phase, kind, requirement_id: null }).eq("id", id)).error);
     },
     async deletePhoto(id) {
       const s = await db();

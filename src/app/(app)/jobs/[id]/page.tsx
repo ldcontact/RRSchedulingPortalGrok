@@ -5,6 +5,7 @@ import { Icon } from "@/components/icons";
 import { Avatar, Banner } from "@/components/ui";
 import { JobKindBadge, JobStatusPill, TypeTag } from "@/components/status";
 import { PhotoGrid, PhotoUploader } from "@/components/photos";
+import { RequiredPhotoSlots } from "@/components/required-photo-slots";
 import { SubmitButton } from "@/components/submit-button";
 import { isStaff, requireMember } from "@/lib/auth";
 import { countLabel, hasDeleteAccess } from "@/lib/delete-access";
@@ -17,6 +18,7 @@ import { dayKey, fmtDateTime, fmtDay, fmtRange } from "@/lib/time";
 import { ticketNo } from "@/lib/types";
 import { addJobNote, approveJob, cancelJob, reopenJob, sendBack, startJob, submitJob } from "../actions";
 import { parseScopeItems } from "@/lib/scope-items";
+import { bucketPhotosByPhase } from "@/lib/photo-phase";
 import { visitStepper } from "@/lib/project-progress";
 import {
   ActionMenu, ProfileHeader, ProfileTabs, RailCard, ScopeTable, Stepper,
@@ -42,23 +44,29 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const canDelete = hasDeleteAccess(user);
   const mine = job.assignees.some((a) => a.id === user.id);
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
-  const [project, contacts, before, done, notes, requirements] = await Promise.all([
+  const [project, contacts, visitPhotos, projectPhotos, notes, requirements] = await Promise.all([
     repo.getProject(job.project_id), repo.listContacts(job.customer_id),
-    repo.listPhotos({ projectId: job.project_id, kind: "before" }), repo.listPhotos({ jobId: id, kind: "completion" }), repo.listNotes({ jobId: id }),
+    repo.listPhotos({ jobId: id }), repo.listPhotos({ projectId: job.project_id }), repo.listNotes({ jobId: id }),
     // the project's required-photo checklist is for the install; warranty/service visits only need a photo + note
     job.kind === "install" ? repo.listPhotoRequirements(job.project_id) : Promise.resolve([]),
   ]);
+  const phases = bucketPhotosByPhase(visitPhotos);
+  const before = phases.before;
+  const done = visitPhotos.filter((ph) => ph.kind === "completion");
+  const projectBefores = projectPhotos.filter((ph) => !ph.job_id && ph.phase === "before");
   // the ticket behind a warranty/service visit (staff, or the tech assigned to this visit)
   const ticket = job.service_request_id ? await repo.getServiceRequest(job.service_request_id).catch(() => null) : null;
   const contact = contacts.find((k) => k.is_primary) ?? contacts[0];
   const canWork = (mine || staff) && job.status === "in_progress";
+  const canUploadPhotos = staff ? job.status !== "cancelled" : canWork;
+  const canManagePhotos = staff || canWork;
   const reqDone = requirements.filter((r) => done.some((p) => p.requirement_id === r.id)).length;
   const reqMissing = requirements.filter((r) => !done.some((p) => p.requirement_id === r.id));
   const photosReady = requirements.length ? reqMissing.length === 0 : done.length > 0;
   const ready = photosReady && notes.length > 0;
   const ok = typeof sp.ok === "string" ? sp.ok : null, error = typeof sp.error === "string" ? sp.error : null;
   const dirs = job.address ? mapsDirUrl(job.address) : null;
-  const photoCount = before.length + done.length;
+  const photoCount = visitPhotos.length;
   const base = `/jobs/${id}`;
   const steps = visitStepper(job.status);
   const customer = await repo.getCustomer(job.customer_id).catch(() => null);
@@ -232,18 +240,44 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
       )}
 
       {tab === "photos" && (
-        <div className="flex min-w-0 flex-col gap-4">
-          <div className="card">
-            <div className="card-hd"><h3 className="font-semibold">Before photos</h3><span className="text-xs text-muted">{before.length}</span></div>
-            <div className="p-4"><PhotoGrid photos={before} empty="No before photos on this project." /></div>
-          </div>
-          <div className="card">
-            <div className="card-hd"><h3 className="font-semibold">Completion photos</h3><span className="text-xs text-muted">{done.length}</span></div>
-            <div className="p-4">
-              {canWork && requirements.length === 0 && <div className="mb-3"><PhotoUploader projectId={job.project_id} jobId={id} kind="completion" /></div>}
-              <PhotoGrid photos={done} canDelete={staff} empty={job.status === "scheduled" ? "Start the job to add completion photos." : "No completion photos."} />
+        <div className="flex min-w-0 flex-col gap-4" data-testid="visit-photos">
+          <div className="card min-w-0" data-testid="visit-photos-before">
+            <div className="card-hd"><h3 className="font-semibold">Before</h3><span className="text-xs text-muted">{before.length}</span></div>
+            <div className="flex flex-col gap-3 p-4">
+              {canUploadPhotos && <PhotoUploader projectId={job.project_id} jobId={id} phase="before" kind="before" label="Take a before photo" />}
+              <PhotoGrid photos={before} canDelete={canManagePhotos} canMove={canManagePhotos} jobId={id} projectId={job.project_id} empty={canUploadPhotos ? "No before photos on this visit yet. Take one from your phone camera or gallery." : job.status === "scheduled" ? "Start the job to add before photos." : "No before photos on this visit."} />
+              {projectBefores.length > 0 && (
+                <div>
+                  <div className="mb-2 text-xs font-semibold text-muted">Also on this project</div>
+                  <PhotoGrid photos={projectBefores} canDelete={staff} projectId={job.project_id} />
+                </div>
+              )}
             </div>
           </div>
+          <div className="card min-w-0" data-testid="visit-photos-after">
+            <div className="card-hd"><h3 className="font-semibold">After</h3><span className="text-xs text-muted">{phases.after.length}</span></div>
+            <div className="flex flex-col gap-3 p-4">
+              {canUploadPhotos && <PhotoUploader projectId={job.project_id} jobId={id} phase="after" kind="completion" label="Take an after photo" />}
+              <PhotoGrid photos={phases.after} canDelete={canManagePhotos} canMove={canManagePhotos} jobId={id} projectId={job.project_id} empty={canUploadPhotos ? "No after photos on this visit yet." : job.status === "scheduled" ? "Start the job to add after photos." : "No after photos on this visit."} />
+            </div>
+          </div>
+          <div className="card min-w-0" data-testid="visit-photos-required">
+            <div className="card-hd"><h3 className="font-semibold">Required photos</h3><span className="text-xs text-muted">{requirements.length ? `${reqDone} of ${requirements.length} done` : "None"}</span></div>
+            <div className="p-4">
+              {requirements.length > 0
+                ? <RequiredPhotoSlots jobId={id} projectId={job.project_id} requirements={requirements} photos={visitPhotos} canEdit={canUploadPhotos} canDelete={canManagePhotos} />
+                : <div className="text-sm text-muted">No required-photo checklist on this project. {job.kind !== "install" ? "Warranty and service visits just need an after photo and a note." : "Managers can add required items on the project."}</div>}
+            </div>
+          </div>
+          {phases.other.length > 0 && (
+            <div className="card min-w-0" data-testid="visit-photos-other">
+              <div className="card-hd"><h3 className="font-semibold">Uncategorized</h3><span className="text-xs text-muted">{phases.other.length} · imported or unfiled</span></div>
+              <div className="p-4">
+                <p className="mb-3 text-sm text-muted">These photos were imported (for example from Housecall Pro) or have no Before/After category yet. Move one into Before or After so it stays with the visit.</p>
+                <PhotoGrid photos={phases.other} canDelete={canManagePhotos} canMove={canManagePhotos} jobId={id} projectId={job.project_id} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -270,8 +304,8 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
           action={deleteVisitAction.bind(null, id)}
           consequences={[
             "Only this visit is removed. The project and other visits stay.",
-            (done.length + before.filter((ph) => ph.job_id === id).length)
-              ? `${countLabel(done.length + before.filter((ph) => ph.job_id === id).length, "photo", "photos")} from this visit (files are removed from storage)`
+            visitPhotos.length
+              ? `${countLabel(visitPhotos.length, "photo", "photos")} from this visit (files are removed from storage)`
               : "No photos are attached to this visit",
             "Notes and assignments for this visit are removed",
             "If this visit is linked to a service request, the ticket stays (the job link is cleared)",

@@ -1,6 +1,6 @@
 import type {
   Contact, ContactInput, Counts, Customer, CustomerInput, CustomerListItem, CustomerPageFilter, CustomerRow, Paged, ProjectPage, ProjectPageFilter, InviteInput, Job, JobFilter, JobInput, JobView, Message, MessageInput,
-  Milestone, Note, Person, Photo, PhotoKind, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
+  Milestone, Note, Person, Photo, PhotoKind, PhotoPhase, PhotoRequirement, Profile, Project, ProjectInput, ProjectListItem, ProjectPick, ProjectStatus, TeamMember,
   ServiceRequest, ServiceRequestInput, ServiceRequestPatch, ServiceRequestView, SREvent, SREventKind, SRPage, SRPageFilter,
   FleetVehicleRow, GeocodeFields, Task, TaskCommentView, TaskInput, TaskPage, TaskPageFilter, TaskPatch, TaskView,
 } from "@/lib/types";
@@ -61,7 +61,8 @@ export interface Repo {
   updateJob(id: string, patch: Partial<Omit<Job, "id">>): Promise<void>;
   setAssignees(jobId: string, profileIds: string[]): Promise<void>;
   listPhotos(f: { projectId?: string; jobId?: string; kind?: PhotoKind }): Promise<Photo[]>;
-  addPhoto(meta: { project_id: string; job_id: string | null; kind: PhotoKind; caption: string | null; requirement_id?: string | null }, file: File): Promise<void>;
+  addPhoto(meta: { project_id: string; job_id: string | null; kind: PhotoKind; phase?: PhotoPhase; caption: string | null; requirement_id?: string | null }, file: File): Promise<void>;
+  updatePhotoPhase(id: string, phase: Extract<PhotoPhase, "before" | "after">): Promise<void>;
   deletePhoto(id: string): Promise<void>;
   listPhotoRequirements(projectId: string): Promise<PhotoRequirement[]>;
   addPhotoRequirement(projectId: string, input: { label: string; note: string | null }): Promise<void>;

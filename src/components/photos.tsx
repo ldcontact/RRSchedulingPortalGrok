@@ -2,8 +2,9 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "./icons";
-import type { Photo, PhotoKind } from "@/lib/types";
-import { deletePhoto, uploadPhotos } from "@/app/(app)/photo-actions";
+import type { Photo, PhotoKind, PhotoPhase } from "@/lib/types";
+import { kindForPhase } from "@/lib/photo-phase";
+import { deletePhoto, movePhoto, uploadPhotos } from "@/app/(app)/photo-actions";
 
 /** Downscale on the device before upload (phone photos are 3-12 MB): longest side 1600px, JPEG q=0.8. */
 async function resize(file: File, max = 1600): Promise<File> {
@@ -19,13 +20,17 @@ async function resize(file: File, max = 1600): Promise<File> {
   return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
 }
 
-export function PhotoUploader({ projectId, jobId, kind, label }: { projectId: string; jobId?: string; kind: PhotoKind; label?: string }) {
+export function PhotoUploader({ projectId, jobId, kind, phase, label, requirementId }: {
+  projectId: string; jobId?: string; kind?: PhotoKind; phase?: PhotoPhase; label?: string; requirementId?: string;
+}) {
   const router = useRouter();
   const camRef = useRef<HTMLInputElement>(null);
   const galRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [, start] = useTransition();
+  const resolvedKind: PhotoKind = kind ?? kindForPhase(phase ?? "after");
+  const testKey = phase ?? kind ?? "photo";
 
   async function onFiles(list: FileList | null) {
     if (!list?.length) return;
@@ -33,7 +38,11 @@ export function PhotoUploader({ projectId, jobId, kind, label }: { projectId: st
     try {
       const files = [...list];
       const fd = new FormData();
-      fd.set("project_id", projectId); fd.set("kind", kind); if (jobId) fd.set("job_id", jobId);
+      fd.set("project_id", projectId);
+      fd.set("kind", resolvedKind);
+      if (phase) fd.set("phase", phase);
+      if (jobId) fd.set("job_id", jobId);
+      if (requirementId) fd.set("requirement_id", requirementId);
       for (let i = 0; i < files.length; i++) { setBusy(`Preparing ${i + 1}/${files.length}…`); fd.append("files", await resize(files[i])); }
       setBusy(`Uploading ${files.length} photo${files.length > 1 ? "s" : ""}…`);
       const res = await uploadPhotos(fd);
@@ -52,8 +61,8 @@ export function PhotoUploader({ projectId, jobId, kind, label }: { projectId: st
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn btn-primary" disabled={!!busy} onClick={() => camRef.current?.click()}><Icon name="camera" />{label ?? "Take photo"}</button>
         <button type="button" className="btn" disabled={!!busy} onClick={() => galRef.current?.click()}><Icon name="image" />Choose from gallery</button>
-        <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" data-testid={`camera-${kind}`} onChange={(e) => onFiles(e.target.files)} />
-        <input ref={galRef} type="file" accept="image/*" multiple className="hidden" data-testid={`gallery-${kind}`} onChange={(e) => onFiles(e.target.files)} />
+        <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" data-testid={`camera-${testKey}`} onChange={(e) => onFiles(e.target.files)} />
+        <input ref={galRef} type="file" accept="image/*" multiple className="hidden" data-testid={`gallery-${testKey}`} onChange={(e) => onFiles(e.target.files)} />
       </div>
       {busy && <div className="text-sm text-muted">{busy}</div>}
       {err && <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div>}
@@ -61,7 +70,7 @@ export function PhotoUploader({ projectId, jobId, kind, label }: { projectId: st
   );
 }
 
-export function PhotoGrid({ photos, canDelete = false, empty, jobId, projectId }: { photos: Photo[]; canDelete?: boolean; empty?: string; jobId?: string | null; projectId?: string }) {
+export function PhotoGrid({ photos, canDelete = false, canMove = false, empty, jobId, projectId }: { photos: Photo[]; canDelete?: boolean; canMove?: boolean; empty?: string; jobId?: string | null; projectId?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState<Photo | null>(null);
   if (!photos.length) return <div className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-muted">{empty ?? "No photos yet."}</div>;
@@ -81,11 +90,23 @@ export function PhotoGrid({ photos, canDelete = false, empty, jobId, projectId }
           <div className="flex max-h-full w-full max-w-3xl flex-col gap-2" onClick={(e) => e.stopPropagation()}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={open.url} alt={open.caption ?? "Photo"} className="max-h-[78vh] w-full rounded-lg object-contain" />
-            <div className="flex items-center gap-2 text-sm text-white">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-white">
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{open.caption}</span>
                 <span className="block text-xs text-white/70">Uploaded by {open.uploader_name}</span>
               </span>
+              {canMove && open.job_id && open.phase !== "before" && (
+                <button className="btn btn-sm" onClick={async () => {
+                  const res = await movePhoto(open.id, "before", { jobId: jobId ?? open.job_id, projectId: projectId ?? open.project_id });
+                  if (!res?.error) { setOpen(null); router.refresh(); }
+                }}>Move to Before</button>
+              )}
+              {canMove && open.job_id && open.phase !== "after" && (
+                <button className="btn btn-sm" onClick={async () => {
+                  const res = await movePhoto(open.id, "after", { jobId: jobId ?? open.job_id, projectId: projectId ?? open.project_id });
+                  if (!res?.error) { setOpen(null); router.refresh(); }
+                }}>Move to After</button>
+              )}
               {canDelete && <button className="btn btn-sm btn-danger" onClick={async () => { await deletePhoto(open.id, { jobId: jobId ?? open.job_id, projectId: projectId ?? open.project_id }); setOpen(null); router.refresh(); }}><Icon name="trash" />Delete</button>}
               <button className="btn btn-sm" onClick={() => setOpen(null)}><Icon name="x" />Close</button>
             </div>

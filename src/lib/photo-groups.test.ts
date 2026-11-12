@@ -4,9 +4,9 @@ import type { Photo } from "./types";
 
 const job = (id: string, starts_at: string) => ({ id, title: `Visit ${id}`, starts_at, status: "approved" as const, kind: "install" as const });
 const photo = (id: string, job_id: string | null, kind: Photo["kind"], created_at: string): Photo => ({
-  id, project_id: "p", job_id, kind, storage_path: `p/${id}.jpg`, caption: null, uploaded_by: null, created_at, requirement_id: null,
+  id, project_id: "p", job_id, kind, phase: kind === "before" ? "before" : "after", storage_path: `p/${id}.jpg`, caption: null, uploaded_by: null, created_at, requirement_id: null,
   url: `https://x/${id}`, uploader_name: "Unknown", uploader_color: "#000",
-} as Photo);
+});
 
 describe("groupCompletionPhotos", () => {
   it("groups completion photos by visit, newest visit first, photos oldest first", () => {
