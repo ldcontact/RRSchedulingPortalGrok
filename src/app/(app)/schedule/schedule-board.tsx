@@ -119,12 +119,16 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
 
   return (
     <div className={dragging ? "[&_a[data-job]]:pointer-events-none" : ""}>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-[22px] font-semibold tracking-tight">{staff ? "Schedule" : "My schedule"}</h1>
-        {staff && <Link href={`/jobs/new?date=${date}`} className="btn btn-primary"><Icon name="plus" />New visit</Link>}
+      <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="eyebrow mb-1">Field calendar</div>
+          <h1 className="text-[22px] font-semibold tracking-tight sm:text-[26px]">{staff ? "Schedule" : "My schedule"}</h1>
+          <div className="mt-1 text-sm font-medium text-muted">{title}</div>
+        </div>
+        {staff && <Link href={`/jobs/new?date=${date}`} className="btn btn-primary self-start"><Icon name="plus" />New visit</Link>}
       </div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg border border-line bg-white p-0.5" role="tablist">
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-white px-3 py-2.5">
+        <div className="flex rounded-lg border border-line bg-canvas/60 p-0.5" role="tablist">
           {(["day", "week", "month"] as View[]).map((v) => (
             <Link key={v} href={q({ view: v })} role="tab" aria-selected={v === view} className={`rounded-md px-3 py-1.5 text-[13px] font-semibold capitalize ${v === view ? "bg-brand text-white" : "text-muted hover:text-ink"}`}>{v}</Link>
           ))}
@@ -134,9 +138,8 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
           <Link href={q({ date: today })} className="btn btn-sm">Today</Link>
           <Link href={q({ date: next })} className="btn btn-sm" aria-label="Next"><Icon name="right" className="size-4" /></Link>
         </div>
-        <div className="font-semibold">{title}</div>
         {staff && (
-          <select className="input ml-auto !w-auto !py-1.5" aria-label="Filter by tech" value={tech} onChange={(e) => router.push(q({ tech: e.target.value }))}>
+          <select className="input ml-auto !w-auto min-w-0 !py-1.5" aria-label="Filter by tech" value={tech} onChange={(e) => router.push(q({ tech: e.target.value }))}>
             <option value="">Everyone</option>
             {people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
           </select>

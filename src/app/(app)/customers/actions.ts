@@ -74,3 +74,33 @@ export async function logCustomerMessage(customerId: string, projectId: string |
   revalidatePath(`/customers/${customerId}`);
   if (projectId) revalidatePath(`/projects/${projectId}`);
 }
+
+export async function setCustomerTags(customerId: string, fd: FormData) {
+  await requireRole("admin", "manager");
+  const repo = await getRepo();
+  const c = await repo.getCustomer(customerId);
+  if (!c) return;
+  const existing = [...c.tags];
+  const add = s(fd, "tag");
+  const remove = s(fd, "remove");
+  let tags = existing;
+  if (remove) tags = existing.filter((t) => t !== remove);
+  else if (add) {
+    const next = add.split(",").map((t) => t.trim()).filter(Boolean);
+    for (const t of next) if (!tags.includes(t)) tags.push(t);
+  }
+  await repo.updateCustomer(customerId, {
+    name: c.name, phone: c.phone, email: c.email, address: c.address,
+    city: c.city, state: c.state, zip: c.zip, notes: c.notes, tags,
+  });
+  revalidatePath(`/customers/${customerId}`);
+  revalidatePath("/customers");
+}
+
+export async function addCustomerNote(customerId: string, fd: FormData) {
+  await requireRole("admin", "manager");
+  const body = s(fd, "body");
+  if (!body) return;
+  await (await getRepo()).addNote({ customer_id: customerId, body });
+  revalidatePath(`/customers/${customerId}`);
+}

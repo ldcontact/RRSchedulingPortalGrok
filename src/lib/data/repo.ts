@@ -68,7 +68,7 @@ export interface Repo {
   updatePhotoRequirement(id: string, patch: Partial<Pick<PhotoRequirement, "label" | "note" | "sort_order">>): Promise<void>;
   deletePhotoRequirement(id: string): Promise<void>;
   reorderPhotoRequirements(projectId: string, orderedIds: string[]): Promise<void>;
-  listNotes(f: { jobId?: string; projectId?: string }): Promise<Note[]>;
+  listNotes(f: { jobId?: string; projectId?: string; customerId?: string }): Promise<Note[]>;
   addNote(n: { job_id?: string; project_id?: string; customer_id?: string; body: string }): Promise<void>;
   listMessages(f: { customerId?: string; projectId?: string }): Promise<Message[]>;
   logMessage(m: MessageInput): Promise<void>;

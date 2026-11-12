@@ -592,6 +592,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const s = await db();
       let q = s.from("notes").select("*, profiles:author_id(full_name, color, deleted_at)").order("created_at");
       if (f.jobId) q = q.eq("job_id", f.jobId);
+      else if (f.customerId) q = q.eq("customer_id", f.customerId).is("project_id", null).is("job_id", null);
       else if (f.projectId) {
         const { data: js } = await s.from("jobs").select("id").eq("project_id", f.projectId);
         const ids = (js ?? []).map((j) => j.id);

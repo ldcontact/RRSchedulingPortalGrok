@@ -32,4 +32,29 @@
   .label { @apply flex flex-col gap-1.5 text-[12.5px] font-semibold text-[#3d4744]; }
   .pill { @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap; }
   .tag { @apply inline-block rounded-md border border-line bg-canvas px-2 py-0.5 text-[11.5px] font-semibold text-muted; }
+  .btn-communicate { @apply border-sky-600 bg-sky-600 text-white hover:bg-sky-700; }
+  .eyebrow { @apply text-[11px] font-bold tracking-[0.14em] text-muted uppercase; }
+  .stat-strip { @apply grid grid-cols-2 overflow-hidden rounded-xl border border-line bg-white md:grid-cols-4; }
+  .stat-cell { @apply min-w-0 px-4 py-3 sm:px-5 sm:py-3.5; }
+  .stat-value { @apply text-xl font-semibold tracking-tight sm:text-2xl; }
+  .stat-label { @apply text-[11.5px] font-semibold text-muted; }
+  .profile-tabs { @apply -mx-1 flex gap-0 overflow-x-auto px-1; }
+  .profile-tab { @apply shrink-0 border-b-2 border-transparent px-3 py-2.5 text-sm font-semibold text-muted whitespace-nowrap hover:text-ink; }
+  .profile-tab-active { @apply border-brand text-ink; }
+  .stepper { @apply flex gap-0 overflow-x-auto; }
+  .stepper-step { @apply flex min-w-0 shrink-0 items-center gap-2 pr-2; }
+  .stepper-dot { @apply grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold; }
+  .stepper-done .stepper-dot { @apply bg-brand text-white; }
+  .stepper-current .stepper-dot { @apply bg-sky-600 text-white; }
+  .stepper-upcoming .stepper-dot { @apply bg-slate-200 text-slate-600; }
+  .stepper-label { @apply text-[12px] font-semibold; }
+  .stepper-done .stepper-label { @apply text-ink; }
+  .stepper-current .stepper-label { @apply text-sky-800; }
+  .stepper-upcoming .stepper-label { @apply text-muted; }
+  .stepper-line { @apply mx-1 h-px w-6 shrink-0 bg-line sm:w-8; }
+  .note-internal { @apply border-amber-200 bg-[#fffbeb]; }
+  .profile-menu > summary { @apply list-none; }
+  .profile-menu > summary::-webkit-details-marker { display: none; }
+  .profile-menu-panel { @apply z-30 mt-1 min-w-[12rem] max-w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-line bg-white py-1 shadow-lg; }
 }
+

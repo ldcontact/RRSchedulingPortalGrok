@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
+import { scopeItemsFromForm, serializeScopeItems } from "@/lib/scope-items";
 import { sendCustomerMessage } from "@/lib/messaging";
 import { fmtDay } from "@/lib/time";
 import { CHANNEL_LABEL, PROJECT_STATUSES, type Channel, type ProjectInput, type ProjectStatus, type ProjectType } from "@/lib/types";
@@ -122,5 +123,23 @@ export async function updatePhotoRequirement(projectId: string, id: string, fd: 
 export async function deletePhotoRequirement(projectId: string, id: string) {
   await staff();
   await (await getRepo()).deletePhotoRequirement(id);
+  refresh(projectId);
+}
+
+export async function saveProjectScope(projectId: string, fd: FormData) {
+  await staff();
+  const items = scopeItemsFromForm(fd);
+  await (await getRepo()).updateProject(projectId, { scope: serializeScopeItems(items) });
+  refresh(projectId);
+  redirect(`/projects/${projectId}?tab=scope&ok=${encodeURIComponent("Scope saved.")}`);
+}
+
+export async function addProjectNote(projectId: string, fd: FormData) {
+  await staff();
+  const body = s(fd, "body");
+  if (!body) return;
+  const p = await (await getRepo()).getProject(projectId);
+  if (!p) return;
+  await (await getRepo()).addNote({ project_id: projectId, customer_id: p.customer_id, body });
   refresh(projectId);
 }

@@ -5,8 +5,8 @@ import { ROLE_LABEL, type Role } from "@/lib/types";
 
 export const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 
-export function Avatar({ name, color, size = "md", src, title }: { name: string; color: string; size?: "sm" | "md" | "lg"; src?: string | null; title?: string }) {
-  const s = size === "lg" ? "size-12 text-base" : size === "sm" ? "size-6 text-[10px]" : "size-8 text-xs";
+export function Avatar({ name, color, size = "md", src, title }: { name: string; color: string; size?: "sm" | "md" | "lg" | "xl"; src?: string | null; title?: string }) {
+  const s = size === "xl" ? "size-16 text-lg" : size === "lg" ? "size-12 text-base" : size === "sm" ? "size-6 text-[10px]" : "size-8 text-xs";
   const tip = title ?? name;
   if (src) {
     return (

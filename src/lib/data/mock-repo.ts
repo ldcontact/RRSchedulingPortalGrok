@@ -885,7 +885,11 @@ export const mockRepo: Repo = {
     const w = await who(); const db = load();
     const jobIds = f.projectId ? new Set(db.jobs.filter((j) => j.project_id === f.projectId).map((j) => j.id)) : null;
     return db.notes
-      .filter((n) => (f.jobId ? n.job_id === f.jobId : (n.project_id === f.projectId || (n.job_id && jobIds?.has(n.job_id)))))
+      .filter((n) => {
+        if (f.customerId) return n.customer_id === f.customerId && !n.project_id && !n.job_id;
+        if (f.jobId) return n.job_id === f.jobId;
+        return n.project_id === f.projectId || (n.job_id && jobIds?.has(n.job_id));
+      })
       .filter((n) => w.staff || (n.job_id && w.canJob(n.job_id)))
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
       .map((n) => ({ ...n, author_name: labelOf(db, n.author_id), author_color: colorOf(db, n.author_id) }));
