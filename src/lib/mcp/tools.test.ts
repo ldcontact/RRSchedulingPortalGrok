@@ -19,7 +19,7 @@ const project: Project = {
   id: PROJECT, customer_id: CUSTOMER, name: "Lakeview LEDs", type: "lighting", status: "scheduled", scope: "Swap 40 troffers", value: 12000, est_rebate: 6000,
   timeline_sent_at: null, timeline_sent_via: null, timeline_approved_at: null, warranty_months: 12, created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-02T00:00:00Z",
 };
-const req: PhotoRequirement = { id: U(40), project_id: PROJECT, label: "Panel", note: null, sort_order: 0, created_at: "2026-10-01T00:00:00Z" };
+const req: PhotoRequirement = { id: U(40), project_id: PROJECT, job_id: null, label: "Panel", note: null, sort_order: 0, created_at: "2026-10-01T00:00:00Z" };
 const photo = (over: Partial<Photo>): Photo => ({
   id: U(50), project_id: PROJECT, job_id: JOB, kind: "completion", phase: over.requirement_id === null || over.kind === "before" ? "before" : "required", storage_path: "p/x.jpg", caption: null, requirement_id: req.id,
   uploaded_by: TECH, uploader_name: "Carlos Tech", uploader_color: "#111", created_at: "2026-11-10T15:00:00Z", url: "https://signed.example/x", ...over,
@@ -163,6 +163,29 @@ describe("search and get tools", () => {
       instructions: "Use the back door", scope: "Swap 40 troffers", required_photos: { done: 1, total: 2, missing: ["Fixtures"] }, link: `${PORTAL}/jobs/${JOB}`,
     });
     expect(data.completion_photos.items[0]).toMatchObject({ requirement: "Panel", uploaded_by: "Carlos Tech" });
+    expect(data.required_photos.items[0]).toMatchObject({ source: "project" });
+  });
+  it("get_job includes visit-specific required photos with the project list on an install visit", async () => {
+    const visitReq: PhotoRequirement = { ...req, id: U(42), job_id: JOB, label: "Panel close-up" };
+    const repo = fakeRepo({
+      listPhotoRequirements: vi.fn(async () => [req, { ...req, id: U(41), label: "Fixtures" }, visitReq]),
+    });
+    const { data } = await run("get_job", user(TECH, "tech"), { job_id: JOB }, repo);
+    expect(data.required_photos).toMatchObject({
+      done: 1, total: 3, missing: ["Fixtures", "Panel close-up"],
+      items: [{ label: "Panel", source: "project" }, { label: "Fixtures", source: "project" }, { label: "Panel close-up", source: "visit" }],
+    });
+    expect(repo.listPhotoRequirements).toHaveBeenCalledWith(PROJECT, JOB);
+  });
+  it("get_job on a warranty visit requires only visit-specific items", async () => {
+    const visitReq: PhotoRequirement = { ...req, id: U(42), job_id: JOB, label: "Panel close-up" };
+    const repo = fakeRepo({
+      getJob: vi.fn(async () => job({ kind: "warranty" })),
+      listPhotoRequirements: vi.fn(async () => [req, { ...req, id: U(41), label: "Fixtures" }, visitReq]),
+      listPhotos: vi.fn(async (f: { kind?: string }) => (f.kind === "before" ? [] : [])),
+    });
+    const { data } = await run("get_job", user(TECH, "tech"), { job_id: JOB }, repo);
+    expect(data.required_photos).toMatchObject({ done: 0, total: 1, missing: ["Panel close-up"], items: [{ label: "Panel close-up", source: "visit" }] });
   });
   it("list_photos returns signed URLs from existing photo rows only", async () => {
     const { data } = await run("list_photos", user(ADMIN, "admin"), { job_id: JOB });

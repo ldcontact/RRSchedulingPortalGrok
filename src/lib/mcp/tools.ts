@@ -16,6 +16,7 @@ import {
   CHANNEL_LABEL, JOB_STATUS_LABEL, PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, ROLE_LABEL,
   HOME_REVIEW_LIMIT, type CustomerSort, type JobStatus, type JobView, type Message, type Note, type Person, type Photo, type PhotoRequirement, type ProjectSort, type Role, type SessionUser,
 } from "@/lib/types";
+import { applicablePhotoRequirements } from "@/lib/photo-requirements";
 
 export const DEFAULT_PORTAL_URL = "https://rr-scheduling-portal-grokv1.vercel.app";
 
@@ -83,7 +84,10 @@ const daysBetween = (a: string, b: string) => Math.round((Date.UTC(+b.slice(0, 4
 
 /** Required-photo checklist progress for one visit's completion photos. */
 function requiredPhotos(reqs: PhotoRequirement[], completion: Photo[]) {
-  const items = reqs.map((r) => ({ id: r.id, label: r.label, note: r.note, done: completion.some((p) => p.requirement_id === r.id) }));
+  const items = reqs.map((r) => ({
+    id: r.id, label: r.label, note: r.note, source: r.job_id ? "visit" as const : "project" as const,
+    done: completion.some((p) => p.requirement_id === r.id),
+  }));
   return { done: items.filter((i) => i.done).length, total: items.length, missing: items.filter((i) => !i.done).map((i) => i.label), items };
 }
 
@@ -310,16 +314,17 @@ export const TOOLS = {
 
   get_job: tool({
     title: "Visit detail",
-    description: "One visit (job): time, address, on-site contact, crew, scope and instructions, review note, job notes, before and completion photo metadata, and required-photo progress. Techs only see visits assigned to them.",
+    description: "One visit (job): time, address, on-site contact, crew, scope and instructions, review note, job notes, before and completion photo metadata, and required-photo progress (project-level items on install visits, plus any visit-specific items). Techs only see visits assigned to them.",
     input: z.object({ job_id: id("Visit (job) id") }),
     async run(ctx, a) {
       const u = requireMember(ctx);
       const j = await visibleJob(ctx, u, a.job_id);
-      const [project, contacts, before, done, notes, reqs] = await Promise.all([
+      const [project, contacts, before, done, notes, allReqs] = await Promise.all([
         ctx.repo.getProject(j.project_id), ctx.repo.listContacts(j.customer_id),
         ctx.repo.listPhotos({ projectId: j.project_id, kind: "before" }), ctx.repo.listPhotos({ jobId: j.id, kind: "completion" }),
-        ctx.repo.listNotes({ jobId: j.id }), ctx.repo.listPhotoRequirements(j.project_id),
+        ctx.repo.listNotes({ jobId: j.id }), ctx.repo.listPhotoRequirements(j.project_id, j.id),
       ]);
+      const reqs = applicablePhotoRequirements(j.kind, allReqs);
       const contact = contacts.find((k) => k.is_primary) ?? contacts[0];
       return {
         ...visit(ctx, j), date: fmtDay(dayKey(j.starts_at), { weekday: "long", month: "long", day: "numeric", year: "numeric" }), time_zone: TZ,
@@ -443,7 +448,7 @@ export const TOOLS = {
       } else {
         await visibleProject(ctx, u, projectId!);
       }
-      const [photos, reqs] = await Promise.all([ctx.repo.listPhotos({ projectId, jobId: a.job_id, kind: a.kind }), ctx.repo.listPhotoRequirements(projectId!)]);
+      const [photos, reqs] = await Promise.all([ctx.repo.listPhotos({ projectId, jobId: a.job_id, kind: a.kind }), ctx.repo.listPhotoRequirements(projectId!, a.job_id)]);
       const n = a.limit ?? 100;
       return {
         total: photos.length, shown: Math.min(n, photos.length), url_expires_in_seconds: 3600,

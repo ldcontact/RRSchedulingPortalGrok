@@ -73,8 +73,8 @@ export interface Repo {
   addPhoto(meta: { project_id: string; job_id: string | null; kind: PhotoKind; phase?: PhotoPhase; caption: string | null; requirement_id?: string | null }, file: File): Promise<void>;
   updatePhotoPhase(id: string, phase: Extract<PhotoPhase, "before" | "after">): Promise<void>;
   deletePhoto(id: string): Promise<void>;
-  listPhotoRequirements(projectId: string): Promise<PhotoRequirement[]>;
-  addPhotoRequirement(projectId: string, input: { label: string; note: string | null }): Promise<void>;
+  listPhotoRequirements(projectId: string, jobId?: string): Promise<PhotoRequirement[]>;
+  addPhotoRequirement(projectId: string, input: { label: string; note: string | null; job_id?: string | null }): Promise<void>;
   updatePhotoRequirement(id: string, patch: Partial<Pick<PhotoRequirement, "label" | "note" | "sort_order">>): Promise<void>;
   deletePhotoRequirement(id: string): Promise<void>;
   reorderPhotoRequirements(projectId: string, orderedIds: string[]): Promise<void>;

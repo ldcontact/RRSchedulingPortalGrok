@@ -202,7 +202,7 @@ export type JobFilter = {
 export type PhotoKind = "before" | "completion";
 /** Visit/project photo category. kind stays before|completion for existing RLS and storage paths. */
 export type PhotoPhase = "before" | "after" | "required" | "other";
-export type PhotoRequirement = { id: string; project_id: string; label: string; note: string | null; sort_order: number; created_at: string };
+export type PhotoRequirement = { id: string; project_id: string; job_id: string | null; label: string; note: string | null; sort_order: number; created_at: string };
 export type Photo = {
   id: string; project_id: string; job_id: string | null; kind: PhotoKind; phase: PhotoPhase; storage_path: string; caption: string | null;
   requirement_id: string | null; uploaded_by: string | null; uploader_name: string; uploader_color: string; created_at: string; url: string;

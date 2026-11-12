@@ -52,7 +52,7 @@ async def main():
     os.makedirs(OUT, exist_ok=True)
     d=seed_long_names()
     sr=(d.get('service_requests') or [{}])[0].get('id')
-    staff=['/','/schedule','/schedule?view=day','/customers','/customers/c1','/projects','/projects/p1','/projects/p1?tab=files','/projects/new','/projects/p1/edit','/jobs/j2','/jobs/j2?tab=photos','/jobs/j1','/jobs/new','/jobs/j2/edit','/service-requests','/team','/fleet','/account','/tasks','/tasks?new=1']
+    staff=['/','/schedule','/schedule?view=day','/customers','/customers/c1','/projects','/projects/p1','/projects/p1?tab=files','/projects/new','/projects/p1/edit','/jobs/j2','/jobs/j2?tab=photos','/jobs/j3','/jobs/j3?tab=photos','/jobs/j1','/jobs/new','/jobs/j2/edit','/service-requests','/team','/fleet','/account','/tasks','/tasks?new=1']
     if sr: staff.append(f'/service-requests/{sr}')
     tech=['/','/schedule','/jobs/j2','/jobs/j2?tab=photos','/account']
     async with async_playwright() as p:

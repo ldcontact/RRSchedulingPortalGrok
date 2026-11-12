@@ -13,7 +13,11 @@ export type ProjectFormState = { error?: string; values?: Record<string, string>
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const num = (v: string) => { const x = Number(v.replace(/[$,\s]/g, "")); return Number.isFinite(x) && x >= 0 ? Math.round(x * 100) / 100 : 0; };
 const staff = () => requireRole("admin", "manager");
-const refresh = (id: string) => { revalidatePath(`/projects/${id}`); revalidatePath("/projects"); };
+const refresh = (id: string, jobId?: string | null) => {
+  revalidatePath(`/projects/${id}`);
+  revalidatePath("/projects");
+  if (jobId) revalidatePath(`/jobs/${jobId}`);
+};
 
 export async function saveProject(_: ProjectFormState, fd: FormData): Promise<ProjectFormState> {
   await staff();
@@ -121,25 +125,33 @@ export async function markTimelineApproved(projectId: string) {
 }
 
 // ---- required completion photos checklist
-export async function addPhotoRequirement(projectId: string, fd: FormData) {
+export async function addPhotoRequirement(projectId: string, jobId: string | null, fd: FormData) {
   await staff();
   const label = s(fd, "label");
   if (!label) return;
   const note = s(fd, "note") || null;
-  await (await getRepo()).addPhotoRequirement(projectId, { label, note });
-  refresh(projectId);
+  await (await getRepo()).addPhotoRequirement(projectId, { label, note, job_id: jobId });
+  refresh(projectId, jobId);
 }
-export async function updatePhotoRequirement(projectId: string, id: string, fd: FormData) {
+export async function updatePhotoRequirement(projectId: string, id: string, jobId: string | null, fd: FormData) {
   await staff();
   const label = s(fd, "label");
   if (!label) return;
-  await (await getRepo()).updatePhotoRequirement(id, { label, note: s(fd, "note") || null });
-  refresh(projectId);
+  const repo = await getRepo();
+  const items = await repo.listPhotoRequirements(projectId, jobId ?? undefined);
+  const row = items.find((r) => r.id === id && (jobId ? r.job_id === jobId : !r.job_id));
+  if (!row) return;
+  await repo.updatePhotoRequirement(id, { label, note: s(fd, "note") || null });
+  refresh(projectId, jobId);
 }
-export async function deletePhotoRequirement(projectId: string, id: string) {
+export async function deletePhotoRequirement(projectId: string, id: string, jobId: string | null) {
   await staff();
-  await (await getRepo()).deletePhotoRequirement(id);
-  refresh(projectId);
+  const repo = await getRepo();
+  const items = await repo.listPhotoRequirements(projectId, jobId ?? undefined);
+  const row = items.find((r) => r.id === id && (jobId ? r.job_id === jobId : !r.job_id));
+  if (!row) return;
+  await repo.deletePhotoRequirement(id);
+  refresh(projectId, jobId);
 }
 
 export async function saveProjectScope(projectId: string, fd: FormData) {

@@ -5,6 +5,7 @@ import { Icon } from "@/components/icons";
 import { RequiredPhotosScreen } from "@/components/required-photos";
 import { isStaff, requireMember } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
+import { applicablePhotoRequirements } from "@/lib/photo-requirements";
 import { dayKey, fmtDay, fmtRange } from "@/lib/time";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -18,7 +19,7 @@ export default async function RequiredPhotosPage({ params, searchParams }: PageP
   const repo = await getRepo();
   const job = await repo.getJob(id);
   if (!job) notFound();
-  const requirements = job.kind === "install" ? await repo.listPhotoRequirements(job.project_id) : [];
+  const requirements = applicablePhotoRequirements(job.kind, await repo.listPhotoRequirements(job.project_id, id));
   if (!requirements.length) redirect(`/jobs/${id}`);
   const staff = isStaff(user.role);
   const mine = job.assignees.some((a) => a.id === user.id);

@@ -459,3 +459,63 @@ select pg_temp.as_user('00000000-0000-0000-0000-000000000099');
 select pg_temp.check('signed-in user with no role sees no documents', (select count(*) from project_files)=0);
 reset role;
 select pg_temp.check('anon cannot read project_files', not has_table_privilege('anon', 'public.project_files', 'select'));
+
+-- ---- visit-level required photos
+select pg_temp.as_user(null);
+insert into jobs (id, project_id, title, starts_at, ends_at, status, kind) values
+  ('30000000-0000-0000-0000-0000000000e1','20000000-0000-0000-0000-000000000002','Install visit extras','2026-11-12 14:00Z','2026-11-12 20:00Z','in_progress','install'),
+  ('30000000-0000-0000-0000-0000000000e2','20000000-0000-0000-0000-000000000002','Other install','2026-11-13 14:00Z','2026-11-13 20:00Z','scheduled','install'),
+  ('30000000-0000-0000-0000-0000000000e3','20000000-0000-0000-0000-000000000002','Warranty no extras','2026-11-14 14:00Z','2026-11-14 18:00Z','in_progress','warranty'),
+  ('30000000-0000-0000-0000-0000000000e4','20000000-0000-0000-0000-000000000002','Warranty with extras','2026-11-15 14:00Z','2026-11-15 18:00Z','in_progress','warranty');
+insert into job_assignments values
+  ('30000000-0000-0000-0000-0000000000e1','00000000-0000-0000-0000-00000000000d'),
+  ('30000000-0000-0000-0000-0000000000e3','00000000-0000-0000-0000-00000000000d'),
+  ('30000000-0000-0000-0000-0000000000e4','00000000-0000-0000-0000-00000000000d');
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager
+insert into project_photo_requirements (id, project_id, job_id, label, sort_order) values
+  ('40000000-0000-0000-0000-0000000000e1','20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','Panel close-up',0),
+  ('40000000-0000-0000-0000-0000000000e2','20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','Exit path',1),
+  ('40000000-0000-0000-0000-0000000000e3','20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e2','Other visit only',0),
+  ('40000000-0000-0000-0000-0000000000e5','20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e4','Battery label',0);
+select pg_temp.check('manager can add visit photo requirements', (select count(*) from project_photo_requirements where job_id='30000000-0000-0000-0000-0000000000e1')=2);
+select pg_temp.fails('visit item must belong to the same project', $$insert into project_photo_requirements (project_id, job_id, label) values ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-0000000000e1','Wrong project')$$);
+insert into project_photo_requirements (id, project_id, job_id, label) values
+  ('40000000-0000-0000-0000-0000000000e4','20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','Temp');
+delete from project_photo_requirements where id='40000000-0000-0000-0000-0000000000e4';
+select pg_temp.check('manager can delete visit photo requirements', (select count(*) from project_photo_requirements where id='40000000-0000-0000-0000-0000000000e4')=0);
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d'); -- Emily, assigned to v1 / v3 / v4 and earlier job 2
+select pg_temp.check('tech can read project items plus assigned visit items', (
+  select count(*) from project_photo_requirements where project_id='20000000-0000-0000-0000-000000000002'
+)=5);
+select pg_temp.check('tech cannot see another visit''s required photos', (select count(*) from project_photo_requirements where job_id='30000000-0000-0000-0000-0000000000e2')=0);
+select pg_temp.fails('tech cannot add visit photo requirements', $$insert into project_photo_requirements (project_id, job_id, label) values ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','Extra')$$);
+
+insert into notes (job_id, body) values ('30000000-0000-0000-0000-0000000000e1','Started extras');
+insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by, requirement_id) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','completion','required','20000000-0000-0000-0000-000000000002/completion/v1-mh.jpg', auth.uid(), '40000000-0000-0000-0000-000000000001'),
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','completion','required','20000000-0000-0000-0000-000000000002/completion/v1-wp.jpg', auth.uid(), '40000000-0000-0000-0000-000000000002');
+select pg_temp.fails('tech cannot submit install with visit checklist incomplete', $$update jobs set status='completed' where id='30000000-0000-0000-0000-0000000000e1'$$);
+select pg_temp.fails('cannot link a required item from another visit', $$insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by, requirement_id) values ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','completion','required','20000000-0000-0000-0000-000000000002/completion/v1-bad.jpg', auth.uid(), '40000000-0000-0000-0000-0000000000e3')$$);
+insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by, requirement_id) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','completion','required','20000000-0000-0000-0000-000000000002/completion/v1-panel.jpg', auth.uid(), '40000000-0000-0000-0000-0000000000e1'),
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e1','completion','required','20000000-0000-0000-0000-000000000002/completion/v1-exit.jpg', auth.uid(), '40000000-0000-0000-0000-0000000000e2');
+update jobs set status='completed' where id='30000000-0000-0000-0000-0000000000e1';
+select pg_temp.check('install submit allowed when project and visit items are done', (select status from jobs where id='30000000-0000-0000-0000-0000000000e1')='completed');
+
+insert into notes (job_id, body) values ('30000000-0000-0000-0000-0000000000e3','Warranty follow-up, no extra checklist');
+insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e3','completion','after','20000000-0000-0000-0000-000000000002/completion/v3-after.jpg', auth.uid());
+update jobs set status='completed' where id='30000000-0000-0000-0000-0000000000e3';
+select pg_temp.check('warranty without visit items still only needs a photo and a note', (select status from jobs where id='30000000-0000-0000-0000-0000000000e3')='completed');
+
+insert into notes (job_id, body) values ('30000000-0000-0000-0000-0000000000e4','Replaced battery');
+insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e4','completion','after','20000000-0000-0000-0000-000000000002/completion/v4-after.jpg', auth.uid());
+select pg_temp.fails('warranty with visit items is blocked until those photos are taken', $$update jobs set status='completed' where id='30000000-0000-0000-0000-0000000000e4'$$);
+insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by, requirement_id) values
+  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-0000000000e4','completion','required','20000000-0000-0000-0000-000000000002/completion/v4-batt.jpg', auth.uid(), '40000000-0000-0000-0000-0000000000e5');
+update jobs set status='completed' where id='30000000-0000-0000-0000-0000000000e4';
+select pg_temp.check('warranty submit allowed once visit items are done', (select status from jobs where id='30000000-0000-0000-0000-0000000000e4')='completed');
+reset role;

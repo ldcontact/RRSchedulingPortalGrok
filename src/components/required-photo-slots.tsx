@@ -121,7 +121,10 @@ export function RequiredPhotoSlots({
                 <Icon name="check" className="size-3.5" />
               </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold">{r.label}</div>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <div className="truncate text-sm font-semibold">{r.label}</div>
+                  {!r.job_id && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-muted">From project</span>}
+                </div>
                 {r.note && <div className="truncate text-xs text-muted">{r.note}</div>}
               </div>
             </div>

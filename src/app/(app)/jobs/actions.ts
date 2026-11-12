@@ -5,6 +5,7 @@ import { isStaff, requireMember, requireRole } from "@/lib/auth";
 import { findConflicts, getRepo } from "@/lib/data/repo";
 import { dayKey, fmtRange, fmtDay, minutesOfDay, parseHHMM, validDay, zonedToUtc } from "@/lib/time";
 import type { JobView, ProjectHit } from "@/lib/types";
+import { applicablePhotoRequirements, missingPhotoRequirementLabels } from "@/lib/photo-requirements";
 import { PROJECT_HIT_LIMIT } from "@/lib/project-hit";
 
 export type { ProjectHit };
@@ -120,14 +121,15 @@ export async function submitJob(id: string) {
   const { repo, job, assigned, staff } = await load(id);
   if (!assigned && !staff) back(job, "You're not on this visit.", "error");
   if (job.status !== "in_progress") back(job, "Start the job first.", "error");
-  const [photos, notes, requirements] = await Promise.all([
+  const [photos, notes, allRequirements] = await Promise.all([
     repo.listPhotos({ jobId: id, kind: "completion" }),
     repo.listNotes({ jobId: id }),
-    job.kind === "install" ? repo.listPhotoRequirements(job.project_id) : Promise.resolve([]), // warranty/service: photo + note only
+    repo.listPhotoRequirements(job.project_id, id),
   ]);
+  const requirements = applicablePhotoRequirements(job.kind, allRequirements);
   if (!notes.length) back(job, "Add a note before submitting.", "error");
   if (requirements.length) {
-    const missing = requirements.filter((r) => !photos.some((p) => p.requirement_id === r.id)).map((r) => r.label);
+    const missing = missingPhotoRequirementLabels(requirements, photos);
     if (missing.length) back(job, `Missing required photos: ${missing.join(", ")}.`, "error");
   } else if (!photos.length) {
     back(job, "Add at least one completion photo and a note before submitting.", "error");

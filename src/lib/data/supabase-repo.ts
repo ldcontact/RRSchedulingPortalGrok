@@ -679,16 +679,21 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       fail((await s.from("photos").delete().eq("id", id)).error);
       if (data) await s.storage.from("photos").remove([data.storage_path]);
     },
-    async listPhotoRequirements(projectId) {
-      const { data, error } = await (await db()).from("project_photo_requirements").select("*").eq("project_id", projectId).order("sort_order").order("created_at");
+    async listPhotoRequirements(projectId, jobId) {
+      let q = (await db()).from("project_photo_requirements").select("*").eq("project_id", projectId);
+      q = jobId ? q.or(`job_id.is.null,job_id.eq.${jobId}`) : q.is("job_id", null);
+      const { data, error } = await q.order("sort_order").order("created_at");
       fail(error);
-      return (data ?? []) as PhotoRequirement[];
+      return ((data ?? []) as PhotoRequirement[]).sort((a, b) => (a.job_id ? 1 : 0) - (b.job_id ? 1 : 0) || a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
     },
     async addPhotoRequirement(projectId, input) {
       const s = await db();
-      const { data: maxRow } = await s.from("project_photo_requirements").select("sort_order").eq("project_id", projectId).order("sort_order", { ascending: false }).limit(1).maybeSingle();
+      const jobId = input.job_id ?? null;
+      let maxQ = s.from("project_photo_requirements").select("sort_order").eq("project_id", projectId);
+      maxQ = jobId ? maxQ.eq("job_id", jobId) : maxQ.is("job_id", null);
+      const { data: maxRow } = await maxQ.order("sort_order", { ascending: false }).limit(1).maybeSingle();
       const sort_order = (maxRow?.sort_order ?? -1) + 1;
-      fail((await s.from("project_photo_requirements").insert({ project_id: projectId, label: input.label.trim(), note: input.note, sort_order })).error);
+      fail((await s.from("project_photo_requirements").insert({ project_id: projectId, job_id: jobId, label: input.label.trim(), note: input.note, sort_order })).error);
     },
     async updatePhotoRequirement(id, patch) {
       fail((await (await db()).from("project_photo_requirements").update(patch).eq("id", id)).error);
@@ -699,7 +704,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     async reorderPhotoRequirements(projectId, orderedIds) {
       const s = await db();
       for (let i = 0; i < orderedIds.length; i++) {
-        fail((await s.from("project_photo_requirements").update({ sort_order: i }).eq("id", orderedIds[i]).eq("project_id", projectId)).error);
+        fail((await s.from("project_photo_requirements").update({ sort_order: i }).eq("id", orderedIds[i]).eq("project_id", projectId).is("job_id", null)).error);
       }
     },
     async listProjectFiles(f) {

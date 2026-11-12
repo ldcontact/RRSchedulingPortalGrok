@@ -7,6 +7,7 @@ import { Avatar, Banner } from "@/components/ui";
 import { JobKindBadge, JobStatusPill, TypeTag } from "@/components/status";
 import { PhotoGrid, PhotoUploader } from "@/components/photos";
 import { ProjectFilePanel } from "@/components/project-files";
+import { PhotoRequirementsEditor } from "@/components/photo-requirements-editor";
 import { RequiredPhotoSlots } from "@/components/required-photo-slots";
 import { SubmitButton } from "@/components/submit-button";
 import { isStaff, requireMember } from "@/lib/auth";
@@ -16,6 +17,7 @@ import { deleteVisitAction } from "@/app/(app)/delete-actions";
 import { hasFleetAccess } from "@/lib/geotab/access";
 import { AssignedTruckCard } from "@/components/fleet/assigned-truck-card";
 import { getRepo } from "@/lib/data/repo";
+import { applicablePhotoRequirements } from "@/lib/photo-requirements";
 import { dayKey, fmtDateTime, fmtDay, fmtRange } from "@/lib/time";
 import { ticketNo } from "@/lib/types";
 import { addJobNote, approveJob, cancelJob, reopenJob, sendBack, startJob, submitJob } from "../actions";
@@ -46,11 +48,10 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const canDelete = hasDeleteAccess(user);
   const mine = job.assignees.some((a) => a.id === user.id);
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
-  const [project, contacts, visitPhotos, projectPhotos, notes, requirements, projectDocs, visitDocs] = await Promise.all([
+  const [project, contacts, visitPhotos, projectPhotos, notes, allRequirements, projectDocs, visitDocs] = await Promise.all([
     repo.getProject(job.project_id), repo.listContacts(job.customer_id),
     repo.listPhotos({ jobId: id }), repo.listPhotos({ projectId: job.project_id }), repo.listNotes({ jobId: id }),
-    // the project's required-photo checklist is for the install; warranty/service visits only need a photo + note
-    job.kind === "install" ? repo.listPhotoRequirements(job.project_id) : Promise.resolve([]),
+    repo.listPhotoRequirements(job.project_id, id),
     repo.listProjectFiles({ projectId: job.project_id, projectOnly: true }),
     repo.listProjectFiles({ projectId: job.project_id, jobId: id }),
   ]);
@@ -64,6 +65,9 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const canWork = (mine || staff) && job.status === "in_progress";
   const canUploadPhotos = staff ? job.status !== "cancelled" : canWork;
   const canManagePhotos = staff || canWork;
+  const visitRequirementItems = allRequirements.filter((r) => r.job_id === id);
+  const projectRequirementItems = job.kind === "install" ? allRequirements.filter((r) => !r.job_id) : [];
+  const requirements = applicablePhotoRequirements(job.kind, allRequirements);
   const reqDone = requirements.filter((r) => done.some((p) => p.requirement_id === r.id)).length;
   const reqMissing = requirements.filter((r) => !done.some((p) => p.requirement_id === r.id));
   const photosReady = requirements.length ? reqMissing.length === 0 : done.length > 0;
@@ -151,6 +155,15 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
                 <ProjectFilePanel files={projectDocs} projectId={job.project_id} canOpen empty="No project documents yet." />
               </div>
             </div>
+
+            {staff && (
+              <PhotoRequirementsEditor
+                projectId={job.project_id}
+                jobId={id}
+                items={visitRequirementItems}
+                inherited={projectRequirementItems}
+              />
+            )}
 
             {canWork && requirements.length > 0 && (
               <div className="card border-amber-300" data-testid="completion">
@@ -289,12 +302,24 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
               <PhotoGrid photos={phases.after} canDelete={canManagePhotos} canMove={canManagePhotos} jobId={id} projectId={job.project_id} empty={canUploadPhotos ? "No after photos on this visit yet." : job.status === "scheduled" ? "Start the job to add after photos." : "No after photos on this visit."} />
             </div>
           </div>
+          {staff && (
+            <PhotoRequirementsEditor
+              projectId={job.project_id}
+              jobId={id}
+              items={visitRequirementItems}
+              inherited={projectRequirementItems}
+            />
+          )}
           <div className="card min-w-0" data-testid="visit-photos-required">
             <div className="card-hd"><h3 className="font-semibold">Required photos</h3><span className="text-xs text-muted">{requirements.length ? `${reqDone} of ${requirements.length} done` : "None"}</span></div>
             <div className="p-4">
               {requirements.length > 0
                 ? <RequiredPhotoSlots jobId={id} projectId={job.project_id} requirements={requirements} photos={visitPhotos} canEdit={canUploadPhotos} canDelete={canManagePhotos} />
-                : <div className="text-sm text-muted">No required-photo checklist on this project. {job.kind !== "install" ? "Warranty and service visits just need an after photo and a note." : "Managers can add required items on the project."}</div>}
+                : <div className="text-sm text-muted">{job.kind !== "install"
+                  ? "No visit-specific required photos. Warranty and service visits need an after photo and a note, plus any items a manager adds on this visit."
+                  : staff
+                    ? "No required photos on this visit yet. Add items above, or on the project for every install visit."
+                    : "No required-photo checklist on this visit yet."}</div>}
             </div>
           </div>
           {phases.other.length > 0 && (

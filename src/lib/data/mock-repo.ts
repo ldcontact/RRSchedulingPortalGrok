@@ -178,14 +178,16 @@ function seedPhase2(): P2 {
     const resolved = derivePhotoPhase({ kind, requirement_id, phase });
     return { id: randomUUID(), project_id, job_id, kind: kindForPhase(resolved, kind), phase: resolved, storage_path: `seed/${kind}/${encodeURIComponent(caption)}.svg`, caption, requirement_id, uploaded_by: by, created_at: ago(days) };
   };
-  const req = (id: string, project_id: string, label: string, sort_order: number, note: string | null = null): PhotoRequirement =>
-    ({ id, project_id, label, note, sort_order, created_at: ago(14) });
+  const req = (id: string, project_id: string, label: string, sort_order: number, note: string | null = null, job_id: string | null = null): PhotoRequirement =>
+    ({ id, project_id, job_id, label, note, sort_order, created_at: ago(14) });
   const photo_requirements: PhotoRequirement[] = [
     req("r1", "p2", "T12 4ft", 0),
     req("r2", "p2", "400W MH", 1),
     req("r3", "p2", "Wall pack", 2),
     req("r4", "p1", "Lobby panel", 0),
     req("r5", "p1", "Operatory troffer", 1),
+    req("r6", "p2", "Panel label close-up", 0, "Show the new driver sticker", "j3"),
+    req("r7", "p2", "Emergency exit path", 1, "Lights on, after the fixtures are in", "j3"),
   ];
   const photos = [
     ph("p1", null, "before", "Lobby – T8 troffers", 20, "u-manager"), ph("p1", null, "before", "Operatory 3 ceiling", 20, "u-manager"), ph("p1", null, "before", "Hallway fixtures", 20, "u-manager"),
@@ -411,6 +413,10 @@ function load(): DB {
   const db = JSON.parse(readFileSync(FILE, "utf8")) as DB;
   if (!db.projects) { Object.assign(db, seedPhase2()); save(db); } // upgrade a phase-1 mock DB
   if (!db.photo_requirements) { db.photo_requirements = []; save(db); }
+  if (db.photo_requirements.some((r) => r.job_id === undefined)) {
+    for (const r of db.photo_requirements) if (r.job_id === undefined) r.job_id = null;
+    save(db);
+  }
   if (!db.project_files) {
     const fresh = seedPhase2();
     db.project_files = fresh.project_files;
@@ -908,7 +914,9 @@ export const mockRepo: Repo = {
         if (patch.status === "completed") {
           if (!db.notes.some((n) => n.job_id === id))
             throw new Error("add at least one completion photo and a note before submitting");
-          const reqs = (j.kind ?? "install") !== "install" ? [] : db.photo_requirements.filter((r) => r.project_id === j.project_id).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+          const reqs = db.photo_requirements
+            .filter((r) => r.job_id === id || ((j.kind ?? "install") === "install" && r.project_id === j.project_id && !r.job_id))
+            .sort((a, b) => (a.job_id ? 1 : 0) - (b.job_id ? 1 : 0) || a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
           if (reqs.length) {
             const missing = reqs.filter((r) => !db.photos.some((p) => p.job_id === id && p.kind === "completion" && p.requirement_id === r.id)).map((r) => r.label);
             if (missing.length) throw new Error(`missing required photos: ${missing.join(", ")}`);
@@ -958,6 +966,7 @@ export const mockRepo: Repo = {
       const req = db0.photo_requirements.find((r) => r.id === meta.requirement_id);
       if (!req) throw new Error("unknown required photo item");
       if (req.project_id !== meta.project_id) throw new Error("required photo item belongs to a different project");
+      if (req.job_id && req.job_id !== meta.job_id) throw new Error("required photo item belongs to a different visit");
     }
     if ((phase === "after" || phase === "required") && !meta.job_id) throw new Error("after photos belong to a visit");
     const path = `${meta.project_id}/${kind}/${randomUUID()}.jpg`;
@@ -1003,16 +1012,23 @@ export const mockRepo: Repo = {
       db.photos = db.photos.filter((x) => x.id !== id);
     });
   },
-  async listPhotoRequirements(projectId) {
+  async listPhotoRequirements(projectId, jobId) {
     const w = await who(); const db = load();
     if (!w.staff && !w.canProject(projectId)) return [];
-    return db.photo_requirements.filter((r) => r.project_id === projectId).sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+    return db.photo_requirements
+      .filter((r) => r.project_id === projectId && (!r.job_id ? true : jobId ? r.job_id === jobId && (w.staff || w.canJob(jobId)) : false))
+      .sort((a, b) => (a.job_id ? 1 : 0) - (b.job_id ? 1 : 0) || a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
   },
   async addPhotoRequirement(projectId, input) {
     requireStaffMock(await who());
     mutate((db) => {
-      const max = db.photo_requirements.filter((r) => r.project_id === projectId).reduce((m, r) => Math.max(m, r.sort_order), -1);
-      db.photo_requirements.push({ id: randomUUID(), project_id: projectId, label: input.label.trim(), note: input.note, sort_order: max + 1, created_at: now() });
+      if (input.job_id) {
+        const job = db.jobs.find((j) => j.id === input.job_id);
+        if (!job || job.project_id !== projectId) throw new Error("required photo item visit belongs to a different project");
+      }
+      const jobId = input.job_id ?? null;
+      const max = db.photo_requirements.filter((r) => r.project_id === projectId && (jobId ? r.job_id === jobId : !r.job_id)).reduce((m, r) => Math.max(m, r.sort_order), -1);
+      db.photo_requirements.push({ id: randomUUID(), project_id: projectId, job_id: jobId, label: input.label.trim(), note: input.note, sort_order: max + 1, created_at: now() });
     });
   },
   async updatePhotoRequirement(id, patch) {
@@ -1030,7 +1046,7 @@ export const mockRepo: Repo = {
     requireStaffMock(await who());
     mutate((db) => {
       orderedIds.forEach((id, i) => {
-        const r = db.photo_requirements.find((x) => x.id === id && x.project_id === projectId);
+        const r = db.photo_requirements.find((x) => x.id === id && x.project_id === projectId && !x.job_id);
         if (r) r.sort_order = i;
       });
     });
