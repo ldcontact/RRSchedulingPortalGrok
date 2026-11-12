@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { mergeTeam, type Repo } from "./repo";
 import { DEFAULT_WARRANTY_MONTHS, PAGE_SIZE, PROJECT_STATUSES, SR_OPEN, SR_STATUSES } from "@/lib/types";
@@ -54,6 +55,23 @@ function toJobView(r: JobRow): JobView {
 }
 
 const fail = (e: { message: string } | null) => { if (e) throw new Error(e.message); };
+
+const asInt = (v: unknown) => Number(v ?? 0);
+
+function projectStatusCountsFromRpc(raw: unknown): Record<string, number> {
+  const row = (raw ?? {}) as Record<string, unknown>;
+  const counts: Record<string, number> = { active: asInt(row.active) };
+  for (const st of PROJECT_STATUSES) counts[st] = asInt(row[st]);
+  return counts;
+}
+
+/** One RPC per request for the two nav badges (layout + Home both call these). */
+const loadNavBadges = cache(async () => {
+  const { data, error } = await (await createClient()).rpc("nav_badges");
+  fail(error);
+  const row = (data ?? {}) as Record<string, unknown>;
+  return { openServiceRequests: asInt(row.open_service_requests), myOpenTasks: asInt(row.my_open_tasks) };
+});
 
 type AvatarFields = { avatar_source?: AvatarSource | null; avatar_path?: string | null; google_avatar_url?: string | null };
 async function signAvatarPaths(s: Awaited<ReturnType<typeof createClient>>, paths: (string | null | undefined)[]) {
@@ -427,19 +445,22 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       if (patch.avatar_source) return this.setAvatarSource({ email, profile_id: user.id }, patch.avatar_source);
     },
     async counts() {
-      const s = await db();
       const T = todayKey();
-      const head = { count: "exact", head: true } as const;
-      const [c, t, i, ap, pr, jt, ar] = await Promise.all([
-        s.from("customers").select("id", head),
-        s.from("profiles").select("id", head).not("role", "is", null).eq("active", true),
-        s.from("invites").select("email", head).is("accepted_at", null),
-        s.from("projects").select("id", head).in("status", ["scheduled", "in_progress", "awaiting_review"]),
-        s.from("projects").select("id", head).eq("status", "proposed"),
-        s.from("jobs").select("id", head).neq("status", "cancelled").gte("starts_at", zonedToUtc(T, 0)).lt("starts_at", zonedToUtc(addDays(T, 1), 0)),
-        s.from("jobs").select("id", head).eq("status", "completed"),
-      ]);
-      return { customers: c.count ?? 0, team: t.count ?? 0, invited: i.count ?? 0, activeProjects: ap.count ?? 0, proposed: pr.count ?? 0, jobsToday: jt.count ?? 0, awaitingReview: ar.count ?? 0 };
+      const { data, error } = await (await db()).rpc("home_counts", {
+        p_day_start: zonedToUtc(T, 0),
+        p_day_end: zonedToUtc(addDays(T, 1), 0),
+      });
+      fail(error);
+      const row = (data ?? {}) as Record<string, unknown>;
+      return {
+        customers: asInt(row.customers),
+        team: asInt(row.team),
+        invited: asInt(row.invited),
+        activeProjects: asInt(row.active_projects),
+        proposed: asInt(row.proposed),
+        jobsToday: asInt(row.jobs_today),
+        awaitingReview: asInt(row.awaiting_review),
+      };
     },
 
     // ---------------------------------------------------------------- phase 2
@@ -478,17 +499,17 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       // project name/number/scope/site address + its customer's name, contacts, address, phone: see src/lib/search.ts
       const search = parseSearch(f.q);
       const embed = search ? ", project_search!inner()" : "";
-      const head = { count: "exact", head: true } as const;
-      const countsP = Promise.all((["active", ...PROJECT_STATUSES] as const).map(async (st) => {
-        let q = s.from("projects").select(`id${embed}`, head);
-        q = st === "active" ? q.neq("status", "cancelled") : q.eq("status", st);
-        if (search) q = applySearch(q, "project_search", search);
-        const { count, error } = await q;
+      const countsP = (async () => {
+        const { data, error } = await s.rpc("project_status_counts", {
+          p_tokens: search && !search.digits ? search.tokens : null,
+          p_text: search?.text ?? null,
+          p_digits: search?.digits ?? null,
+        });
         fail(error);
-        return [st, count ?? 0] as const;
-      }));
+        return projectStatusCountsFromRpc(data);
+      })();
       const run = (a: number, b: number) => {
-        let q = s.from("projects").select(PROJECT_PAGE_SELECT + embed, { count: "exact" });
+        let q = s.from("projects").select(PROJECT_PAGE_SELECT + embed);
         q = f.status ? q.eq("status", f.status) : q.neq("status", "cancelled");
         if (search) q = applySearch(q, "project_search", search);
         q = f.sort === "name" ? q.order("name") : f.sort === "value" ? q.order("value", { ascending: false }) : q.order(f.sort === "newest" ? "created_at" : "updated_at", { ascending: false });
@@ -496,11 +517,12 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       };
       let page = p;
       const first = await run(from, to);
-      let { data, count, error } = first;
+      let { data, error } = first;
       const { status } = first;
-      if (status === 416 || error?.code === "PGRST103") { // page past the end: show the last page (416 carries no count)
-        count = Object.fromEntries(await countsP)[f.status ?? "active"] ?? 0;
-        const last = Math.max(0, Math.ceil(count / n) - 1);
+      const counts = await countsP;
+      const total = counts[f.status ?? "active"] ?? 0;
+      if (status === 416 || error?.code === "PGRST103") { // page past the end: show the last page
+        const last = Math.max(0, Math.ceil(total / n) - 1);
         ({ data, error } = await run(last * n, last * n + n - 1));
         page = last + 1;
       }
@@ -522,7 +544,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const items: ProjectRow[] = rows.map((r) => ({
         ...r, team: r.team.map((x) => ({ id: x.id, full_name: x.full_name, color: x.color, avatar_url: resolveAvatarUrl(x, x.avatar_path ? signed.get(x.avatar_path) : null) })),
       }));
-      return { items, total: count ?? 0, page, size: n, counts: Object.fromEntries(await countsP) };
+      return { items, total, page, size: n, counts };
     },
     async getProject(id) {
       const { data, error } = await (await db()).from("projects").select("*").eq("id", id).maybeSingle(); fail(error);
@@ -852,9 +874,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       return { items: applyTicketVisits(items, visits), total: count ?? 0, page, size: n, counts: Object.fromEntries(await countsP) };
     },
     async countOpenServiceRequests() {
-      const { count, error } = await (await db()).from("service_requests").select("id", { count: "exact", head: true }).in("status", SR_OPEN);
-      fail(error);
-      return count ?? 0;
+      return (await loadNavBadges()).openServiceRequests;
     },
     async listOpenServiceRequestPicks(limit = 25) {
       const n = Math.min(Math.max(1, limit), 25);
@@ -1033,14 +1053,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       return { items: slice.map((r) => toTaskView(r, avatars)), total: rows.length, page: page.p, size: page.n, counts };
     },
     async countMyOpenTasks() {
-      const s = await db();
-      const { data: { user } } = await s.auth.getUser();
-      if (!user) return 0;
-      const ids = await taskIdsAssignedTo(s, user.id);
-      if (!ids.length) return 0;
-      const { count, error } = await s.from("tasks").select("id", { count: "exact", head: true }).in("id", ids).in("status", TASK_ACTIVE);
-      fail(error);
-      return count ?? 0;
+      return (await loadNavBadges()).myOpenTasks;
     },
     async getTask(id) {
       const s = await db();

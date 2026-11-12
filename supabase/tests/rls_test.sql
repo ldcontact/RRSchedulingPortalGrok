@@ -519,3 +519,186 @@ insert into photos (project_id, job_id, kind, phase, storage_path, uploaded_by, 
 update jobs set status='completed' where id='30000000-0000-0000-0000-0000000000e4';
 select pg_temp.check('warranty submit allowed once visit items are done', (select status from jobs where id='30000000-0000-0000-0000-0000000000e4')='completed');
 reset role;
+
+-- ---- speed round 1: exact count RPCs match table counts under each role; InitPlan wraps
+select pg_temp.as_user(null);
+insert into customers (id, name) values ('10000000-0000-0000-0000-00000000c001','Count Probe Co');
+insert into projects (id, customer_id, name, scope, status) values
+  ('20000000-0000-0000-0000-00000000c001','10000000-0000-0000-0000-00000000c001','Hidden count probe','Staff only','proposed');
+insert into notes (project_id, body, author_id) values
+  ('20000000-0000-0000-0000-00000000c001','Staff-only project note','00000000-0000-0000-0000-00000000000a');
+insert into tasks (id, title, created_by, status) values
+  ('50000000-0000-0000-0000-00000000c001','Admin open task','00000000-0000-0000-0000-00000000000a','open'),
+  ('50000000-0000-0000-0000-00000000c002','Tech open task','00000000-0000-0000-0000-00000000000a','open'),
+  ('50000000-0000-0000-0000-00000000c003','Done task ignored','00000000-0000-0000-0000-00000000000a','done');
+insert into task_assignees (task_id, profile_id) values
+  ('50000000-0000-0000-0000-00000000c001','00000000-0000-0000-0000-00000000000a'),
+  ('50000000-0000-0000-0000-00000000c002','00000000-0000-0000-0000-00000000000e'),
+  ('50000000-0000-0000-0000-00000000c003','00000000-0000-0000-0000-00000000000a');
+
+create or replace function pg_temp.expected_project_status_counts(
+  p_tokens text[] default null,
+  p_text text default null,
+  p_digits text default null
+) returns jsonb
+language sql stable as $$
+  with filtered as (
+    select p.status
+    from public.projects p
+    where
+      case
+        when p_digits is not null then
+          exists (
+            select 1 from public.project_search s
+            where s.project_id = p.id
+              and (
+                s.doc ilike ('%' || coalesce(p_text, '') || '%')
+                or s.digits ilike ('%' || p_digits || '%')
+              )
+          )
+        when p_tokens is not null and cardinality(p_tokens) > 0 then
+          exists (
+            select 1 from public.project_search s
+            where s.project_id = p.id
+              and not exists (
+                select 1 from unnest(p_tokens) t
+                where s.doc not ilike ('%' || t || '%')
+              )
+          )
+        else true
+      end
+  ),
+  by_status as (
+    select status, count(*)::int as n from filtered group by status
+  )
+  select jsonb_build_object(
+    'active',           coalesce((select sum(n) from by_status where status <> 'cancelled'), 0),
+    'proposed',         coalesce((select n from by_status where status = 'proposed'), 0),
+    'scheduled',        coalesce((select n from by_status where status = 'scheduled'), 0),
+    'in_progress',      coalesce((select n from by_status where status = 'in_progress'), 0),
+    'awaiting_review',  coalesce((select n from by_status where status = 'awaiting_review'), 0),
+    'complete',         coalesce((select n from by_status where status = 'complete'), 0),
+    'cancelled',        coalesce((select n from by_status where status = 'cancelled'), 0)
+  );
+$$;
+
+create or replace function pg_temp.expected_home_counts(p_day_start timestamptz, p_day_end timestamptz)
+returns jsonb language sql stable as $$
+  select jsonb_build_object(
+    'customers',        (select count(*)::int from public.customers),
+    'team',             (select count(*)::int from public.profiles where role is not null and active),
+    'invited',          (select count(*)::int from public.invites where accepted_at is null),
+    'active_projects',  (select count(*)::int from public.projects where status in ('scheduled', 'in_progress', 'awaiting_review')),
+    'proposed',         (select count(*)::int from public.projects where status = 'proposed'),
+    'jobs_today',       (select count(*)::int from public.jobs where status <> 'cancelled' and starts_at >= p_day_start and starts_at < p_day_end),
+    'awaiting_review',  (select count(*)::int from public.jobs where status = 'completed')
+  );
+$$;
+
+create or replace function pg_temp.expected_nav_badges()
+returns jsonb language sql stable as $$
+  select jsonb_build_object(
+    'open_service_requests', (
+      select count(*)::int from public.service_requests where status in ('new', 'triaged', 'scheduled')
+    ),
+    'my_open_tasks', (
+      select count(*)::int from public.tasks t
+      where t.status in ('open', 'in_progress')
+        and exists (
+          select 1 from public.task_assignees a
+          where a.task_id = t.id and a.profile_id = (select auth.uid())
+        )
+    )
+  );
+$$;
+
+-- Superuser totals (bypass RLS) to prove the tech RPC does not leak hidden rows
+create temp table pg_temp_staff_totals as
+  select
+    (public.project_status_counts(null, null, null)->>'active')::int as active,
+    (public.project_status_counts(null, null, null)->>'proposed')::int as proposed,
+    (select count(*) from public.projects) as all_projects,
+    (select count(*) from public.notes) as all_notes;
+grant select on pg_temp_staff_totals to authenticated;
+
+create or replace function pg_temp.check_counts(label text) returns void language plpgsql as $$
+declare
+  day_start timestamptz := '2026-11-02 00:00+00';
+  day_end   timestamptz := '2026-11-05 00:00+00';
+begin
+  perform pg_temp.check(label || ' project_status_counts (no search)',
+    public.project_status_counts(null, null, null) = pg_temp.expected_project_status_counts(null, null, null));
+  perform pg_temp.check(label || ' project_status_counts (token search)',
+    public.project_status_counts(array['troffers'], null, null)
+    = pg_temp.expected_project_status_counts(array['troffers'], null, null));
+  perform pg_temp.check(label || ' project_status_counts (hidden probe not in troffers search)',
+    coalesce((public.project_status_counts(array['troffers'], null, null)->>'proposed')::int, 0)
+    = (select count(*)::int from projects p join project_search s on s.project_id = p.id
+       where p.status = 'proposed' and s.doc ilike '%troffers%'));
+  perform pg_temp.check(label || ' home_counts',
+    public.home_counts(day_start, day_end) = pg_temp.expected_home_counts(day_start, day_end));
+  perform pg_temp.check(label || ' nav_badges',
+    public.nav_badges() = pg_temp.expected_nav_badges());
+end $$;
+
+-- Luke admin, Maria manager, stranger-turned-tech (…00e)
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select pg_temp.check_counts('admin');
+select pg_temp.check('admin sees the staff-only probe project',
+  exists (select 1 from projects where id = '20000000-0000-0000-0000-00000000c001'));
+select pg_temp.check('admin my_open_tasks is 1 (done task excluded)',
+  (public.nav_badges()->>'my_open_tasks')::int = 1);
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select pg_temp.check_counts('manager');
+select pg_temp.check('manager sees the same project totals as superuser (staff)',
+  (public.project_status_counts(null, null, null)->>'active')::int = (select active from pg_temp_staff_totals)
+  and (public.project_status_counts(null, null, null)->>'proposed')::int = (select proposed from pg_temp_staff_totals));
+select pg_temp.check('manager proposed count includes hidden probe',
+  (public.project_status_counts(null, null, null)->>'proposed')::int
+  = (select proposed from pg_temp_staff_totals));
+select pg_temp.check('manager invited is 0 (invites are admin-only)',
+  (public.home_counts('2026-11-02 00:00+00','2026-11-05 00:00+00')->>'invited')::int = 0);
+select pg_temp.check('manager my_open_tasks is 0',
+  (public.nav_badges()->>'my_open_tasks')::int = 0);
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e');
+select pg_temp.check_counts('tech');
+select pg_temp.check('tech does not see the staff-only probe project',
+  not exists (select 1 from projects where id = '20000000-0000-0000-0000-00000000c001'));
+select pg_temp.check('tech project_status_counts hides staff-only rows',
+  (public.project_status_counts(null, null, null)->>'active')::int
+    < (select active from pg_temp_staff_totals)
+  and (public.project_status_counts(null, null, null)->>'proposed')::int
+    < (select proposed from pg_temp_staff_totals));
+select pg_temp.check('tech my_open_tasks is 1',
+  (public.nav_badges()->>'my_open_tasks')::int = 1);
+select pg_temp.check('tech notes.project_id listing cannot see staff-only note',
+  (select count(*) from notes where project_id = '20000000-0000-0000-0000-00000000c001') = 0);
+
+select pg_temp.as_user(null);
+select pg_temp.check('jobs_status_idx exists', exists (select 1 from pg_class where relname = 'jobs_status_idx'));
+select pg_temp.check('jobs_status_completed_at_idx exists', exists (select 1 from pg_class where relname = 'jobs_status_completed_at_idx'));
+select pg_temp.check('jobs_starts_ends_idx exists', exists (select 1 from pg_class where relname = 'jobs_starts_ends_idx'));
+select pg_temp.check('notes_project_idx exists', exists (select 1 from pg_class where relname = 'notes_project_idx'));
+
+-- InitPlan wraps present; permissive policies were not merged (still more than one per table/action)
+select pg_temp.check('all 8 initplan policies wrap auth.uid() in a subselect',
+  (select count(*) from pg_policies
+    where policyname in (
+      'profiles_update_self','profiles_select','project_files_tech_insert','notes_tech_insert',
+      'admin_audit_admin_insert','fleet_vehicles_select','photos_tech_insert','photos_tech_delete_own'
+    )
+    and (
+      coalesce(qual, '') ilike '%select auth.uid()%'
+      or coalesce(with_check, '') ilike '%select auth.uid()%'
+    )
+  ) = 8
+);
+select pg_temp.check('jobs still has separate staff and tech_read policies',
+  exists (select 1 from pg_policies where tablename = 'jobs' and policyname = 'jobs_staff')
+  and exists (select 1 from pg_policies where tablename = 'jobs' and policyname = 'jobs_tech_read'));
+select pg_temp.check('photos still has separate staff and tech_read policies',
+  exists (select 1 from pg_policies where tablename = 'photos' and policyname = 'photos_staff')
+  and exists (select 1 from pg_policies where tablename = 'photos' and policyname = 'photos_tech_read'));
+reset role;
