@@ -11,7 +11,7 @@ import { PhotoRequirementsEditor } from "@/components/photo-requirements-editor"
 import { RequiredPhotoSlots } from "@/components/required-photo-slots";
 import { SubmitButton } from "@/components/submit-button";
 import { isStaff, requireMember } from "@/lib/auth";
-import { countLabel, hasDeleteAccess } from "@/lib/delete-access";
+import { hasDeleteAccess, visitDeleteConsequences } from "@/lib/delete-access";
 import { DeleteConfirmDialog } from "@/components/delete-confirm";
 import { deleteVisitAction } from "@/app/(app)/delete-actions";
 import { hasFleetAccess } from "@/lib/geotab/access";
@@ -355,14 +355,12 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
           itemName={job.title}
           cancelHref={`/jobs/${id}`}
           action={deleteVisitAction.bind(null, id)}
-          consequences={[
-            "Only this visit is removed. The project and other visits stay.",
-            visitPhotos.length
-              ? `${countLabel(visitPhotos.length, "photo", "photos")} from this visit (files are removed from storage)`
-              : "No photos are attached to this visit",
-            "Notes and assignments for this visit are removed",
-            "If this visit is linked to a service request, the ticket stays (the job link is cleared)",
-          ]}
+          consequences={visitDeleteConsequences({
+            photoCount: visitPhotos.length,
+            fileCount: visitDocs.length,
+            visitRequirementCount: visitRequirementItems.length,
+            linkedToServiceRequest: !!job.service_request_id,
+          })}
           confirmLabel="Delete visit"
         />
       )}

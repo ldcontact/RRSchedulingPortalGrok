@@ -947,18 +947,28 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     },
     async deleteProject(id) {
       const s = await db();
-      const { data, error } = await s.from("photos").select("storage_path").eq("project_id", id);
-      fail(error);
-      const paths = [...new Set((data ?? []).map((r: { storage_path: string }) => r.storage_path).filter(Boolean))];
-      if (paths.length) fail((await s.storage.from("photos").remove(paths)).error);
+      const [{ data: photos, error: pe }, { data: files, error: fe }] = await Promise.all([
+        s.from("photos").select("storage_path").eq("project_id", id),
+        s.from("project_files").select("storage_path").eq("project_id", id),
+      ]);
+      fail(pe); fail(fe);
+      const photoPaths = [...new Set((photos ?? []).map((r: { storage_path: string }) => r.storage_path).filter(Boolean))];
+      const filePaths = [...new Set((files ?? []).map((r: { storage_path: string }) => r.storage_path).filter(Boolean))];
+      if (photoPaths.length) fail((await s.storage.from("photos").remove(photoPaths)).error);
+      if (filePaths.length) fail((await s.storage.from("project-files").remove(filePaths)).error);
       fail((await s.from("projects").delete().eq("id", id)).error);
     },
     async deleteJob(id) {
       const s = await db();
-      const { data, error } = await s.from("photos").select("storage_path").eq("job_id", id);
-      fail(error);
-      const paths = [...new Set((data ?? []).map((r: { storage_path: string }) => r.storage_path).filter(Boolean))];
-      if (paths.length) fail((await s.storage.from("photos").remove(paths)).error);
+      const [{ data: photos, error: pe }, { data: files, error: fe }] = await Promise.all([
+        s.from("photos").select("storage_path").eq("job_id", id),
+        s.from("project_files").select("storage_path").eq("job_id", id),
+      ]);
+      fail(pe); fail(fe);
+      const photoPaths = [...new Set((photos ?? []).map((r: { storage_path: string }) => r.storage_path).filter(Boolean))];
+      const filePaths = [...new Set((files ?? []).map((r: { storage_path: string }) => r.storage_path).filter(Boolean))];
+      if (photoPaths.length) fail((await s.storage.from("photos").remove(photoPaths)).error);
+      if (filePaths.length) fail((await s.storage.from("project-files").remove(filePaths)).error);
       fail((await s.from("jobs").delete().eq("id", id)).error);
     },
     async deleteServiceRequest(id) {

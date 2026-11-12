@@ -1303,14 +1303,18 @@ export const mockRepo: Repo = {
     requireDeleteMock(await who());
     const paths: string[] = [];
     mutate((db) => {
+      const job = db.jobs.find((j) => j.id === id);
+      if (!job) throw new Error("Visit not found");
       paths.push(...db.photos.filter((p) => p.job_id === id).map((p) => p.storage_path));
       paths.push(...db.project_files.filter((p) => p.job_id === id).map((p) => p.storage_path));
       db.photos = db.photos.filter((p) => p.job_id !== id);
       db.project_files = db.project_files.filter((p) => p.job_id !== id);
+      db.photo_requirements = db.photo_requirements.filter((r) => r.job_id !== id);
       db.notes = db.notes.filter((n) => n.job_id !== id);
       db.assignments = db.assignments.filter((a) => a.job_id !== id);
       for (const r of db.service_requests) if (r.resolved_job_id === id) r.resolved_job_id = null;
       db.jobs = db.jobs.filter((j) => j.id !== id);
+      syncProject(db, job.project_id);
     });
     unlinkPhotoFiles(paths);
   },

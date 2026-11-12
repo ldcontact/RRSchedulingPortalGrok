@@ -6,7 +6,8 @@ import { getRepo } from "@/lib/data/repo";
 import { customerDeleteBlockers } from "@/lib/delete-access";
 
 function ok(path: string, message: string): never {
-  redirect(`${path}?ok=${encodeURIComponent(message)}`);
+  const sep = path.includes("?") ? "&" : "?";
+  redirect(`${path}${sep}ok=${encodeURIComponent(message)}`);
 }
 
 export async function deleteProjectAction(id: string) {
@@ -23,12 +24,17 @@ export async function deleteProjectAction(id: string) {
 export async function deleteVisitAction(id: string) {
   await requireDeleteAccess();
   if (!id) redirect("/schedule");
-  await (await getRepo()).deleteJob(id);
+  const repo = await getRepo();
+  const job = await repo.getJob(id);
+  if (!job) redirect("/schedule");
+  const projectId = job.project_id;
+  await repo.deleteJob(id);
+  revalidatePath(`/projects/${projectId}`);
   revalidatePath("/schedule");
   revalidatePath("/projects");
   revalidatePath("/service-requests");
   revalidatePath("/");
-  ok("/schedule", "Visit deleted.");
+  ok(`/projects/${projectId}?tab=visits`, "Visit deleted.");
 }
 
 export async function deleteCustomerAction(id: string) {

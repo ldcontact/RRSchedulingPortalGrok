@@ -10,9 +10,9 @@ import { ProjectFilePanel } from "@/components/project-files";
 import { MessageLog } from "@/components/messages";
 import { SubmitButton } from "@/components/submit-button";
 import { requireRole } from "@/lib/auth";
-import { countLabel, hasDeleteAccess } from "@/lib/delete-access";
+import { countLabel, hasDeleteAccess, visitDeleteConsequences } from "@/lib/delete-access";
 import { DeleteConfirmDialog } from "@/components/delete-confirm";
-import { deleteProjectAction } from "@/app/(app)/delete-actions";
+import { deleteProjectAction, deleteVisitAction } from "@/app/(app)/delete-actions";
 import { getRepo } from "@/lib/data/repo";
 import { fmtDateTime, fmtRange, fmtDay, dayKey, money, todayKey } from "@/lib/time";
 import { DEFAULT_WARRANTY_MONTHS, type Person } from "@/lib/types";
@@ -46,10 +46,12 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const p = await repo.getProject(id);
   if (!p) notFound();
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
-  const [c, contacts, milestones, jobs, allPhotos, messages, notes, requirements, allProjectFiles] = await Promise.all([
+  const deleteVisitId = typeof sp.deleteVisit === "string" ? sp.deleteVisit : null;
+  const [c, contacts, milestones, jobs, allPhotos, messages, notes, requirements, allProjectFiles, deleteVisitReqs] = await Promise.all([
     repo.getCustomer(p.customer_id), repo.listContacts(p.customer_id), repo.listMilestones(id), repo.listJobs({ projectId: id }),
     repo.listPhotos({ projectId: id }), repo.listMessages({ projectId: id }), repo.listNotes({ projectId: id }),
     repo.listPhotoRequirements(id), repo.listProjectFiles({ projectId: id }),
+    deleteVisitId ? repo.listPhotoRequirements(id, deleteVisitId) : Promise.resolve([]),
   ]);
   const completionPhotos = allPhotos.filter((ph) => ph.kind === "completion");
   const projectDocs = allProjectFiles.filter((f) => !f.job_id);
@@ -72,6 +74,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const fieldNotes = notes.filter((n) => n.job_id);
   const liveVisits = jobs.filter((j) => j.status !== "cancelled");
   const base = `/projects/${p.id}`;
+  const deletingVisit = deleteVisitId ? jobs.find((j) => j.id === deleteVisitId) ?? null : null;
 
   const createdLabel = fmtDay(dayKey(p.created_at), { month: "short", day: "numeric", year: "numeric" });
   const completedLabel = dates.completed_date
@@ -206,21 +209,34 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             {jobs.map((j) => {
               const counts = visitPhotoCounts(allPhotos, reqIds, j.id);
               return (
-                <Link key={j.id} href={`/jobs/${j.id}?tab=photos`} className="card min-w-0 p-4 transition hover:bg-[#fafbf9]" data-testid={`visit-card-${j.id}`}>
+                <div key={j.id} className="card min-w-0 p-4 transition hover:bg-[#fafbf9]" data-testid={`visit-card-${j.id}`}>
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                    <Link href={`/jobs/${j.id}?tab=photos`} className="min-w-0 flex-1">
                       <div className="text-[12.5px] font-semibold text-muted">{fmtDay(dayKey(j.starts_at))} · {fmtRange(j.starts_at, j.ends_at)}</div>
                       <div className="mt-0.5 flex min-w-0 items-center gap-1.5"><span className="truncate font-semibold">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div>
+                    </Link>
+                    <div className="flex shrink-0 items-start gap-1">
+                      <JobStatusPill status={j.status} />
+                      {canDelete && (
+                        <Link
+                          href={`${base}?tab=visits&deleteVisit=${j.id}`}
+                          scroll={false}
+                          className="grid size-8 shrink-0 place-items-center rounded-lg text-red-700 hover:bg-red-50"
+                          aria-label={`Delete visit ${j.title}`}
+                          data-testid={`delete-visit-${j.id}`}
+                        >
+                          <Icon name="trash" className="size-4" />
+                        </Link>
+                      )}
                     </div>
-                    <JobStatusPill status={j.status} />
                   </div>
-                  <div className="mt-2 truncate text-xs text-muted">{j.assignees.map((a) => a.full_name).join(", ") || "Unassigned"}</div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
+                  <Link href={`/jobs/${j.id}?tab=photos`} className="mt-2 block truncate text-xs text-muted">{j.assignees.map((a) => a.full_name).join(", ") || "Unassigned"}</Link>
+                  <Link href={`/jobs/${j.id}?tab=photos`} className="mt-3 flex flex-wrap gap-1.5">
                     <span className="pill bg-canvas text-muted">Before {counts.before}</span>
                     <span className="pill bg-canvas text-muted">After {counts.after}</span>
                     {counts.requiredTotal > 0 && <span className="pill bg-canvas text-muted">Required {counts.requiredDone}/{counts.requiredTotal}</span>}
-                  </div>
-                </Link>
+                  </Link>
+                </div>
               );
             })}
           </div>
@@ -341,6 +357,22 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           </div>
           <MessageLog messages={messages} customerId={p.customer_id} projectId={p.id} />
         </div>
+      )}
+
+      {canDelete && deletingVisit && (
+        <DeleteConfirmDialog
+          title="Delete visit"
+          itemName={deletingVisit.title}
+          cancelHref={`${base}?tab=visits`}
+          action={deleteVisitAction.bind(null, deletingVisit.id)}
+          consequences={visitDeleteConsequences({
+            photoCount: allPhotos.filter((ph) => ph.job_id === deletingVisit.id).length,
+            fileCount: allProjectFiles.filter((f) => f.job_id === deletingVisit.id).length,
+            visitRequirementCount: deleteVisitReqs.filter((r) => r.job_id === deletingVisit.id).length,
+            linkedToServiceRequest: !!deletingVisit.service_request_id,
+          })}
+          confirmLabel="Delete visit"
+        />
       )}
 
       {canDelete && sp.delete === "1" && (
