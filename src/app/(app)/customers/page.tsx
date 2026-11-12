@@ -7,7 +7,7 @@ import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { formatAddress } from "@/lib/project-row";
 import { CUSTOMER_SEARCH_HINT } from "@/lib/search";
-import { PAGE_SIZE, type CustomerSort } from "@/lib/types";
+import { LIST_PAGE_SIZE, type CustomerSort } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Customers" };
 
@@ -19,7 +19,7 @@ export default async function CustomersPage({ searchParams }: PageProps<"/custom
   const query = typeof sp.q === "string" ? sp.q.trim() : "";
   const sort: CustomerSort = typeof sp.sort === "string" && sp.sort in SORTS ? (sp.sort as CustomerSort) : "newest";
   // One database page (range + exact count); search and sort run in Postgres across all customers.
-  const { items: list, total, page, size } = await (await getRepo()).pageCustomers({ q: query, page: pageParam(sp.page), size: PAGE_SIZE, sort });
+  const { items: list, total, page, size } = await (await getRepo()).pageCustomers({ q: query, page: pageParam(sp.page), size: LIST_PAGE_SIZE, sort });
   const href = (p: number) => `/customers?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(sort !== "newest" ? { sort } : {}), ...(p > 1 ? { page: String(p) } : {}) })}`;
   return (
     <>

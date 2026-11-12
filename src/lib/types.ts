@@ -80,6 +80,9 @@ export type CustomerInput = Omit<Customer, "id" | "created_at" | "updated_at" | 
 export type CustomerListItem = Customer & { primary_contact: string | null; project_count: number };
 
 // ---- paged list views (one database page at a time; only the columns the row shows)
+/** Customers and Projects list pages (pager uses this size so page count and "Showing x–y of z" stay correct). */
+export const LIST_PAGE_SIZE = 25;
+/** Default page size for other paged lists (tasks, service requests, MCP). */
 export const PAGE_SIZE = 50;
 export type Paged<T> = { items: T[]; total: number; page: number; size: number };
 export type CustomerSort = "name" | "name_desc" | "newest";

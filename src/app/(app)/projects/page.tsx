@@ -8,7 +8,7 @@ import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDay, fmtWhen, money } from "@/lib/time";
 import { PROJECT_SEARCH_HINT } from "@/lib/search";
-import { PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, type ProjectSort, type ProjectStatus } from "@/lib/types";
+import { LIST_PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, type ProjectSort, type ProjectStatus } from "@/lib/types";
 
 const fmtDate = (iso: string | null) => (iso ? fmtDay(dayKey(iso), { month: "short", day: "numeric", year: "numeric" }) : "—");
 
@@ -23,7 +23,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const sort: ProjectSort = typeof sp.sort === "string" && sp.sort in SORTS ? (sp.sort as ProjectSort) : "updated";
   // One database page (range + exact count) plus per-tab counts; search/filter/sort run in Postgres.
-  const { items: list, total, page, size, counts, note } = await (await getRepo()).pageProjects({ q, status, page: pageParam(sp.page), size: PAGE_SIZE, sort });
+  const { items: list, total, page, size, counts, note } = await (await getRepo()).pageProjects({ q, status, page: pageParam(sp.page), size: LIST_PAGE_SIZE, sort });
   const href = (st?: ProjectStatus, p = 1) => `/projects?${new URLSearchParams({ ...(st ? { status: st } : {}), ...(q ? { q } : {}), ...(sort !== "updated" ? { sort } : {}), ...(p > 1 ? { page: String(p) } : {}) })}`;
   return (
     <>

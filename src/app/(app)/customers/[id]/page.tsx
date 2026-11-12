@@ -15,6 +15,7 @@ import { PhotoGrid } from "@/components/photos";
 import { JobStatusPill, ProjectStatusPill } from "@/components/status";
 import { fmtDateTime, fmtDay, fmtWhen, money, dayKey } from "@/lib/time";
 import { deriveCustomerActivity } from "@/lib/activity";
+import { customerProjectStats } from "@/lib/customer-project-stats";
 import {
   ActionMenu, CommunicateMenu, ProfileHeader, ProfileTabs, RailCard, StatsStrip,
   formatStreetAddress, mapsSearchUrl, menuLink, telHref, smsHref,
@@ -29,8 +30,13 @@ function sinceDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
 }
 
-const TABS = ["overview", "jobs", "communications", "attachments", "activity", "notes"] as const;
+const TABS = ["overview", "projects", "communications", "attachments", "activity", "notes"] as const;
 type Tab = (typeof TABS)[number];
+/** Bookmarks of ?tab=jobs still open the Projects tab (renamed when Jobs started meaning visits). */
+const tabFromParam = (raw: unknown): Tab => {
+  if (raw === "jobs") return "projects";
+  return TABS.includes(raw as Tab) ? (raw as Tab) : "overview";
+};
 
 export default async function CustomerPage({ params, searchParams }: PageProps<"/customers/[id]">) {
   const user = await requireRole("admin", "manager");
@@ -39,7 +45,7 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
   const sp = await searchParams;
   const saved = sp.saved;
   const error = typeof sp.error === "string" ? sp.error : null;
-  const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
+  const tab = tabFromParam(sp.tab);
   const repo = await getRepo();
   const [c, contacts, projects, messages, privateNotes, dependents] = await Promise.all([
     repo.getCustomer(id), repo.listContacts(id), repo.listProjects({ customerId: id }), repo.listMessages({ customerId: id }),
@@ -52,8 +58,9 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
     repo.pageTasks({ customerId: id, tab: "all", page: 1, size: 25 }).catch(() => null),
   ]);
   const visits = allJobs.filter((j) => j.customer_id === id);
-  const liveVisits = visits.filter((j) => j.status !== "cancelled");
-  const completedVisits = visits.filter((j) => j.status === "approved");
+  // Customer -> Projects -> Visits. Stats and the Projects tab count projects, not visits.
+  const { total: liveProjectCount, completed: completedProjectCount } = customerProjectStats(projects);
+  // listPhotos({ projectId }) returns every photo on the project, including visit shots (job_id set) and project-level files (job_id null).
   const photos = (await Promise.all(projects.map((p) => repo.listPhotos({ projectId: p.id })))).flat();
   const fieldNotes = (await Promise.all(projects.map((p) => repo.listNotes({ projectId: p.id })))).flat();
   const primary = contacts.find((x) => x.is_primary) ?? contacts[0];
@@ -92,14 +99,14 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
       />
       {(saved || error) && <div className="mb-4">{saved && <Banner tone="ok"><Icon name="check" />Customer saved.</Banner>}{error && <Banner tone="error"><Icon name="alert" />{error}</Banner>}</div>}
       <StatsStrip items={[
-        { label: "Total jobs", value: liveVisits.length },
-        { label: "Completed jobs", value: completedVisits.length },
+        { label: "Total projects", value: liveProjectCount },
+        { label: "Completed projects", value: completedProjectCount },
         { label: "Attachments", value: photos.length },
         { label: "Private notes", value: privateNotes.length + (c.notes ? 1 : 0) },
       ]} />
       <ProfileTabs base={base} current={tab} tabs={[
         { id: "overview", label: "Overview" },
-        { id: "jobs", label: "Jobs", count: liveVisits.length },
+        { id: "projects", label: "Projects", count: liveProjectCount },
         { id: "communications", label: "Communications", count: messages.length || undefined },
         { id: "attachments", label: "Attachments", count: photos.length },
         { id: "activity", label: "Activity" },
@@ -172,20 +179,20 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
             <RailCard title="Customer details" action={<Link href={`/projects/new?customer=${c.id}`} className="text-xs font-semibold text-brand">Create a project</Link>}>
               <dl className="grid gap-3 p-4 text-sm">
                 <div><dt className="text-xs text-muted">Created</dt><dd>{sinceDate(c.created_at)}</dd></div>
-                <div><dt className="text-xs text-muted">Projects</dt><dd>{projects.length}</dd></div>
+                <div><dt className="text-xs text-muted">Projects</dt><dd>{liveProjectCount}</dd></div>
               </dl>
             </RailCard>
           </div>
         </div>
       )}
 
-      {tab === "jobs" && (
+      {tab === "projects" && (
         <div className="card min-w-0">
           <div className="card-hd">
-            <h3 className="font-semibold">Jobs</h3>
+            <h3 className="font-semibold">Projects</h3>
             <Link href={`/projects/new?customer=${c.id}`} className="btn btn-sm"><Icon name="plus" />New project</Link>
           </div>
-          {projects.length === 0 && <div className="p-6 text-center text-sm text-muted">No projects yet. <Link href={`/projects/new?customer=${c.id}`} className="font-semibold text-brand">Create a project</Link> to schedule jobs.</div>}
+          {projects.length === 0 && <div className="p-6 text-center text-sm text-muted">No projects yet. <Link href={`/projects/new?customer=${c.id}`} className="font-semibold text-brand">Create a project</Link> to schedule visits.</div>}
           <div className="divide-y divide-line">
             {projects.map((p) => {
               const pVisits = visits.filter((j) => j.project_id === p.id && j.status !== "cancelled");
@@ -245,7 +252,7 @@ export default async function CustomerPage({ params, searchParams }: PageProps<"
 
       {tab === "attachments" && (
         <div className="card min-w-0">
-          <div className="card-hd"><h3 className="font-semibold">Attachments</h3><span className="text-xs text-muted">{photos.length} photo{photos.length === 1 ? "" : "s"} from projects</span></div>
+          <div className="card-hd"><h3 className="font-semibold">Attachments</h3><span className="text-xs text-muted">{photos.length} photo{photos.length === 1 ? "" : "s"} from projects and visits</span></div>
           <div className="flex flex-col gap-4 p-4">
             {photos.length === 0 && <div className="text-sm text-muted">No photos or files on this customer yet. Before and completion photos are added on each project and visit.</div>}
             {projects.map((p) => {
