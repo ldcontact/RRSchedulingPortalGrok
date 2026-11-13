@@ -19,6 +19,10 @@ const member = (partial: Partial<TeamMember> & Pick<TeamMember, "email" | "full_
   google_avatar_url: null,
   fleet_access: false,
   can_delete: false,
+  sms_notify_assignment: false,
+  sms_notify_same_day: false,
+  sms_notify_morning: false,
+  sms_stopped_at: null,
   ...partial,
 });
 

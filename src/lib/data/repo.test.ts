@@ -47,6 +47,10 @@ describe("mergeTeam invite permission flags", () => {
       google_avatar_url: null,
       fleet_access: false,
       can_delete: true,
+      sms_notify_assignment: false,
+      sms_notify_same_day: false,
+      sms_notify_morning: false,
+      sms_stopped_at: null,
     } satisfies Profile;
     const team = mergeTeam([profile], [{ ...inviteBase, accepted_at: "2026-11-13T16:00:00Z", fleet_access: true, can_delete: false }]);
     expect(team).toHaveLength(1);
