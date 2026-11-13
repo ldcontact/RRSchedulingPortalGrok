@@ -147,7 +147,10 @@ function seed(): DB {
   ];
   const maria = profiles.find((x) => x.id === "u-manager");
   if (maria) maria.fleet_access = true; // operations manager — used for manager fleet demos
-  const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m, invite_email: null }));
+  const fleet_vehicles: FleetVehicleRow[] = [
+    ...SAMPLE_DEFAULT_MAP.map((m) => ({ ...m, invite_email: null })),
+    { geotab_device_id: "gt-v5", label: null, profile_id: null, invite_email: "sam.ortiz@gmail.com" },
+  ];
   const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [], task_comments: [], team_sms_outbox: [], team_sms_events: [] } as DB;
   seedServiceRequests(db);
   seedTasks(db);

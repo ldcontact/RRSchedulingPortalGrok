@@ -4,7 +4,7 @@ import { getRepo } from "@/lib/data/repo";
 import { fleetLocationsAuth } from "@/lib/geotab/access";
 import { buildFleetLocations } from "@/lib/geotab/locations";
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
-import type { FleetPerson } from "@/lib/geotab/types";
+import { fleetPeopleFromTeam } from "@/lib/geotab/assign";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +30,7 @@ export async function GET() {
     repo.listJobs({ from: zonedToUtc(T, 0), to: zonedToUtc(addDays(T, 1), 0) }).catch(() => []),
     repo.listTeam().catch(() => []),
   ]);
-  const people: FleetPerson[] = team
-    .filter((m) => m.profile_id)
-    .map((m) => ({ id: m.profile_id!, full_name: m.full_name, color: m.color, avatar_url: m.avatar_url ?? null }));
+  const people = fleetPeopleFromTeam(team);
 
   const body = await buildFleetLocations({
     mappings,

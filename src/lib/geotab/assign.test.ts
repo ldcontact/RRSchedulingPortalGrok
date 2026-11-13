@@ -3,6 +3,7 @@ import {
   fleetAssignable,
   fleetAssigneeOptionLabel,
   fleetAssigneeOptionValue,
+  fleetPeopleFromTeam,
   parseFleetAssignee,
   selectedFleetAssigneeValue,
 } from "./assign";
@@ -83,5 +84,17 @@ describe("fleet assignee form values", () => {
       "invite:mario@squarepropertyservices.com",
     );
     expect(selectedFleetAssigneeValue({ profile_id: "u-tech1", invite_email: null })).toBe("u-tech1");
+  });
+});
+
+describe("fleetPeopleFromTeam", () => {
+  it("includes invited people and active profiles for vehicle mapping", () => {
+    const people = fleetPeopleFromTeam([ronan, mariusz, carlos, suspended]);
+    expect(people).toEqual([
+      expect.objectContaining({ id: "invite:ronan@squarepropertyservices.com", full_name: "Ronan O'Connor", invited: true, email: "ronan@squarepropertyservices.com" }),
+      expect.objectContaining({ id: "invite:mario@squarepropertyservices.com", full_name: "Mariusz Bartnik", invited: true, email: "mario@squarepropertyservices.com" }),
+      expect.objectContaining({ id: "u-tech1", full_name: "Carlos Mendez", invited: false }),
+      expect.objectContaining({ id: "u-tech2", full_name: "Jake Sullivan", invited: false }),
+    ]);
   });
 });

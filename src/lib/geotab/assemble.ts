@@ -22,6 +22,11 @@ export type AssembleInput = {
 
 export function assembleLocations(input: AssembleInput): FleetLocationsResponse {
   const peopleById = new Map(input.people.map((p) => [p.id, p]));
+  const peopleByEmail = new Map(
+    input.people
+      .filter((p) => p.email)
+      .map((p) => [p.email!.trim().toLowerCase(), p]),
+  );
   const mapByDevice = new Map(input.mappings.map((m) => [m.geotab_device_id, m]));
   const visits: FleetVisitPin[] = visitPinsFromJobs(input.jobs, input.sample);
   const snaps = input.scope === "own"
@@ -30,7 +35,7 @@ export function assembleLocations(input: AssembleInput): FleetLocationsResponse 
 
   const vehicles: FleetVehicle[] = snaps.map((s) => {
     const mapping = mapByDevice.get(s.id);
-    const profile = mapping?.profile_id ? peopleById.get(mapping.profile_id) ?? null : null;
+    const profile = personForMapping(mapping, peopleById, peopleByEmail);
     const speedMph = snapshotSpeedMph(s);
     return {
       id: s.id,
@@ -52,6 +57,22 @@ export function assembleLocations(input: AssembleInput): FleetLocationsResponse 
   });
 
   return { sample: input.sample, asOf: input.asOf, geocoding: "census", vehicles, visits };
+}
+
+
+function personForMapping(
+  mapping: FleetMapping | undefined,
+  peopleById: Map<string, FleetPerson>,
+  peopleByEmail: Map<string, FleetPerson>,
+): FleetPerson | null {
+  if (!mapping) return null;
+  if (mapping.profile_id) return peopleById.get(mapping.profile_id) ?? null;
+  const email = mapping.invite_email?.trim().toLowerCase();
+  if (!email) return null;
+  const found = peopleByEmail.get(email);
+  return found
+    ? { ...found, invited: true, email }
+    : { id: `invite:${email}`, full_name: email, color: "#64748b", avatar_url: null, invited: true, email };
 }
 
 function visitMeta(j: AssembleInput["jobs"][number]): Pick<FleetVisitPin, "projectId" | "projectName" | "projectType" | "kind" | "status" | "assignees" | "assigneeIds"> {

@@ -35,6 +35,19 @@ describe("truckCardHtml", () => {
     expect(unmappedVehicleNames([{ ...base, profile: null, name: "Van 5" }, base])).toEqual(["Van 5"]);
   });
 
+  it("treats an invite mapping as assigned and skips the unmapped warning", () => {
+    const invited = {
+      ...base,
+      profile: { id: "invite:sam.ortiz@gmail.com", full_name: "Sam Ortiz", color: "#0891b2", invited: true, email: "sam.ortiz@gmail.com" },
+      geotabDriverName: null,
+      name: "Van 5",
+    };
+    const html = truckCardHtml(invited);
+    expect(html).toContain("Sam Ortiz (invited)");
+    expect(html).not.toContain("No tech mapped");
+    expect(unmappedVehicleNames([invited, { ...base, profile: null, name: "Kenny White Van" }])).toEqual(["Kenny White Van"]);
+  });
+
   it("shows on-site copy instead of an ETA when the truck is already at the job", () => {
     const html = truckCardHtml({
       ...base,

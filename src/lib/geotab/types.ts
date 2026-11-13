@@ -14,6 +14,9 @@ export type FleetPerson = {
   full_name: string;
   color: string;
   avatar_url?: string | null;
+  /** True when this person is still an invite (no profile yet). */
+  invited?: boolean;
+  email?: string;
 };
 
 export type FleetVisitAssignee = { id: string; full_name: string; color: string; avatar_url?: string | null };

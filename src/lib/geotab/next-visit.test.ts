@@ -48,6 +48,18 @@ describe("pickNextVisitToday", () => {
     const afterMorning = pickNextVisitToday([morning, later], "u-tech1", { status: "driving", lat: 42.05, lng: -88.1 }, "2026-11-13T16:30:00.000Z");
     expect(afterMorning?.jobId).toBe("pm");
   });
+
+  it("ignores a visit that started on a previous day even if it has not ended yet", () => {
+    const stale = pin({
+      jobId: "stale",
+      customerName: "Mike Hennessy",
+      startsAt: "2026-11-04T12:00:00.000Z",
+      endsAt: "2026-11-20T22:00:00.000Z",
+      assigneeIds: ["u-tech1"],
+    });
+    expect(pickNextVisitToday([stale], "u-tech1", { status: "stopped", lat: 42.05, lng: -88.1 }, asOf)).toBeNull();
+    expect(pickNextVisitToday([stale, later], "u-tech1", { status: "driving", lat: 42.05, lng: -88.1 }, asOf)?.jobId).toBe("pm");
+  });
 });
 
 describe("ETA and on-site copy", () => {
@@ -56,8 +68,26 @@ describe("ETA and on-site copy", () => {
       summary: "Arrives ~9:40 AM, 10 min late",
       late: true,
     });
+    expect(formatEtaSummary("2026-11-13T15:40:00.000Z", "2026-11-13T15:30:00.000Z", "2026-11-13T15:35:00.000Z")).toEqual({
+      summary: "Arrives ~9:40 AM, 10 min late",
+      late: true,
+    });
     expect(formatEtaSummary("2026-11-13T15:25:00.000Z", "2026-11-13T15:30:00.000Z")).toMatchObject({ late: false, summary: "Arrives ~9:25 AM, 5 min early" });
     expect(formatEtaSummary("2026-11-13T15:30:00.000Z", "2026-11-13T15:30:00.000Z")).toMatchObject({ late: false, summary: "Arrives ~9:30 AM, on time" });
+  });
+
+  it("does not mark late when the visit started on a previous day", () => {
+    expect(formatEtaSummary("2026-11-13T22:27:00.000Z", "2026-11-04T12:00:00.000Z", "2026-11-13T22:03:00.000Z")).toEqual({
+      summary: "Arrives ~4:27 PM",
+      late: false,
+    });
+  });
+
+  it("does not mark late when today's scheduled start has not passed yet", () => {
+    expect(formatEtaSummary("2026-11-13T18:20:00.000Z", "2026-11-13T18:00:00.000Z", asOf)).toEqual({
+      summary: "Arrives ~12:20 PM",
+      late: false,
+    });
   });
 
   it("uses On site since when a stopped truck is within 150 m", () => {

@@ -1,4 +1,4 @@
-import { TZ } from "@/lib/time";
+import { dayKey, TZ } from "@/lib/time";
 import { etaMinutes, formatDistance, haversineMeters, isArrived } from "./distance";
 import { parseDurationMs } from "./parse";
 import type { FleetNearestVisit, FleetStatus, FleetVisitPin } from "./types";
@@ -15,15 +15,22 @@ export function formatDriveMinutes(minutes: number): string {
   return rem ? `${h} hr ${rem} min` : `${h} hr`;
 }
 
-export function formatEtaSummary(etaAt: string, startsAt: string): { summary: string; late: boolean } {
+export function formatEtaSummary(etaAt: string, startsAt: string, asOf?: string): { summary: string; late: boolean } {
   const eta = Date.parse(etaAt);
   const start = Date.parse(startsAt);
-  if (!Number.isFinite(eta) || !Number.isFinite(start)) {
-    return { summary: `Arrives ~${clock(etaAt)}`, late: false };
-  }
-  const deltaMin = Math.round((eta - start) / 60_000);
   const when = `Arrives ~${clock(etaAt)}`;
-  if (deltaMin >= 1) return { summary: `${when}, ${formatDriveMinutes(deltaMin)} late`, late: true };
+  if (!Number.isFinite(eta) || !Number.isFinite(start)) {
+    return { summary: when, late: false };
+  }
+  const startIsToday = !asOf || dayKey(startsAt) === dayKey(asOf);
+  const startHasPassed = !asOf || start <= Date.parse(asOf);
+  const deltaMin = Math.round((eta - start) / 60_000);
+  if (deltaMin >= 1) {
+    // Late only for a visit that starts today, after that start has passed.
+    if (!startIsToday || !startHasPassed) return { summary: when, late: false };
+    return { summary: `${when}, ${formatDriveMinutes(deltaMin)} late`, late: true };
+  }
+  if (!startIsToday) return { summary: when, late: false };
   if (deltaMin <= -1) return { summary: `${when}, ${formatDriveMinutes(-deltaMin)} early`, late: false };
   return { summary: `${when}, on time`, late: false };
 }
@@ -48,7 +55,8 @@ export function pickNextVisitToday(
 ): FleetVisitPin | null {
   const now = Date.parse(asOf);
   if (!Number.isFinite(now)) return null;
-  const mine = visits.filter((v) => v.assigneeIds.includes(profileId) && Date.parse(v.endsAt) > now);
+  const today = dayKey(asOf);
+  const mine = visits.filter((v) => v.assigneeIds.includes(profileId) && Date.parse(v.endsAt) > now && dayKey(v.startsAt) === today);
   if (!mine.length) return null;
   const onSite = mine.find((v) => isArrived(vehicle, { lat: v.latitude, lng: v.longitude }));
   if (onSite) return onSite;
@@ -105,7 +113,7 @@ export function buildNearestVisit(opts: {
   }
   const minutes = driving?.minutes ?? etaMinutes(driveMeters, speedMph);
   const etaAt = new Date(Date.parse(asOf) + minutes * 60_000).toISOString();
-  const eta = formatEtaSummary(etaAt, v.startsAt);
+  const eta = formatEtaSummary(etaAt, v.startsAt, asOf);
   return {
     jobId: v.jobId,
     title: v.title,

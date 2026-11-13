@@ -18,7 +18,22 @@ export function vehicleTitle(v: FleetVehicle) {
 }
 
 export function driverLabel(v: FleetVehicle) {
-  return v.profile?.full_name ?? v.geotabDriverName ?? "Unassigned";
+  if (v.profile) return v.profile.invited ? `${v.profile.full_name} (invited)` : v.profile.full_name;
+  return v.geotabDriverName ?? "Unassigned";
+}
+
+const CREW_STATUS_ORDER: Record<FleetVehicle["status"], number> = { driving: 0, stopped: 1, offline: 2 };
+
+/** Trucks with a profile or invite mapping, driving first, then by driver name. */
+export function mappedCrewVehicles(vehicles: FleetVehicle[]): FleetVehicle[] {
+  return vehicles
+    .filter((v) => !!v.profile)
+    .slice()
+    .sort((a, b) => {
+      const byStatus = CREW_STATUS_ORDER[a.status] - CREW_STATUS_ORDER[b.status];
+      if (byStatus) return byStatus;
+      return driverLabel(a).localeCompare(driverLabel(b), "en");
+    });
 }
 
 export function statusDetail(v: FleetVehicle) {

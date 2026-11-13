@@ -4,13 +4,13 @@ import { Avatar } from "@/components/ui";
 import { FleetMapCanvas } from "./fleet-map";
 import { SampleBadge } from "./sample-badge";
 import { vehicleStatusDotStyle } from "./map-icons";
-import { driverLabel, statusDetail, vehicleTitle } from "./status";
+import { driverLabel, mappedCrewVehicles, statusDetail, vehicleTitle } from "./status";
 import { useFleetLocations } from "./use-fleet-locations";
 
 /** Home “Where’s my crew” — staff with fleet access only. */
 export function CrewCard() {
   const { data, error, loading } = useFleetLocations();
-  const crew = (data?.vehicles ?? []).filter((v) => v.profile);
+  const crew = mappedCrewVehicles(data?.vehicles ?? []);
   return (
     <div className="card min-w-0 overflow-hidden" data-testid="fleet-crew-card">
       <div className="card-hd">

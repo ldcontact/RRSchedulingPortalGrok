@@ -71,4 +71,19 @@ describe("assembleLocations", () => {
     expect(hvac).toMatchObject({ projectType: "hvac", kind: "warranty", projectName: "RTU tune-up" });
     expect(hvac.assignees[0]?.full_name).toBe("Andre Williams");
   });
+  it("maps an invite_email assignment onto the invited person", () => {
+    const mappings = [
+      ...base.mappings,
+      { geotab_device_id: "gt-v5", label: "Ronan White Van", profile_id: null, invite_email: "ronan@squarepropertyservices.com" },
+    ];
+    const invitedPeople = [
+      ...people,
+      { id: "invite:ronan@squarepropertyservices.com", full_name: "Ronan O'Connor", color: "#0e7490", invited: true, email: "ronan@squarepropertyservices.com" },
+    ];
+    const res = assembleLocations({ ...base, mappings, people: invitedPeople, sample: true, scope: "all", viewerId: "u-admin" });
+    const ronan = res.vehicles.find((v) => v.id === "gt-v5")!;
+    expect(ronan.profile).toMatchObject({ full_name: "Ronan O'Connor", invited: true, email: "ronan@squarepropertyservices.com" });
+    expect(ronan.label).toBe("Ronan White Van");
+    expect(ronan.nearestVisit).toBeNull();
+  });
 });

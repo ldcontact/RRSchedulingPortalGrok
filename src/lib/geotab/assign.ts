@@ -1,4 +1,5 @@
 import type { TeamMember } from "@/lib/types";
+import type { FleetPerson } from "./types";
 
 /** Active signed-in members plus invited people who do not have a profile yet. */
 export function fleetAssignable(team: TeamMember[]): TeamMember[] {
@@ -30,4 +31,18 @@ export function selectedFleetAssigneeValue(
   if (mapping?.profile_id) return mapping.profile_id;
   if (mapping?.invite_email) return `invite:${mapping.invite_email}`;
   return profileId ?? "";
+}
+
+/** Profiles and outstanding invites that can appear as a mapped truck driver. */
+export function fleetPeopleFromTeam(team: TeamMember[]): FleetPerson[] {
+  return team
+    .filter((m) => m.status === "invited" || !!m.profile_id)
+    .map((m) => ({
+      id: m.profile_id ?? `invite:${m.email.toLowerCase()}`,
+      full_name: m.full_name,
+      color: m.color,
+      avatar_url: m.avatar_url ?? null,
+      invited: m.status === "invited",
+      email: m.email.toLowerCase(),
+    }));
 }
