@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DeleteConfirmDialog } from "@/components/delete-confirm";
 import { Icon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
 import { TZ } from "@/lib/time";
@@ -81,11 +82,13 @@ function Post({
 }) {
   const [editing, setEditing] = useState(false);
   const [replying, setReplying] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [draft, setDraft] = useState(displayMentions(row.body));
   const canEdit = canEditTeamUpdate({ userId: user.id, role: user.role, authorId: row.author_id, deleted: !!row.deleted_at });
   const canDelete = canDeleteTeamUpdate({ userId: user.id, role: user.role, canDeleteFlag: user.can_delete, authorId: row.author_id, deleted: !!row.deleted_at });
 
   return (
+    <>
     <article id={`update-${row.id}`} className={isReply ? "scroll-mt-20" : "scroll-mt-24"} data-testid={isReply ? "update-reply" : "update-post"}>
       <div className="flex items-start gap-2.5">
         <Avatar name={row.author_name} color={row.author_color ?? "#64748b"} src={row.author_avatar_url} />
@@ -125,10 +128,7 @@ function Post({
               )}
               {canEdit && <button type="button" className="text-muted hover:text-ink" onClick={() => setEditing(true)}>Edit</button>}
               {canDelete && (
-                <form action={deleteTeamUpdateAction}>
-                  <input type="hidden" name="id" value={row.id} />
-                  <button className="text-muted hover:text-red-700">Delete</button>
-                </form>
+                <button type="button" className="text-muted hover:text-red-700" onClick={() => setConfirmingDelete(true)} data-testid="delete-update">Delete</button>
               )}
             </div>
           )}
@@ -149,6 +149,18 @@ function Post({
         </div>
       </div>
     </article>
+    {confirmingDelete && (
+      <DeleteConfirmDialog
+        title="Delete this update?"
+        onCancel={() => setConfirmingDelete(false)}
+        action={async (form) => {
+          form.set("id", row.id);
+          await deleteTeamUpdateAction(form);
+          setConfirmingDelete(false);
+        }}
+      />
+    )}
+    </>
   );
 }
 
