@@ -19,7 +19,7 @@ type Row = {
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
-  team_update_assets?: Omit<TeamUpdateAsset, "url">[] | null;
+  team_update_assets?: TeamUpdateAsset[] | null;
   team_update_mentions?: { profile_id: string }[] | null;
 };
 

@@ -15,12 +15,9 @@ function when(iso: string) {
 export function NotificationBell({ unread, items }: { unread: number; items: TeamUpdateNotification[] }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; right: number }>({ top: 56, left: 8, right: 16 });
-  const [mounted, setMounted] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const router = useRouter();
-
-  useEffect(() => { setMounted(true); }, []);
 
   function toggle() {
     if (open) { setOpen(false); return; }
@@ -55,7 +52,7 @@ export function NotificationBell({ unread, items }: { unread: number; items: Tea
     router.refresh();
   }
 
-  const dropdown = open && mounted && (
+  const dropdown = open && (
     <div
       ref={panel}
       className="fixed z-[80] overflow-hidden rounded-xl border border-line bg-white shadow-xl"
@@ -104,7 +101,7 @@ export function NotificationBell({ unread, items }: { unread: number; items: Tea
           </span>
         )}
       </button>
-      {mounted ? createPortal(dropdown, document.body) : null}
+      {typeof document !== "undefined" ? createPortal(dropdown, document.body) : null}
     </div>
   );
 }

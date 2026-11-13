@@ -29,8 +29,6 @@ export async function deliverUpdateNotificationEmails(update: TeamUpdate, actorN
   void contextTitle;
 }
 
-export type UpdateMailTarget = { email: string; kind: TeamUpdate["mention_ids"] extends infer _ ? "mention" | "thread" | "owner" | "assignee" : never; link: string };
-
 export function scheduleUpdateMails(opts: {
   actorName: string;
   contextTitle: string;

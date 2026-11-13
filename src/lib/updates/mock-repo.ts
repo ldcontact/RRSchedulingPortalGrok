@@ -1,6 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { SessionUser } from "@/lib/types";
 import { loadSales, mutateSales } from "@/lib/sales/mock-store";
 import { mockProfiles, mockProjectAssigneeIds } from "@/lib/data/mock-repo";
 import { nestUpdateThreads } from "./thread";
@@ -56,7 +55,7 @@ function threadsFor(pred: (u: TeamUpdate) => boolean) {
   return nestUpdateThreads(rows);
 }
 
-function contextTitle(dealId: string | null, projectId: string | null): string {
+function contextTitle(dealId: string | null): string {
   if (dealId) {
     const d = loadSales().deals.find((x) => x.id === dealId);
     if (d?.title) return d.title;
@@ -165,7 +164,7 @@ export function mockUpdatesRepo(): UpdatesRepo {
         projectAssigneeIds: projectAssigneeIds(row.project_id),
         staffIds: users.map((u) => u.id),
       });
-      const title = contextTitle(row.deal_id, row.project_id);
+      const title = contextTitle(row.deal_id);
       mutateUpdates((db) => {
         db.updates.push(row);
         for (const r of recipients) {

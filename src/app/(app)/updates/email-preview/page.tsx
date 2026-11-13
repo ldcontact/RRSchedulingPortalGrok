@@ -12,7 +12,7 @@ export default async function UpdateEmailPreviewPage() {
   await requireMember();
   const repo = await getUpdatesRepo();
   const drafts = await repo.listEmailDrafts();
-  const draft = drafts[0] ?? buildUpdateEmail({
+  const fallback = buildUpdateEmail({
     actorName: "Ronan O'Connor",
     contextTitle: "Karla Gonzalez",
     kind: "mention",
@@ -20,9 +20,10 @@ export default async function UpdateEmailPreviewPage() {
     link: "/sales/deals/mon-11633298670#update-demo",
     postedAt: "2026-07-23T18:49:08.000Z",
   });
-  const html = "html" in draft ? draft.html : draft.html;
-  const to = "to" in draft && typeof draft.to === "string" ? draft.to : "aaron@retrofitrebates.com";
-  const subject = draft.subject;
+  const draft = drafts[0];
+  const html = draft?.html ?? fallback.html;
+  const to = draft?.to ?? "aaron@retrofitrebates.com";
+  const subject = draft?.subject ?? fallback.subject;
   return (
     <div className="mx-auto max-w-2xl" data-testid="update-email-preview">
       <h1 className="mb-1 text-xl font-semibold">Notification email draft</h1>
