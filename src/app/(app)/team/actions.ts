@@ -220,22 +220,25 @@ export async function sendSelfTestEmail() {
     back(`Dev mock mode: test email to ${me.email} simulated (not sent).`);
   }
   if (!emailConfigured()) back(emailMissingMessage(), "error");
+  // redirect() throws NEXT_REDIRECT; calling back() inside this try would show that as the error banner.
+  let result: Awaited<ReturnType<typeof sendEmail>> | undefined;
   try {
-    const result = await sendEmail({
+    result = await sendEmail({
       to: me.email,
       subject: "RR Scheduler test email",
       text: "This is a test from RR Scheduler. The portal can now send email from this mailbox.",
     });
-    if (result.skipped) back(emailMissingMessage(), "error");
-    const id = result.messageId ? ` Message ID: ${result.messageId}` : "";
-    const rejected = result.rejected.length ? ` Not accepted: ${result.rejected.join(", ")}.` : "";
-    if (result.rejected.includes(me.email) || (result.rejected.length && !result.accepted.length)) {
-      back(`The mail server did not accept ${me.email}.${rejected}${id}`, "error");
-    }
-    back(`Test email sent to ${me.email}.${id}${rejected}`);
   } catch (e) {
-    back((e as Error).message, "error");
+    return back((e as Error).message, "error");
   }
+  if (!result) return back("The test email could not be sent.", "error");
+  if (result.skipped) back(emailMissingMessage(), "error");
+  const id = result.messageId ? ` Message ID: ${result.messageId}` : "";
+  const rejected = result.rejected.length ? ` Not accepted: ${result.rejected.join(", ")}.` : "";
+  if (result.rejected.includes(me.email) || (result.rejected.length && !result.accepted.length)) {
+    back(`The mail server did not accept ${me.email}.${rejected}${id}`, "error");
+  }
+  back(`Test email sent to ${me.email}.${id}${rejected}`);
 }
 
 
