@@ -33,7 +33,7 @@ export async function generateMetadata({ params }: PageProps<"/service-requests/
 const EV_ICON: Record<SREvent["kind"], string> = {
   created: "plus", note: "note", status: "flag", linked: "briefcase", unlinked: "x", assigned: "user", billable: "dollar",
   scheduled: "calendar", converted: "briefcase", resolved: "check", closed: "check", reopened: "undo",
-  emailed: "mail",
+  emailed: "mail", price: "dollar",
 };
 
 export default async function ServiceRequestPage({ params, searchParams }: PageProps<"/service-requests/[id]">) {

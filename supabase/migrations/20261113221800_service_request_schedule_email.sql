@@ -1,6 +1,8 @@
 -- Log staff-sent schedule-notification emails on a ticket's history.
 -- Nothing auto-sends; kind 'emailed' is written only after a staff member
 -- reviews the compose dialog on the ticket page and clicks Send.
+-- The kind check also allows 'price' so this migration is safe before or after
+-- the service-request pricing migration (idempotent drop/recreate).
 
 do $$
 declare
@@ -25,5 +27,5 @@ alter table public.service_request_events
   check (kind in (
     'created', 'note', 'status', 'linked', 'unlinked', 'assigned',
     'billable', 'scheduled', 'converted', 'resolved', 'closed', 'reopened',
-    'emailed'
+    'emailed', 'price'
   ));
