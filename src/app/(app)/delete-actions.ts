@@ -61,9 +61,9 @@ export async function deleteServiceRequestAction(id: string) {
   ok("/service-requests", "Service request deleted.");
 }
 
-export async function setDeleteAccess(profileId: string, access: boolean) {
+export async function setDeleteAccess(email: string, access: boolean) {
   await requireRole("admin");
-  if (!profileId) return;
-  await (await getRepo()).setDeleteAccess(profileId, access);
+  if (!email) return;
+  await (await getRepo()).setDeleteAccess(email, access);
   revalidatePath("/team");
 }

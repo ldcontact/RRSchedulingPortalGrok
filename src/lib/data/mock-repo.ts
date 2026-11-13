@@ -21,6 +21,12 @@ import { hasFleetAccess } from "@/lib/geotab/access";
 import { customerDeleteBlockers, hasDeleteAccess } from "@/lib/delete-access";
 import { canUpdateTaskStatus, canViewTask, compareTasksByDue, completedAtFor, isMyOpenTask, matchesTaskFilters, parseTaskPriority, parseTaskStatus, taskCounts } from "@/lib/tasks";
 import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
+import { TEAM_SMS_PREF_DEFAULTS, normalizeTeamSmsPrefs, prefsFromPatch } from "@/lib/team-sms/prefs";
+import { entityLink, formatMorningSummary, formatSingleText, siteBaseUrl } from "@/lib/team-sms/copy";
+import { notifyServiceRequestAssigned, notifyTaskAssigned, notifyVisitAssigneesChanged, notifyVisitCreated, notifyVisitUpdated } from "@/lib/team-sms/notify";
+import { toE164 } from "@/lib/team-sms/phone";
+import type { TeamSmsStore } from "@/lib/team-sms/store";
+import type { TeamSmsEventRow, TeamSmsMember, TeamSmsOutboxRow } from "@/lib/team-sms/types";
 
 /*
  * DEV MOCK MODE data layer. Persists to .mock-db.json in the project root
@@ -37,7 +43,7 @@ type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[] };
 type Tasks = { tasks: Task[]; task_comments: TaskComment[] };
 type MockProfile = Profile & { deleted_at?: string | null };
 type AuditRow = { id: string; actor_id: string; action: string; target_email: string | null; target_profile_id: string | null; detail: Record<string, unknown>; created_at: string };
-type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[]; fleet_vehicles: FleetVehicleRow[] } & P2 & SR & Tasks;
+type DB = { profiles: MockProfile[]; invites: Invite[]; customers: Customer[]; contacts: Contact[]; admin_audit: AuditRow[]; fleet_vehicles: FleetVehicleRow[]; team_sms_outbox: TeamSmsOutboxRow[]; team_sms_events: TeamSmsEventRow[] } & P2 & SR & Tasks;
 export const MOCK_UPLOADS = join(process.cwd(), ".mock-uploads");
 const FILE = join(process.cwd(), ".mock-db.json");
 
@@ -71,7 +77,7 @@ const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
 
 function seed(): DB {
   const p = (id: string, email: string, full_name: string, role: Profile["role"], title: string, phone: string, color: string, avatar?: Partial<Pick<Profile, "avatar_source" | "avatar_path" | "google_avatar_url">>): MockProfile =>
-    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null, deleted_at: null, fleet_access: false, can_delete: false });
+    ({ id, email, full_name, role, title, phone, color, active: true, avatar_source: avatar?.avatar_source ?? "none", avatar_path: avatar?.avatar_path ?? null, google_avatar_url: avatar?.google_avatar_url ?? null, deleted_at: null, fleet_access: false, can_delete: false, ...TEAM_SMS_PREF_DEFAULTS });
   const profiles = [
     p("u-admin", "luke@retrofitrebates.com", "Luke Dlugosz", "admin", "Owner / President", "(847) 555-0100", "#0f766e", { avatar_source: "google", google_avatar_url: "/api/mock-photo/seed/avatar/Luke%20Dlugosz.svg" }),
     p("u-manager", "maria.santos@gmail.com", "Maria Santos", "manager", "Operations Manager", "(847) 555-0101", "#7c3aed", { avatar_source: "upload", avatar_path: "seed/avatar/Maria%20Santos.svg" }),
@@ -90,11 +96,16 @@ function seed(): DB {
     p("u-matthew", "matthew@retrofitrebates.com", "Matthew Dlugosz", "sales", "Sales Representative", "", "#16a34a", { avatar_source: "google", google_avatar_url: "/api/mock-photo/seed/avatar/Matthew%20Dlugosz.svg" }),
     p("u-stranger", "someone.else@gmail.com", "Someone Else", null, "", "", "#64748b"),
   ];
+  const mariaPre = profiles.find((x) => x.id === "u-manager");
+  if (mariaPre) mariaPre.fleet_access = true; // operations manager — used for manager fleet demos
   const invites: Invite[] = profiles.filter((x) => x.role).map((x) => ({
     email: x.email, role: x.role!, full_name: x.full_name, phone: x.phone, title: x.title, color: x.color,
     avatar_source: x.avatar_source, avatar_path: x.avatar_path, invited_at: ago(40), accepted_at: ago(39),
+    fleet_access: !!x.fleet_access, can_delete: !!x.can_delete,
+    sms_notify_assignment: false, sms_notify_same_day: false, sms_notify_morning: false,
   }));
-  invites.push({ email: "sam.ortiz@gmail.com", role: "tech", full_name: "Sam Ortiz", phone: "(630) 555-0177", title: "Apprentice Electrician", color: "#0891b2", avatar_source: "none", avatar_path: null, invited_at: ago(1), accepted_at: null });
+  invites.push({ email: "sam.ortiz@gmail.com", role: "tech", full_name: "Sam Ortiz", phone: "(630) 555-0177", title: "Apprentice Electrician", color: "#0891b2", avatar_source: "none", avatar_path: null, invited_at: ago(1), accepted_at: null, fleet_access: false, can_delete: false, sms_notify_assignment: true, sms_notify_same_day: false, sms_notify_morning: false });
+  invites.push({ email: "kevin.bradford@example.com", role: "manager", full_name: "Kevin Bradford", phone: "(847) 555-0210", title: "Project Manager", color: "#7c3aed", avatar_source: "none", avatar_path: null, invited_at: ago(1), accepted_at: null, fleet_access: false, can_delete: false, sms_notify_assignment: false, sms_notify_same_day: false, sms_notify_morning: false });
   const c = (id: string, name: string, phone: string, email: string, address: string, city: string, zip: string, tags: string[], notes: string, days: number): Customer =>
     ({ id, name, phone, email, address, city, state: "IL", zip, tags, notes, created_at: ago(days), updated_at: ago(days), ...emptyGeocode() });
   const customers = [
@@ -136,11 +147,79 @@ function seed(): DB {
   ];
   const maria = profiles.find((x) => x.id === "u-manager");
   if (maria) maria.fleet_access = true; // operations manager — used for manager fleet demos
-  const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m }));
-  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [], task_comments: [] } as DB;
+  const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m, invite_email: null }));
+  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [], task_comments: [], team_sms_outbox: [], team_sms_events: [] } as DB;
   seedServiceRequests(db);
   seedTasks(db);
+  seedTeamTexting(db);
   return db;
+}
+
+function seedTeamTexting(db: DB) {
+  const carlos = db.profiles.find((p) => p.id === "u-tech1");
+  if (carlos) {
+    carlos.sms_notify_assignment = true;
+    carlos.sms_notify_same_day = true;
+    carlos.sms_notify_morning = true;
+  }
+  const aaron = db.profiles.find((p) => p.id === "u-aaron");
+  if (aaron) aaron.sms_notify_assignment = true; // no phone — Manage panel should flag this
+  const jake = db.profiles.find((p) => p.id === "u-tech2");
+  if (jake) {
+    jake.sms_notify_assignment = false;
+    jake.sms_notify_same_day = false;
+    jake.sms_notify_morning = false;
+    jake.sms_stopped_at = "2026-11-12T18:14:00.000Z";
+  }
+  const now = new Date().toISOString();
+  // Sample assignment uses a real seeded visit (j1). /jobs/:id is the visit detail route.
+  const visitLink = entityLink("visit", "j1");
+  const morningLink = `${siteBaseUrl()}/schedule`;
+  const assignmentBody = formatSingleText({
+    kind: "assignment",
+    entityType: "visit",
+    summary: "New visit Tue 9:00 AM, 3642 S 52nd Ct, Cicero",
+    link: visitLink,
+  });
+  const morningBody = formatMorningSummary([
+    { startsAt: "2026-11-10T15:00:00.000Z", address: "3642 South 52nd Court", city: "Cicero" },
+    { startsAt: "2026-11-10T19:00:00.000Z", address: "219 Oakton St", city: "Des Plaines" },
+  ]);
+  db.team_sms_outbox = [
+    {
+      id: "sms-held-carlos-visit",
+      profile_id: "u-tech1",
+      to_phone: "+18475550102",
+      kind: "assignment",
+      body: assignmentBody,
+      link: visitLink,
+      payload: { events: 1 },
+      status: "held",
+      send_after: now,
+      sent_at: null,
+      provider: null,
+      provider_id: null,
+      error: "TEAM_SMS_ENABLED is off. Message held in the outbox.",
+      created_at: now,
+    },
+    {
+      id: "sms-held-carlos-morning",
+      profile_id: "u-tech1",
+      to_phone: "+18475550102",
+      kind: "morning",
+      body: morningBody,
+      link: morningLink,
+      payload: { morning_for: "preview" },
+      status: "held",
+      send_after: now,
+      sent_at: null,
+      provider: null,
+      provider_id: null,
+      error: "TEAM_SMS_ENABLED is off. Message held in the outbox.",
+      created_at: now,
+    },
+  ];
+  db.team_sms_events = [];
 }
 
 /** Sample projects/visits placed around today so the schedule always has something to show. */
@@ -472,7 +551,10 @@ function load(): DB {
     save(db);
   }
   let fleetTouched = false;
-  if (!db.fleet_vehicles) { db.fleet_vehicles = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m })); fleetTouched = true; }
+  if (!db.fleet_vehicles) { db.fleet_vehicles = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m, invite_email: null })); fleetTouched = true; }
+  for (const row of db.fleet_vehicles) {
+    if (row.invite_email === undefined) { row.invite_email = null; fleetTouched = true; }
+  }
   for (const prof of db.profiles) {
     if (prof.fleet_access === undefined) {
       prof.fleet_access = prof.id === "u-manager";
@@ -482,7 +564,22 @@ function load(): DB {
       prof.can_delete = false;
       fleetTouched = true;
     }
+    if (prof.sms_notify_assignment === undefined) {
+      Object.assign(prof, normalizeTeamSmsPrefs(prof));
+      fleetTouched = true;
+    }
   }
+  for (const inv of db.invites) {
+    if (inv.sms_notify_assignment === undefined) {
+      inv.sms_notify_assignment = false;
+      inv.sms_notify_same_day = false;
+      inv.sms_notify_morning = false;
+      fleetTouched = true;
+    }
+  }
+  if (!db.team_sms_outbox) { db.team_sms_outbox = []; fleetTouched = true; }
+  if (!db.team_sms_events) { db.team_sms_events = []; fleetTouched = true; }
+  if (!db.team_sms_outbox.length) { seedTeamTexting(db); fleetTouched = true; }
   if (fleetTouched) save(db);
   let geoTouched = false;
   const blankGeo = () => { geoTouched = true; return emptyGeocode(); };
@@ -770,21 +867,35 @@ export const mockRepo: Repo = {
       },
     };
   },
-  async getProfile(id) { const row = load().profiles.find((p) => p.id === id); return row ? { ...row, fleet_access: !!row.fleet_access, can_delete: !!row.can_delete } : null; },
+  async getProfile(id) { const row = load().profiles.find((p) => p.id === id); return row ? { ...row, fleet_access: !!row.fleet_access, can_delete: !!row.can_delete, ...normalizeTeamSmsPrefs(row) } : null; },
   async upsertInvite(input) {
     mutate((db) => {
       const email = input.email.toLowerCase();
       const existing = db.invites.find((i) => i.email === email);
-      if (existing) Object.assign(existing, input, { email, avatar_source: input.avatar_source ?? existing.avatar_source, avatar_path: input.avatar_path !== undefined ? input.avatar_path : existing.avatar_path });
-      else db.invites.push({ ...input, email, avatar_source: input.avatar_source ?? "none", avatar_path: input.avatar_path ?? null, invited_at: now(), accepted_at: null });
+      const sms = {
+        sms_notify_assignment: input.sms_notify_assignment ?? existing?.sms_notify_assignment ?? false,
+        sms_notify_same_day: input.sms_notify_same_day ?? existing?.sms_notify_same_day ?? false,
+        sms_notify_morning: input.sms_notify_morning ?? existing?.sms_notify_morning ?? false,
+      };
+      if (existing) Object.assign(existing, input, {
+        email,
+        avatar_source: input.avatar_source ?? existing.avatar_source,
+        avatar_path: input.avatar_path !== undefined ? input.avatar_path : existing.avatar_path,
+        fleet_access: input.fleet_access ?? existing.fleet_access,
+        can_delete: input.can_delete ?? existing.can_delete,
+        ...sms,
+      });
+      else db.invites.push({ ...input, email, avatar_source: input.avatar_source ?? "none", avatar_path: input.avatar_path ?? null, invited_at: now(), accepted_at: null, fleet_access: input.fleet_access ?? false, can_delete: input.can_delete ?? false, ...sms });
       const prof = db.profiles.find((p) => p.email === email); // mirrors the sync_invite_to_profile trigger
       if (prof) {
+        const inv = db.invites.find((i) => i.email === email)!;
         Object.assign(prof, {
           role: input.role, full_name: input.full_name || prof.full_name, title: input.title, phone: input.phone, color: input.color,
           ...(input.avatar_source !== undefined ? { avatar_source: input.avatar_source } : {}),
           ...(input.avatar_path !== undefined ? { avatar_path: input.avatar_path } : {}),
+          fleet_access: inv.fleet_access, can_delete: inv.can_delete,
         });
-        const inv = db.invites.find((i) => i.email === email)!; inv.accepted_at ??= now();
+        inv.accepted_at ??= now();
       }
     });
   },
@@ -1001,18 +1112,35 @@ export const mockRepo: Repo = {
   },
   async getJob(id) { const w = await who(); const db = load(); const j = db.jobs.find((x) => x.id === id); return j && w.canJob(id) ? viewJob(db, j) : null; },
   async createJob(input, assignees) {
-    requireStaffMock(await who());
-    return mutate((db) => {
-      const id = randomUUID();
+    const w = await who();
+    requireStaffMock(w);
+    const id = mutate((db) => {
+      const jobId = randomUUID();
       if (input.service_request_id && (input.kind ?? "install") === "install") throw new Error('new row for relation "jobs" violates check constraint "jobs_ticket_visit_kind"');
-      db.jobs.push({ ...input, kind: input.kind ?? "install", service_request_id: input.service_request_id ?? null, id, status: "scheduled", started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null });
-      for (const pid of new Set(assignees)) db.assignments.push({ job_id: id, profile_id: pid });
+      db.jobs.push({ ...input, kind: input.kind ?? "install", service_request_id: input.service_request_id ?? null, id: jobId, status: "scheduled", started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null });
+      for (const pid of new Set(assignees)) db.assignments.push({ job_id: jobId, profile_id: pid });
       syncProject(db, input.project_id);
-      return id;
+      return jobId;
     });
+    const db = load();
+    const j = db.jobs.find((x) => x.id === id);
+    if (j) {
+      const view = viewJob(db, j);
+      const c = db.customers.find((x) => x.id === view.customer_id);
+      await notifyVisitCreated({ store: mockTeamSmsStore(), actorId: w.uid }, { id, startsAt: view.starts_at, status: view.status, address: c?.address, city: c?.city, assigneeIds: assignees }, assignees);
+    }
+    return id;
   },
   async updateJob(id, patch) {
     const w = await who();
+    const before = (() => {
+      const db = load();
+      const j = db.jobs.find((x) => x.id === id);
+      if (!j) return null;
+      const view = viewJob(db, j);
+      const c = db.customers.find((x) => x.id === view.customer_id);
+      return { id, startsAt: view.starts_at, status: view.status, address: c?.address, city: c?.city, assigneeIds: view.assignees.map((a) => a.id) };
+    })();
     mutate((db) => {
       const j = db.jobs.find((x) => x.id === id);
       if (!j || !w.canJob(id)) throw new Error("Job not found");
@@ -1042,10 +1170,29 @@ export const mockRepo: Repo = {
       syncProject(db, j.project_id);
       syncServiceRequest(db, j, prev, w.uid);
     });
+    if (before) {
+      const db = load();
+      const j = db.jobs.find((x) => x.id === id);
+      if (j) {
+        const view = viewJob(db, j);
+        const c = db.customers.find((x) => x.id === view.customer_id);
+        await notifyVisitUpdated({ store: mockTeamSmsStore(), actorId: w.uid }, before, { id, startsAt: view.starts_at, status: view.status, address: c?.address, city: c?.city, assigneeIds: view.assignees.map((a) => a.id) });
+      }
+    }
   },
   async setAssignees(jobId, ids) {
-    requireStaffMock(await who());
+    const w = await who();
+    requireStaffMock(w);
+    const db0 = load();
+    const previousIds = db0.assignments.filter((a) => a.job_id === jobId).map((a) => a.profile_id);
+    const job = db0.jobs.find((x) => x.id === jobId);
     mutate((db) => { db.assignments = db.assignments.filter((a) => a.job_id !== jobId); for (const pid of new Set(ids)) db.assignments.push({ job_id: jobId, profile_id: pid }); });
+    if (job) {
+      const db = load();
+      const view = viewJob(db, job);
+      const c = db.customers.find((x) => x.id === view.customer_id);
+      await notifyVisitAssigneesChanged({ store: mockTeamSmsStore(), actorId: w.uid }, { id: jobId, startsAt: view.starts_at, status: view.status, address: c?.address, city: c?.city, assigneeIds: ids }, previousIds, ids);
+    }
   },
   async listPhotos(f) {
     const w = await who(); const db = load();
@@ -1286,22 +1433,30 @@ export const mockRepo: Repo = {
   async createServiceRequest(input) {
     const w = await who(); requireStaffMock(w);
     if (!input.summary.trim()) throw new Error("summary is required");
-    return mutate((db) => {
+    const sr = mutate((db) => {
       const number = Math.max(1000, ...db.service_requests.map((x) => x.number)) + 1;
-      const sr: ServiceRequest = { ...input, id: randomUUID(), number, status: "new", billable: false, assignee_id: input.assignee_id ?? null, converted_project_id: null,
+      const row: ServiceRequest = { ...input, id: randomUUID(), number, status: "new", billable: false, assignee_id: input.assignee_id ?? null, converted_project_id: null,
         resolved_at: null, resolved_by: null, resolved_job_id: null, created_by: w.uid, created_at: now(), updated_at: now(), ...emptyGeocode() };
-      db.service_requests.push(sr);
-      db.sr_events.push({ id: randomUUID(), request_id: sr.id, kind: "created", body: `Logged from ${input.channel === "email" ? "an email" : input.channel === "call" ? "a phone call" : "another channel"}.`, actor_id: w.uid, created_at: now() });
-      return sr;
+      db.service_requests.push(row);
+      db.sr_events.push({ id: randomUUID(), request_id: row.id, kind: "created", body: `Logged from ${input.channel === "email" ? "an email" : input.channel === "call" ? "a phone call" : "another channel"}.`, actor_id: w.uid, created_at: now() });
+      return row;
     });
+    await notifyServiceRequestAssigned({ store: mockTeamSmsStore(), actorId: w.uid }, { id: sr.id, assigneeId: sr.assignee_id, number: sr.number, summary: sr.summary });
+    return sr;
   },
   async updateServiceRequest(id, patch) {
-    requireStaffMock(await who());
+    const w = await who();
+    requireStaffMock(w);
+    const previous = load().service_requests.find((x) => x.id === id);
     mutate((db) => {
       const sr = db.service_requests.find((x) => x.id === id);
       if (!sr) throw new Error("Service request not found or not allowed");
       Object.assign(sr, patch, { updated_at: now() });
     });
+    const sr = load().service_requests.find((x) => x.id === id);
+    if (sr) {
+      await notifyServiceRequestAssigned({ store: mockTeamSmsStore(), actorId: w.uid }, { id: sr.id, assigneeId: sr.assignee_id, previousAssigneeId: previous?.assignee_id, number: sr.number, summary: sr.summary });
+    }
   },
   async listServiceRequestEvents(requestId) {
     const w = await who(); if (!w.staff) return [];
@@ -1342,27 +1497,48 @@ export const mockRepo: Repo = {
       const existing = db.fleet_vehicles.find((r) => r.geotab_device_id === deviceId);
       if (existing) {
         if (patch.label !== undefined) existing.label = patch.label;
-        if (patch.profile_id !== undefined) existing.profile_id = patch.profile_id;
+        if (patch.profile_id !== undefined || patch.invite_email !== undefined) {
+          existing.profile_id = patch.profile_id ?? null;
+          existing.invite_email = patch.invite_email ?? null;
+        }
       } else {
-        db.fleet_vehicles.push({ geotab_device_id: deviceId, label: patch.label ?? null, profile_id: patch.profile_id ?? null });
+        db.fleet_vehicles.push({ geotab_device_id: deviceId, label: patch.label ?? null, profile_id: patch.profile_id ?? null, invite_email: patch.invite_email ?? null });
       }
     });
   },
-  async setFleetAccess(profileId, access) {
+  async setFleetAccess(email, access) {
     const w = await who();
     if (w.role !== "admin") throw new Error("permission denied (mock RLS)");
     mutate((db) => {
-      const prof = db.profiles.find((x) => x.id === profileId);
+      const e = email.toLowerCase();
+      const inv = db.invites.find((x) => x.email === e);
+      if (inv) inv.fleet_access = access;
+      const prof = db.profiles.find((x) => x.email === e);
       if (prof && !prof.deleted_at) prof.fleet_access = access;
     });
   },
-  async setDeleteAccess(profileId, access) {
+  async setDeleteAccess(email, access) {
     const w = await who();
     if (w.role !== "admin") throw new Error("permission denied (mock RLS)");
     mutate((db) => {
-      const prof = db.profiles.find((x) => x.id === profileId);
+      const e = email.toLowerCase();
+      const inv = db.invites.find((x) => x.email === e);
+      if (inv && inv.role === "manager") inv.can_delete = access;
+      const prof = db.profiles.find((x) => x.email === e);
       if (prof && !prof.deleted_at && prof.role === "manager") prof.can_delete = access;
     });
+  },
+  async setTeamSmsPrefs(email, patch) {
+    mutate((db) => {
+      const e = email.toLowerCase();
+      const inv = db.invites.find((i) => i.email === e);
+      if (inv) Object.assign(inv, patch);
+      const prof = db.profiles.find((p) => p.email === e && !p.deleted_at);
+      if (prof) Object.assign(prof, prefsFromPatch(normalizeTeamSmsPrefs(prof), patch));
+    });
+  },
+  async listTeamSmsOutbox() {
+    return [...(load().team_sms_outbox ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
   },
   async countCustomerDependents(customerId) {
     const db = load();
@@ -1464,8 +1640,8 @@ export const mockRepo: Repo = {
     if (!w.uid || !w.role) throw new Error("permission denied (mock RLS)");
     const title = input.title.trim();
     if (!title) throw new Error("A title is required.");
-    return mutate((db) => {
-      const row: Task = {
+    const row = mutate((db) => {
+      const created: Task = {
         id: `t-${randomUUID().slice(0, 8)}`,
         title,
         description: input.description?.trim() ? input.description.trim() : null,
@@ -1482,9 +1658,11 @@ export const mockRepo: Repo = {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      db.tasks.push(row);
-      return row;
+      db.tasks.push(created);
+      return created;
     });
+    await notifyTaskAssigned({ store: mockTeamSmsStore(), actorId: w.uid }, { id: row.id, title: row.title, due: row.due_date, addedIds: row.assignee_ids });
+    return row;
   },
   async updateTask(id, patch) {
     const w = await who();
@@ -1524,6 +1702,14 @@ export const mockRepo: Repo = {
       }
       t.updated_at = new Date().toISOString();
     });
+    if (patch.assignee_ids) {
+      const prev = new Set(existing.assignee_ids);
+      const added = patch.assignee_ids.filter((id) => !prev.has(id));
+      const t = load().tasks.find((x) => x.id === id);
+      if (t && added.length) {
+        await notifyTaskAssigned({ store: mockTeamSmsStore(), actorId: w.uid }, { id: t.id, title: t.title, due: t.due_date, addedIds: added });
+      }
+    }
   },
   async deleteTask(id) {
     requireDeleteMock(await who());
@@ -1574,4 +1760,73 @@ function mockPage<T>(all: T[], page: number, size = PAGE_SIZE) {
   const last = Math.max(1, Math.ceil(all.length / n));
   const p = Math.min(Math.max(1, Math.floor(page) || 1), last);
   return { items: all.slice((p - 1) * n, p * n), total: all.length, page: p, size: n };
+}
+
+
+function toMember(p: MockProfile): TeamSmsMember {
+  return {
+    profile_id: p.id,
+    phone: p.phone,
+    role: p.role,
+    active: !!p.active && !p.deleted_at,
+    ...normalizeTeamSmsPrefs(p),
+  };
+}
+
+export function mockTeamSmsStore(): TeamSmsStore {
+  return {
+    async getMember(profileId) {
+      const p = load().profiles.find((x) => x.id === profileId && !x.deleted_at);
+      return p ? toMember(p) : null;
+    },
+    async findMemberByPhone(e164) {
+      const p = load().profiles.find((x) => !x.deleted_at && toE164(x.phone) === e164);
+      return p ? toMember(p) : null;
+    },
+    async listMorningOptInMembers() {
+      return load().profiles.filter((p) => !p.deleted_at && p.active && p.role && p.sms_notify_morning && !p.sms_stopped_at).map(toMember);
+    },
+    async setPrefs(profileId, prefs) {
+      mutate((db) => {
+        const p = db.profiles.find((x) => x.id === profileId);
+        if (p) Object.assign(p, prefs);
+      });
+    },
+    async findOpenBatch(profileId, nowIso) {
+      return load().team_sms_outbox.find((r) => r.profile_id === profileId && (r.status === "queued" || r.status === "held") && r.kind !== "morning" && r.send_after > nowIso) ?? null;
+    },
+    async insertEvent(row) { mutate((db) => { db.team_sms_events.push(row); }); },
+    async insertOutbox(row) { mutate((db) => { db.team_sms_outbox.push(row); }); },
+    async updateOutbox(id, patch) {
+      mutate((db) => {
+        const row = db.team_sms_outbox.find((r) => r.id === id);
+        if (row) Object.assign(row, patch);
+      });
+    },
+    async listDueOutbox(nowIso) {
+      return load().team_sms_outbox.filter((r) => (r.status === "queued" || r.status === "held") && r.send_after <= nowIso);
+    },
+    async listEventsForOutbox(outboxId) {
+      return load().team_sms_events.filter((e) => e.outbox_id === outboxId);
+    },
+    async hasMorning(profileId, day) {
+      return load().team_sms_outbox.some((r) => r.profile_id === profileId && r.kind === "morning" && r.payload.morning_for === day);
+    },
+  };
+}
+
+export function mockTodayVisitLines(): { profileId: string; startsAt: string; address?: string | null; city?: string | null }[] {
+  const db = load();
+  const today = todayKey();
+  const lines: { profileId: string; startsAt: string; address?: string | null; city?: string | null }[] = [];
+  for (const j of db.jobs) {
+    if (j.status === "cancelled") continue;
+    if (dayKey(j.starts_at) !== today) continue;
+    const view = viewJob(db, j);
+    const c = db.customers.find((x) => x.id === view.customer_id);
+    for (const a of view.assignees) {
+      lines.push({ profileId: a.id, startsAt: view.starts_at, address: c?.address, city: c?.city });
+    }
+  }
+  return lines;
 }

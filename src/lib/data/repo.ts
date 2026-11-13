@@ -104,9 +104,11 @@ export interface Repo {
 
   // ---- fleet (Geotab). Reads are scoped by RLS / mock who(); writes are admin-only.
   listFleetVehicles(): Promise<FleetVehicleRow[]>;
-  setFleetVehicleMapping(deviceId: string, patch: { label?: string | null; profile_id?: string | null }): Promise<void>;
-  setFleetAccess(profileId: string, access: boolean): Promise<void>;
-  setDeleteAccess(profileId: string, access: boolean): Promise<void>;
+  setFleetVehicleMapping(deviceId: string, patch: { label?: string | null; profile_id?: string | null; invite_email?: string | null }): Promise<void>;
+  setFleetAccess(email: string, access: boolean): Promise<void>;
+  setDeleteAccess(email: string, access: boolean): Promise<void>;
+  setTeamSmsPrefs(email: string, patch: { sms_notify_assignment?: boolean; sms_notify_same_day?: boolean; sms_notify_morning?: boolean }): Promise<void>;
+  listTeamSmsOutbox(): Promise<import("@/lib/team-sms/types").TeamSmsOutboxRow[]>;
   countCustomerDependents(customerId: string): Promise<{ projects: number; serviceRequests: number }>;
   deleteCustomer(id: string): Promise<void>;
   deleteProject(id: string): Promise<void>;
@@ -152,7 +154,7 @@ export async function getRepo(): Promise<Repo> {
 /** Merge signed-up profiles with the admin-managed invite list into one team view. */
 export function mergeTeam(
   profiles: Profile[],
-  invites: { email: string; role: TeamMember["role"]; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: TeamMember["avatar_source"]; avatar_path?: string | null; invited_at: string; accepted_at: string | null }[],
+  invites: { email: string; role: TeamMember["role"]; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: TeamMember["avatar_source"]; avatar_path?: string | null; invited_at: string; accepted_at: string | null; fleet_access?: boolean; can_delete?: boolean; sms_notify_assignment?: boolean; sms_notify_same_day?: boolean; sms_notify_morning?: boolean }[],
 ): TeamMember[] {
   const byEmail = new Map<string, TeamMember>();
   for (const p of profiles) {
@@ -164,6 +166,10 @@ export function mergeTeam(
       google_avatar_url: p.google_avatar_url ?? null, avatar_url: p.avatar_url ?? null,
       fleet_access: !!p.fleet_access,
       can_delete: !!p.can_delete,
+      sms_notify_assignment: !!p.sms_notify_assignment,
+      sms_notify_same_day: !!p.sms_notify_same_day,
+      sms_notify_morning: !!p.sms_notify_morning,
+      sms_stopped_at: p.sms_stopped_at ?? null,
     });
   }
   for (const i of invites) {
@@ -182,8 +188,12 @@ export function mergeTeam(
       profile_id: null, status: "invited", invited_at: i.invited_at,
       avatar_source: i.avatar_source ?? "none", avatar_path: i.avatar_path ?? null,
       google_avatar_url: null, avatar_url: null,
-      fleet_access: false,
-      can_delete: false,
+      fleet_access: !!i.fleet_access,
+      can_delete: !!i.can_delete,
+      sms_notify_assignment: !!i.sms_notify_assignment,
+      sms_notify_same_day: !!i.sms_notify_same_day,
+      sms_notify_morning: !!i.sms_notify_morning,
+      sms_stopped_at: null,
     });
   }
   const order = { admin: 0, manager: 1, sales: 2, tech: 3 } as const;

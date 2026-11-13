@@ -32,3 +32,14 @@ export async function manageOwnAvatar(fd: FormData): Promise<{ error?: string; o
     return { error: (e as Error).message };
   }
 }
+
+
+export async function setOwnTeamSmsPrefAction(fd: FormData) {
+  const me = await requireMember();
+  const flag = String(fd.get("flag") ?? "").trim();
+  const on = String(fd.get("value") ?? "") === "on";
+  if (!["sms_notify_assignment", "sms_notify_same_day", "sms_notify_morning"].includes(flag)) return;
+  await (await getRepo()).setTeamSmsPrefs(me.email, { [flag]: on });
+  revalidatePath("/account");
+  revalidatePath("/team");
+}

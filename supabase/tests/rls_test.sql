@@ -870,3 +870,83 @@ select pg_temp.check('authenticated has table grants on team_updates',
   has_table_privilege('authenticated', 'public.team_updates', 'select'));
 select pg_temp.check('anon has no access to team_updates',
   not has_table_privilege('anon', 'public.team_updates', 'select'));
+
+-- ---- invite permission toggles carry onto the profile at first sign-in
+select pg_temp.as_user(null);
+insert into public.invites (email, role, full_name, fleet_access, can_delete)
+  values ('pending.manager@example.com','manager','Pending Manager', true, true);
+insert into auth.users (id, email)
+  values ('00000000-0000-0000-0000-0000000000f1','pending.manager@example.com');
+select pg_temp.check('unconfirmed manager invite gets no role',
+  (select role from public.profiles where email='pending.manager@example.com') is null);
+select pg_temp.check('unconfirmed manager invite does not get fleet_access',
+  (select fleet_access from public.profiles where email='pending.manager@example.com') = false);
+select pg_temp.check('unconfirmed manager invite does not get can_delete',
+  (select can_delete from public.profiles where email='pending.manager@example.com') = false);
+update auth.users set email_confirmed_at = now() where email='pending.manager@example.com';
+select pg_temp.check('confirm copies manager role from invite',
+  (select role::text from public.profiles where email='pending.manager@example.com') = 'manager');
+select pg_temp.check('confirm copies fleet_access from invite',
+  (select fleet_access from public.profiles where email='pending.manager@example.com') = true);
+select pg_temp.check('confirm copies can_delete from invite',
+  (select can_delete from public.profiles where email='pending.manager@example.com') = true);
+
+-- Already-confirmed create (Google sign-in) copies flags in handle_new_user
+insert into public.invites (email, role, full_name, fleet_access, can_delete)
+  values ('ready.manager@example.com','manager','Ready Manager', true, false);
+insert into auth.users (id, email, email_confirmed_at)
+  values ('00000000-0000-0000-0000-0000000000f2','ready.manager@example.com', now());
+select pg_temp.check('confirmed create copies invite fleet_access',
+  (select fleet_access from public.profiles where email='ready.manager@example.com') = true);
+select pg_temp.check('confirmed create leaves can_delete off when invite is off',
+  (select can_delete from public.profiles where email='ready.manager@example.com') = false);
+select pg_temp.check('confirmed create copies manager role',
+  (select role::text from public.profiles where email='ready.manager@example.com') = 'manager');
+
+-- Admin toggle on the invite syncs onto an existing confirmed profile
+update public.invites set can_delete = true where email='ready.manager@example.com';
+select pg_temp.check('invite can_delete toggle syncs onto existing profile',
+  (select can_delete from public.profiles where email='ready.manager@example.com') = true);
+update public.invites set fleet_access = false where email='ready.manager@example.com';
+select pg_temp.check('invite fleet_access toggle syncs onto existing profile',
+  (select fleet_access from public.profiles where email='ready.manager@example.com') = false);
+reset role;
+
+-- ---- fleet vehicle assignment on an invite moves to the profile at first sign-in
+select pg_temp.as_user(null);
+insert into public.invites (email, role, full_name, fleet_access)
+  values ('fleet.invite@example.com','tech','Fleet Invite', true)
+  on conflict (email) do nothing;
+insert into public.fleet_vehicles (geotab_device_id, label, invite_email)
+  values ('gt-invite-1', 'Invite Van', 'fleet.invite@example.com')
+  on conflict (geotab_device_id) do update
+    set invite_email = excluded.invite_email, profile_id = null, label = excluded.label;
+select pg_temp.check('invite vehicle mapping stored on invite_email',
+  (select invite_email from public.fleet_vehicles where geotab_device_id='gt-invite-1') = 'fleet.invite@example.com'
+  and (select profile_id from public.fleet_vehicles where geotab_device_id='gt-invite-1') is null);
+insert into auth.users (id, email, email_confirmed_at)
+  values ('00000000-0000-0000-0000-0000000000f3','fleet.invite@example.com', now())
+  on conflict (id) do nothing;
+select pg_temp.check('confirmed sign-in moves fleet assignment onto the profile',
+  (select profile_id from public.fleet_vehicles where geotab_device_id='gt-invite-1') = '00000000-0000-0000-0000-0000000000f3');
+select pg_temp.check('confirmed sign-in clears invite_email on the vehicle',
+  (select invite_email from public.fleet_vehicles where geotab_device_id='gt-invite-1') is null);
+
+-- later confirmation (unconfirmed signup first) also claims the vehicle
+insert into public.invites (email, role, full_name)
+  values ('fleet.later@example.com','tech','Later Invite')
+  on conflict (email) do nothing;
+insert into public.fleet_vehicles (geotab_device_id, label, invite_email)
+  values ('gt-invite-2', 'Later Van', 'fleet.later@example.com');
+insert into auth.users (id, email)
+  values ('00000000-0000-0000-0000-0000000000f4','fleet.later@example.com');
+select pg_temp.check('unconfirmed signup leaves vehicle on invite_email',
+  (select invite_email from public.fleet_vehicles where geotab_device_id='gt-invite-2') = 'fleet.later@example.com'
+  and (select profile_id from public.fleet_vehicles where geotab_device_id='gt-invite-2') is null);
+update auth.users set email_confirmed_at = now() where email='fleet.later@example.com';
+select pg_temp.check('later confirm moves fleet assignment onto the profile',
+  (select profile_id from public.fleet_vehicles where geotab_device_id='gt-invite-2') = '00000000-0000-0000-0000-0000000000f4'
+  and (select invite_email from public.fleet_vehicles where geotab_device_id='gt-invite-2') is null);
+select pg_temp.check('authenticated cannot execute private.apply_invite_fleet_assignments',
+  not has_function_privilege('authenticated', 'private.apply_invite_fleet_assignments(text,uuid)', 'execute'));
+reset role;

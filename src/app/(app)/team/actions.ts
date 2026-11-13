@@ -237,3 +237,15 @@ export async function sendSelfTestEmail() {
     back((e as Error).message, "error");
   }
 }
+
+
+export async function setTeamSmsPrefAction(fd: FormData) {
+  await requireRole("admin");
+  const email = s(fd, "email").toLowerCase();
+  const flag = s(fd, "flag");
+  const on = s(fd, "value") === "on";
+  if (!email || !["sms_notify_assignment", "sms_notify_same_day", "sms_notify_morning"].includes(flag)) return;
+  await (await getRepo()).setTeamSmsPrefs(email, { [flag]: on });
+  revalidatePath("/team");
+  revalidatePath("/account");
+}

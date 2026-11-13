@@ -13,6 +13,7 @@ import type { FleetVehicle, FleetVisitPin } from "@/lib/geotab/types";
 import { FleetMapCanvas } from "./fleet-map";
 import { SampleBadge } from "./sample-badge";
 import { suggestFleetAssignee } from "@/lib/geotab/suggest";
+import { fleetAssigneeOptionLabel, fleetAssigneeOptionValue, selectedFleetAssigneeValue } from "@/lib/geotab/assign";
 import { jobSiteFill, vehicleStatusDotStyle } from "./map-icons";
 import { driverLabel, statusDetail, STATUS_LABEL, STATUS_PILL, vehicleTitle } from "./status";
 import { useFleetLocations } from "./use-fleet-locations";
@@ -32,6 +33,7 @@ import {
   type VehicleFilterKey,
 } from "./filters";
 import { createPreviewController, type PreviewTarget } from "./preview";
+import { unmappedVehicleNames } from "./truck-card";
 
 export function FleetPageClient({ admin, team, mappings }: { admin: boolean; team: TeamMember[]; mappings: FleetVehicleRow[] }) {
   const { data, error, loading } = useFleetLocations();
@@ -120,7 +122,12 @@ export function FleetPageClient({ admin, team, mappings }: { admin: boolean; tea
       />
       {error && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div>}
       {data && (
-        <p className="mb-3 text-[12.5px] text-muted">Visit pins use geocoded job-site coordinates (US Census). Arrival is automatic when a stopped truck is within 150 m. Sites that have not been geocoded yet are omitted.</p>
+        <p className="mb-3 text-[12.5px] text-muted">Visit pins are shown in each tech&apos;s calendar color, using geocoded job-site coordinates (US Census). Arrival is automatic when a stopped truck is within 150 m. Sites that have not been geocoded yet are omitted.</p>
+      )}
+      {!!unmappedVehicleNames(filtered?.vehicles ?? data?.vehicles ?? []).length && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="fleet-unmapped-notice" role="status">
+          {unmappedNotice(unmappedVehicleNames(filtered?.vehicles ?? data?.vehicles ?? []))}
+        </div>
       )}
 
       <div className="mb-3 flex flex-col gap-2">
@@ -265,9 +272,20 @@ function VehicleRow({ v, selected, onSelect, admin, team, mapping }: { v: FleetV
             <span className="min-w-0 truncate">{driverLabel(v)}</span>
             <span className="shrink-0">· {statusDetail(v)}</span>
           </div>
+          {!v.profile && (
+            <div className="mt-1 text-[12.5px] font-semibold text-amber-800">No tech mapped to this truck</div>
+          )}
           {v.nearestVisit && (
             <div className="mt-1 text-[12.5px] text-muted">
-              {v.nearestVisit.kind === "onsite" ? <span className="font-semibold text-teal-800">Arrived · {v.nearestVisit.customerName}</span> : <span>En route to {v.nearestVisit.customerName} · {v.nearestVisit.distanceLabel}{v.nearestVisit.etaMinutes ? ` · ${v.nearestVisit.etaMinutes} min` : ""}</span>}
+              {v.nearestVisit.kind === "onsite" ? (
+                <span className="font-semibold text-teal-800">{v.nearestVisit.onSiteSinceLabel || "On site"} · {v.nearestVisit.customerName}</span>
+              ) : (
+                <span>
+                  En route to {v.nearestVisit.customerName} · {v.nearestVisit.drivingDistanceLabel}
+                  {v.nearestVisit.etaMinutes ? ` · ${v.nearestVisit.etaMinutes} min` : ""}
+                  {v.nearestVisit.etaSummary ? <span className={v.nearestVisit.late ? " font-semibold text-red-700" : " font-semibold text-teal-800"}> · {v.nearestVisit.etaSummary}</span> : null}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -277,9 +295,9 @@ function VehicleRow({ v, selected, onSelect, admin, team, mapping }: { v: FleetV
           <form action={setFleetMapping} className="grid grid-cols-[1fr_auto] gap-2">
             <input type="hidden" name="geotab_device_id" value={v.id} />
             <input type="hidden" name="label" value={mapping?.label ?? ""} />
-            <select name="profile_id" defaultValue={mapping?.profile_id ?? v.profile?.id ?? ""} className="input text-sm" aria-label={`Assign ${vehicleTitle(v)}`}>
+            <select name="assignee" data-testid="fleet-assign-select" defaultValue={selectedFleetAssigneeValue(mapping, v.profile?.id)} className="input text-sm" aria-label={`Assign ${vehicleTitle(v)}`}>
               <option value="">Unassigned</option>
-              {team.map((m) => <option key={m.profile_id} value={m.profile_id!}>{m.full_name}</option>)}
+              {team.map((m) => <option key={fleetAssigneeOptionValue(m)} value={fleetAssigneeOptionValue(m)}>{fleetAssigneeOptionLabel(m)}</option>)}
             </select>
             <SubmitButton className="btn btn-sm">Save</SubmitButton>
           </form>
@@ -326,17 +344,23 @@ function JobRow({ v, selected, onSelect, onPointerEnter, onPointerLeave }: { v: 
 }
 
 function SuggestedMapping({ v, team, mapping }: { v: FleetVehicle; team: TeamMember[]; mapping?: FleetVehicleRow }) {
-  if (mapping?.profile_id || v.profile) return null;
+  if (mapping?.profile_id || mapping?.invite_email || v.profile) return null;
   const suggestion = suggestFleetAssignee(v.name, team);
-  if (!suggestion?.profile_id) return null;
+  if (!suggestion) return null;
   return (
     <form action={setFleetMapping}>
       <input type="hidden" name="geotab_device_id" value={v.id} />
       <input type="hidden" name="label" value={mapping?.label ?? ""} />
-      <input type="hidden" name="profile_id" value={suggestion.profile_id} />
+      <input type="hidden" name="assignee" value={fleetAssigneeOptionValue(suggestion)} />
       <button type="submit" data-testid="suggested-mapping" className="text-[12.5px] font-semibold text-brand hover:underline">
-        Suggested: {suggestion.full_name}
+        Suggested: {fleetAssigneeOptionLabel(suggestion)}
       </button>
     </form>
   );
 }
+
+function unmappedNotice(names: string[]): string {
+  if (names.length === 1) return `${names[0]} has no tech mapped.`;
+  return `${names.length} trucks have no tech mapped: ${names.join(", ")}.`;
+}
+

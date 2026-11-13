@@ -8,10 +8,17 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/login")).toBe(true);
   });
 
+  it("lets the team-sms cron and inbound webhook authenticate themselves", () => {
+    expect(isPublicPath("/api/cron/team-sms")).toBe(true);
+    expect(isPublicPath("/api/team/sms/inbound")).toBe(true);
+  });
+
   it("keeps app pages behind login", () => {
     expect(isPublicPath("/")).toBe(false);
     expect(isPublicPath("/sales")).toBe(false);
     expect(isPublicPath("/customers")).toBe(false);
     expect(isPublicPath("/projects")).toBe(false);
+    expect(isPublicPath("/team")).toBe(false);
+    expect(isPublicPath("/api/fleet/locations")).toBe(false);
   });
 });

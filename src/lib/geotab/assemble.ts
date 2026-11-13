@@ -1,4 +1,4 @@
-import { etaMinutes, formatDistance, haversineMeters, isArrived } from "./distance";
+import { buildNearestVisit, pickNextVisitToday } from "./next-visit";
 import { parkedSinceIso, parseDurationLabel, snapshotSpeedMph } from "./parse";
 import { sampleVisitPins } from "./sample";
 import type { FleetLocationsResponse, FleetMapping, FleetNearestVisit, FleetPerson, FleetVehicle, FleetVisitPin, GeotabVehicleSnapshot } from "./types";
@@ -47,7 +47,7 @@ export function assembleLocations(input: AssembleInput): FleetLocationsResponse 
       parkedSince: s.status === "stopped" ? parkedSinceIso(s.lastUpdate, s.currentStateDuration) : null,
       geotabDriverName: s.geotabDriverName,
       profile,
-      nearestVisit: nearestVisit(s, profile?.id, visits, speedMph),
+      nearestVisit: nextVisitFor(s, profile?.id, visits, speedMph, input.asOf),
     };
   });
 
@@ -86,24 +86,14 @@ export function visitPinsFromJobs(jobs: AssembleInput["jobs"], sample: boolean):
   });
 }
 
-function nearestVisit(s: GeotabVehicleSnapshot, profileId: string | undefined, visits: FleetVisitPin[], speedMph: number | null): FleetNearestVisit | null {
+function nextVisitFor(s: GeotabVehicleSnapshot, profileId: string | undefined, visits: FleetVisitPin[], speedMph: number | null, asOf: string): FleetNearestVisit | null {
   if (!profileId) return null;
-  const candidates = visits.filter((v) => v.assigneeIds.includes(profileId));
-  let best: { v: FleetVisitPin; d: number } | null = null;
-  for (const v of candidates) {
-    const d = haversineMeters({ lat: s.latitude, lng: s.longitude }, { lat: v.latitude, lng: v.longitude });
-    if (!best || d < best.d) best = { v, d };
-  }
-  if (!best) return null;
-  const arrived = isArrived({ status: s.status, lat: s.latitude, lng: s.longitude }, { lat: best.v.latitude, lng: best.v.longitude });
-  return {
-    jobId: best.v.jobId,
-    title: best.v.title,
-    customerName: best.v.customerName,
-    address: best.v.address,
-    distanceMeters: Math.round(best.d),
-    distanceLabel: formatDistance(best.d),
-    etaMinutes: arrived ? 0 : etaMinutes(best.d, speedMph),
-    kind: arrived ? "onsite" : "enroute",
-  };
+  const visit = pickNextVisitToday(visits, profileId, { status: s.status, lat: s.latitude, lng: s.longitude }, asOf);
+  if (!visit) return null;
+  return buildNearestVisit({
+    visit,
+    vehicle: { status: s.status, lat: s.latitude, lng: s.longitude, lastUpdate: s.lastUpdate, currentStateDuration: s.currentStateDuration },
+    asOf,
+    speedMph,
+  });
 }

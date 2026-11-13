@@ -25,8 +25,8 @@ const photo = (over: Partial<Photo>): Photo => ({
   uploaded_by: TECH, uploader_name: "Carlos Tech", uploader_color: "#111", created_at: "2026-11-10T15:00:00Z", url: "https://signed.example/x", ...over,
 });
 const team: TeamMember[] = [
-  { email: "a@x.com", full_name: "Admin", role: "admin", title: null, phone: null, color: "#000", profile_id: ADMIN, status: "active", invited_at: null, avatar_source: "none", avatar_path: null, google_avatar_url: null, fleet_access: false, can_delete: false },
-  { email: "new@x.com", full_name: "Invitee", role: "tech", title: null, phone: null, color: "#000", profile_id: null, status: "invited", invited_at: "2026-11-01T00:00:00Z", avatar_source: "none", avatar_path: null, google_avatar_url: null, fleet_access: false, can_delete: false },
+  { email: "a@x.com", full_name: "Admin", role: "admin", title: null, phone: null, color: "#000", profile_id: ADMIN, status: "active", invited_at: null, avatar_source: "none", avatar_path: null, google_avatar_url: null, fleet_access: false, can_delete: false, sms_notify_assignment: false, sms_notify_same_day: false, sms_notify_morning: false, sms_stopped_at: null },
+  { email: "new@x.com", full_name: "Invitee", role: "tech", title: null, phone: null, color: "#000", profile_id: null, status: "invited", invited_at: "2026-11-01T00:00:00Z", avatar_source: "none", avatar_path: null, google_avatar_url: null, fleet_access: false, can_delete: false, sms_notify_assignment: false, sms_notify_same_day: false, sms_notify_morning: false, sms_stopped_at: null },
 ];
 
 function fakeRepo(over: Partial<Repo> = {}) {

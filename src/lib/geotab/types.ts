@@ -6,6 +6,7 @@ export type FleetMapping = {
   geotab_device_id: string;
   label: string | null;
   profile_id: string | null;
+  invite_email?: string | null;
 };
 
 export type FleetPerson = {
@@ -40,10 +41,24 @@ export type FleetNearestVisit = {
   title: string;
   customerName: string;
   address: string | null;
+  startsAt: string;
   distanceMeters: number;
   distanceLabel: string;
+  straightLineMeters: number;
+  straightLineLabel: string;
+  drivingDistanceMeters: number;
+  drivingDistanceLabel: string;
+  driveSource: "osrm" | "straight-line";
   etaMinutes: number | null;
+  etaAt: string | null;
+  /** e.g. "Arrives ~9:40 AM, 10 min late" */
+  etaSummary: string | null;
+  late: boolean;
   kind: "enroute" | "onsite";
+  onSiteSince: string | null;
+  onSiteSinceLabel: string | null;
+  /** Driving geometry as [lat, lng] pairs; empty when we only have a straight-line fallback. */
+  route: [number, number][];
 };
 
 export type FleetVehicle = {
