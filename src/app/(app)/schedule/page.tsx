@@ -5,6 +5,7 @@ import { isStaff, requireMember } from "@/lib/auth";
 import { fleetScope } from "@/lib/geotab/access";
 import { findConflicts, getRepo } from "@/lib/data/repo";
 import { addDays, monthStart, todayKey, validDay, weekStart, zonedToUtc } from "@/lib/time";
+import { sortSchedulePeople } from "@/lib/schedule-sort";
 import { ScheduleBoard, type View } from "./schedule-board";
 
 export const metadata: Metadata = { title: "Schedule" };
@@ -26,14 +27,16 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
   const conflicted = new Set<string>();
   for (const j of jobs) if (findConflicts(all, j.assignees.map((a) => a.id), j.starts_at, j.ends_at, j.id).length) conflicted.add(j.id);
   const staff = isStaff(user.role);
-  const rows = (staff ? people.filter((p) => p.role === "tech" || jobs.some((j) => j.assignees.some((a) => a.id === p.id))) : people.filter((p) => p.id === user.id))
-    .filter((p) => !tech || p.id === tech);
+  const rows = sortSchedulePeople(
+    (staff ? people.filter((p) => p.role === "tech" || jobs.some((j) => j.assignees.some((a) => a.id === p.id))) : people.filter((p) => p.id === user.id))
+      .filter((p) => !tech || p.id === tech),
+  );
   const ok = typeof sp.ok === "string" ? sp.ok : null;
   return (
     <>
       {ok && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{ok}</Banner></div>}
       <ScheduleBoard view={view} date={date} start={start} days={days} tech={tech} today={todayKey()} staff={staff}
-        people={staff ? people : []} rows={rows} jobs={jobs} conflicted={[...conflicted]} fleet={fleetScope(user) === "all"} />
+        people={staff ? sortSchedulePeople(people) : []} rows={rows} jobs={jobs} conflicted={[...conflicted]} fleet={fleetScope(user) === "all"} />
     </>
   );
 }
