@@ -10,7 +10,7 @@ import { sendSms, smsEnabled } from "./sms";
 import { loadSales, mutateSales, newId, visibleCustomerIds, type SalesDB } from "./mock-store";
 import type { ImportedDeal } from "./import-monday";
 import type { LeadInput, SalesRepo } from "./repo";
-import type { SalesActivity, SalesAutomation, SalesDeal, SalesInboxItem, SalesProposal } from "./types";
+import type { SalesActivity, SalesAutomation, SalesDeal, SalesInboxItem, SalesLinkedCustomer, SalesLinkedJob, SalesLinkedProject, SalesProposal } from "./types";
 import type { Role } from "@/lib/types";
 
 async function actor() {
@@ -479,6 +479,49 @@ export function mockSalesRepo(): SalesRepo {
         occupied.push(...mockOccupiedJobWindows(fromIso, toIso));
       } catch { /* schedule not available */ }
       return occupied;
+    },
+    async getLinkedCustomer(id) {
+      const deal = loadSales().deals.find((d) => d.customer_id === id);
+      if (!deal) return null;
+      const row: SalesLinkedCustomer = {
+        id,
+        name: deal.contact_name ?? deal.title,
+        phone: deal.contact_phone,
+        email: deal.contact_email,
+        address: deal.address,
+        city: deal.city,
+        state: deal.state,
+        zip: deal.zip,
+      };
+      return row;
+    },
+    async getLinkedProject(id) {
+      const deal = loadSales().deals.find((d) => d.converted_project_id === id);
+      if (!deal) return null;
+      const row: SalesLinkedProject = {
+        id,
+        name: deal.title,
+        type: "lighting",
+        status: deal.converted_project_id ? "scheduled" : "proposed",
+        value: deal.value ?? 0,
+        est_rebate: deal.est_rebate ?? 0,
+      };
+      return row;
+    },
+    async listLinkedJobs(projectId) {
+      const jobs: SalesLinkedJob[] = [];
+      const deal = loadSales().deals.find((d) => d.converted_project_id === projectId);
+      if (deal?.scheduled_date) {
+        jobs.push({
+          id: `mock-job-${projectId}`,
+          project_id: projectId,
+          title: "Scheduled visit",
+          starts_at: `${deal.scheduled_date}T14:00:00.000Z`,
+          ends_at: `${deal.scheduled_date}T16:00:00.000Z`,
+          status: "scheduled",
+        });
+      }
+      return jobs;
     },
     async importDeals(deals: ImportedDeal[]) {
       const { uid, role } = await actor();

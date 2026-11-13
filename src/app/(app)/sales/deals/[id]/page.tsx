@@ -26,10 +26,13 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
   const repo = await getSalesRepo();
   const deal = await repo.getDeal(id);
   if (!deal) notFound();
-  const [activities, proposals, owners] = await Promise.all([
+  const [activities, proposals, owners, linkedCustomer, linkedProject, linkedJobs] = await Promise.all([
     repo.listActivities(deal.id),
     repo.listProposals(deal.id),
     repo.ownerNames(),
+    deal.customer_id ? repo.getLinkedCustomer(deal.customer_id) : Promise.resolve(null),
+    deal.converted_project_id ? repo.getLinkedProject(deal.converted_project_id) : Promise.resolve(null),
+    deal.converted_project_id ? repo.listLinkedJobs(deal.converted_project_id) : Promise.resolve([]),
   ]);
   const brief = await summarizeDeal(deal, activities);
   const pipe = pipelineBySlug(deal.pipeline_slug);
@@ -170,7 +173,20 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
               <dt className="text-muted">Email</dt><dd className="truncate">{deal.contact_email ?? "—"}</dd>
             </dl>
             {deal.notes && <p className="mt-3 text-muted">{deal.notes}</p>}
-            {deal.customer_id && <Link href={`/customers/${deal.customer_id}`} className="mt-3 inline-flex text-sm font-semibold text-brand">Open customer</Link>}
+            {deal.customer_id && (
+              <div className="mt-3 rounded-lg border border-line p-3">
+                <div className="text-xs font-semibold uppercase text-muted">Linked customer</div>
+                {linkedCustomer ? (
+                  <>
+                    <div className="mt-1 font-semibold">{linkedCustomer.name}</div>
+                    <div className="text-xs text-muted">{[linkedCustomer.address, linkedCustomer.city, linkedCustomer.state, linkedCustomer.zip].filter(Boolean).join(", ") || "No address on file"}</div>
+                    <div className="text-xs text-muted">{[linkedCustomer.phone, linkedCustomer.email].filter(Boolean).join(" · ")}</div>
+                  </>
+                ) : (
+                  <p className="mt-1 text-xs text-muted">Customer is linked on the deal. Details load through the sales read RPC.</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="card p-4">
@@ -190,7 +206,23 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
           <div className="card p-4">
             <div className="mb-2 font-semibold">Convert to a Project</div>
             {deal.converted_project_id ? (
-              <Link href={`/projects/${deal.converted_project_id}`} className="btn btn-primary">Open Project</Link>
+              <div className="flex flex-col gap-2">
+                {linkedProject ? (
+                  <div className="rounded-lg border border-line p-3 text-sm">
+                    <div className="font-semibold">{linkedProject.name}</div>
+                    <div className="text-xs text-muted">{linkedProject.status} · {linkedProject.type}</div>
+                    {linkedJobs.length > 0 && (
+                      <ul className="mt-2 text-xs text-muted">
+                        {linkedJobs.map((j) => (
+                          <li key={j.id}>{j.title} · {new Date(j.starts_at).toLocaleString("en-US", { timeZone: "America/Chicago" })} · {j.status}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted">Project is linked on the deal. Details load through the sales read RPC.</p>
+                )}
+              </div>
             ) : canOfferConvert(deal) ? (
               <form action={convertDealAction.bind(null, deal.id)} className="flex flex-col gap-2">
                 <p className="text-xs text-muted">Creates a Project from this deal. Optional first visit times (ISO).</p>

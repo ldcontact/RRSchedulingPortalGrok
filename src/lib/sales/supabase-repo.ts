@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { SalesActivity, SalesAlert, SalesAutomation, SalesDeal, SalesInboxItem, SalesProposal, SalesProposalItem } from "./types";
+import type { SalesActivity, SalesAlert, SalesAutomation, SalesDeal, SalesInboxItem, SalesLinkedCustomer, SalesLinkedJob, SalesLinkedProject, SalesProposal, SalesProposalItem } from "./types";
 import type { LeadInput, SalesRepo } from "./repo";
 import { planConvert } from "./convert";
 import { signProposal } from "./proposals";
@@ -267,9 +267,36 @@ export function supabaseSalesRepo(): SalesRepo {
       return asDeal(data as DealRow);
     },
     async listOccupiedWindows(fromIso, toIso) {
-      const { getRepo } = await import("@/lib/data/repo");
-      const jobs = await (await getRepo()).listJobs({ from: fromIso, to: toIso });
-      return jobs.filter((j) => j.status !== "cancelled").map((j) => ({ starts_at: j.starts_at, ends_at: j.ends_at }));
+      const user = await sb();
+      const { data: session } = await user.auth.getUser();
+      const admin = session?.user ? null : createAdminClient();
+      const c = admin ?? user;
+      const { data, error } = await c.rpc("sales_occupied_windows", { p_from: fromIso, p_to: toIso });
+      if (error) throw error;
+      return ((data ?? []) as { starts_at: string; ends_at: string }[]).map((w) => ({
+        starts_at: w.starts_at,
+        ends_at: w.ends_at,
+      }));
+    },
+    async getLinkedCustomer(id) {
+      const c = await sb();
+      const { data, error } = await c.rpc("sales_get_customer", { p_id: id });
+      if (error) throw error;
+      const rows = (data ?? []) as SalesLinkedCustomer[];
+      return rows[0] ?? null;
+    },
+    async getLinkedProject(id) {
+      const c = await sb();
+      const { data, error } = await c.rpc("sales_get_project", { p_id: id });
+      if (error) throw error;
+      const rows = (data ?? []) as SalesLinkedProject[];
+      return rows[0] ?? null;
+    },
+    async listLinkedJobs(projectId) {
+      const c = await sb();
+      const { data, error } = await c.rpc("sales_list_jobs_for_project", { p_project_id: projectId });
+      if (error) throw error;
+      return (data ?? []) as SalesLinkedJob[];
     },
     async importDeals(deals, meta) {
       void meta;

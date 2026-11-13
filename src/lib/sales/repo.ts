@@ -1,6 +1,6 @@
 import { MOCK_MODE } from "@/lib/env";
 import type { LeadSource } from "./catalog";
-import type { SalesActivity, SalesAlert, SalesAutomation, SalesDeal, SalesInboxItem, SalesProposal } from "./types";
+import type { SalesActivity, SalesAlert, SalesAutomation, SalesDeal, SalesInboxItem, SalesLinkedCustomer, SalesLinkedJob, SalesLinkedProject, SalesProposal } from "./types";
 import type { ImportedDeal } from "./import-monday";
 
 export type DealFilter = { pipeline?: string; stage?: string; owner?: string; q?: string };
@@ -48,6 +48,9 @@ export type SalesRepo = {
   getDealByBookingToken(token: string): Promise<SalesDeal | null>;
   bookAssessment(token: string, slot: { starts_at: string; ends_at: string }): Promise<SalesDeal>;
   listOccupiedWindows(fromIso: string, toIso: string): Promise<{ starts_at: string; ends_at: string }[]>;
+  getLinkedCustomer(id: string): Promise<SalesLinkedCustomer | null>;
+  getLinkedProject(id: string): Promise<SalesLinkedProject | null>;
+  listLinkedJobs(projectId: string): Promise<SalesLinkedJob[]>;
   importDeals(deals: ImportedDeal[], meta?: { source?: string; board_name?: string }): Promise<{ imported: number; skipped: number }>;
   ownerNames(): Promise<Record<string, string>>;
 };

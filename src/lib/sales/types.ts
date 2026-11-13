@@ -119,6 +119,35 @@ export type SalesProposal = {
 
 export type SalesBookingSlot = { starts_at: string; ends_at: string };
 
+/** Linked operations records loaded through sales_* SECURITY DEFINER RPCs, not table SELECT policies. */
+export type SalesLinkedCustomer = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+};
+export type SalesLinkedProject = {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  value: number;
+  est_rebate: number;
+};
+export type SalesLinkedJob = {
+  id: string;
+  project_id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+};
+
+
 export function dealLengthDays(deal: Pick<SalesDeal, "opened_at" | "close_date">, now = new Date()): number {
   const end = deal.close_date ? new Date(deal.close_date + (deal.close_date.length <= 10 ? "T23:59:59" : "")) : now;
   const start = new Date(deal.opened_at);

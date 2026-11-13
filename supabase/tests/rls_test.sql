@@ -709,6 +709,10 @@ insert into public.invites (email, role, full_name) values ('ronan@example.com',
 insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-000000000021','ronan@example.com', now());
 insert into public.sales_deals (id, pipeline_slug, stage_slug, title, owner_id, source, monday_item_id, monday_board_id)
 values ('50000000-0000-0000-0000-000000000001','single_family_whe','potential_lead','Test WHE deal','00000000-0000-0000-0000-000000000021','manual',null,null);
+update public.sales_deals
+  set customer_id = '10000000-0000-0000-0000-000000000001',
+      converted_project_id = '20000000-0000-0000-0000-000000000001'
+  where id = '50000000-0000-0000-0000-000000000001';
 
 select pg_temp.as_user('00000000-0000-0000-0000-000000000021');
 select pg_temp.check('sales can read sales pipelines', (select count(*) from sales_pipelines) >= 2);
@@ -751,3 +755,46 @@ select pg_temp.check('service_role can execute ingest, sign, and convert',
   has_function_privilege('service_role', 'public.ingest_sales_lead(text, text, text, text, text, text, text, text, text, text, jsonb)', 'execute')
   and has_function_privilege('service_role', 'public.sign_sales_proposal(text, text, boolean, text)', 'execute')
   and has_function_privilege('service_role', 'public.convert_sales_deal(uuid, timestamptz, timestamptz)', 'execute'));
+
+-- Sales reads go through SECURITY DEFINER RPCs, not extra table policies.
+select pg_temp.as_user('00000000-0000-0000-0000-000000000021'); -- Ronan sales
+select pg_temp.check('sales cannot select customers directly', (select count(*) from customers) = 0);
+select pg_temp.check('sales cannot select projects directly', (select count(*) from projects) = 0);
+select pg_temp.check('sales cannot select jobs directly', (select count(*) from jobs) = 0);
+select pg_temp.check('sales RPC returns the linked customer',
+  (select name from public.sales_get_customer('10000000-0000-0000-0000-000000000001')) = 'Lakeview Dental');
+select pg_temp.check('sales RPC hides an unlinked customer',
+  not exists (select 1 from public.sales_get_customer('10000000-0000-0000-0000-000000000002')));
+select pg_temp.check('sales RPC returns the converted project',
+  (select id from public.sales_get_project('20000000-0000-0000-0000-000000000001')) = '20000000-0000-0000-0000-000000000001'
+   and (select name from public.sales_get_project('20000000-0000-0000-0000-000000000001')) = 'LED Troffers Phase 2');
+select pg_temp.check('sales RPC hides an unlinked project',
+  not exists (select 1 from public.sales_get_project('20000000-0000-0000-0000-000000000002')));
+select pg_temp.check('sales RPC lists jobs for the converted project',
+  (select count(*) from public.sales_list_jobs_for_project('20000000-0000-0000-0000-000000000001')) >= 2
+  and exists (select 1 from public.sales_list_jobs_for_project('20000000-0000-0000-0000-000000000001') where id='30000000-0000-0000-0000-000000000001'));
+select pg_temp.check('sales RPC lists occupied windows',
+  (select count(*) from public.sales_occupied_windows('2026-11-02 00:00Z', '2026-11-04 00:00Z')) = 2);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d'); -- Emily tech
+select pg_temp.check('tech RPC does not return a linked customer',
+  not exists (select 1 from public.sales_get_customer('10000000-0000-0000-0000-000000000001')));
+select pg_temp.check('tech RPC does not list occupied windows',
+  (select count(*) from public.sales_occupied_windows('2026-11-02 00:00Z', '2026-11-04 00:00Z')) = 0);
+reset role;
+
+select pg_temp.check('anon cannot execute sales_get_customer',
+  not has_function_privilege('anon', 'public.sales_get_customer(uuid)', 'execute'));
+select pg_temp.check('anon cannot execute sales_occupied_windows',
+  not has_function_privilege('anon', 'public.sales_occupied_windows(timestamptz, timestamptz)', 'execute'));
+select pg_temp.check('authenticated can execute sales read RPCs',
+  has_function_privilege('authenticated', 'public.sales_get_customer(uuid)', 'execute')
+  and has_function_privilege('authenticated', 'public.sales_get_project(uuid)', 'execute')
+  and has_function_privilege('authenticated', 'public.sales_list_jobs_for_project(uuid)', 'execute')
+  and has_function_privilege('authenticated', 'public.sales_occupied_windows(timestamptz, timestamptz)', 'execute'));
+select pg_temp.check('sales read RPCs did not add table policies',
+  not exists (
+    select 1 from pg_policies
+    where policyname in ('sales_customers_read','sales_projects_read','sales_jobs_read')
+  ));
