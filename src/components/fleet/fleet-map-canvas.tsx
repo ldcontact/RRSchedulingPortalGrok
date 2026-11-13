@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { FleetLocationsResponse, FleetVehicle } from "@/lib/geotab/types";
+import { visitPinColor } from "@/lib/geotab/next-visit";
 import { autoFitPoints, CHICAGO_BOUNDS, isMappablePoint } from "@/lib/geotab/region";
 import { allowMapAnimation } from "./preview";
+import { truckCardHtml } from "./truck-card";
 import {
   clusterAppearance,
   clusterByPixelDistance,
@@ -29,6 +31,8 @@ const OSM = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const ESRI_ATTR = OSM_ATTR + ' &copy; <a href="https://www.esri.com/">Esri</a>';
+const ESRI_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const ESRI_SAT_ATTR = 'Tiles &copy; <a href="https://www.esri.com/">Esri</a> — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community';
 const SCHAUMBURG: [number, number] = [42.033, -88.083];
 
 const MARKER_CSS = `.fleet-div-icon{background:transparent!important;border:none!important;overflow:visible!important;}
@@ -75,6 +79,9 @@ export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, on
   const wrap = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const layerRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const streetRef = useRef<import("leaflet").TileLayer | null>(null);
+  const satRef = useRef<import("leaflet").TileLayer | null>(null);
+  const [basemap, setBasemap] = useState<"map" | "satellite">("map");
   const onSelectRef = useRef(onSelect);
   const onSelectVisitRef = useRef(onSelectVisit);
   const dataRef = useRef(data);
@@ -141,18 +148,23 @@ export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, on
       if (cancelled || !wrap.current) return;
       const map = L.map(wrap.current, { zoomControl: true, attributionControl: true, scrollWheelZoom: true });
       const osm = L.tileLayer(OSM, { attribution: OSM_ATTR, maxZoom: 19, errorTileUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" });
+      const sat = L.tileLayer(ESRI_SAT, { attribution: ESRI_SAT_ATTR, maxZoom: 19 });
       osm.addTo(map);
       let fellBack = false;
       osm.on("tileerror", () => {
         if (fellBack) return;
         fellBack = true;
         map.removeLayer(osm);
-        L.tileLayer(ESRI, { attribution: ESRI_ATTR, maxZoom: 19 }).addTo(map);
+        const street = L.tileLayer(ESRI, { attribution: ESRI_ATTR, maxZoom: 19 });
+        street.addTo(map);
+        streetRef.current = street;
       });
       map.setView(SCHAUMBURG, 12);
       const layers = L.layerGroup().addTo(map);
       mapRef.current = map;
       layerRef.current = layers;
+      streetRef.current = osm;
+      satRef.current = sat;
       map.on("zoomend", () => { spiderfyRef.current = null; void paint(refs.current, { fit: false, L }); });
       requestAnimationFrame(() => { map.invalidateSize(); setMapReady((n) => n + 1); });
     })();
@@ -168,9 +180,24 @@ export function FleetMapCanvas({ data, selectedId, onSelect, selectedVisitId, on
     void paint(refs.current, { fit: true });
   }, [data, selectedId, selectedVisitId, previewVehicleId, previewVisitId, viewKey, padding, mapReady]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    const street = streetRef.current;
+    const sat = satRef.current;
+    if (!map || !street || !sat) return;
+    if (basemap === "satellite") {
+      if (map.hasLayer(street)) map.removeLayer(street);
+      if (!map.hasLayer(sat)) sat.addTo(map);
+    } else {
+      if (map.hasLayer(sat)) map.removeLayer(sat);
+      if (!map.hasLayer(street)) street.addTo(map);
+    }
+  }, [basemap, mapReady]);
+
   return (
     <div className={`relative min-h-[200px] w-full min-w-0 ${className}`}>
       <div ref={wrap} className="h-full min-h-[200px] w-full min-w-0" data-testid="fleet-map" />
+      <BasemapToggle value={basemap} onChange={setBasemap} />
       <FleetMapLegend />
     </div>
   );
@@ -196,7 +223,7 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
     const emphasized = isSelected || v.jobId === previewVisit;
     const icon = L.divIcon({
       className: "fleet-div-icon",
-      html: jobSiteIconHtml({ type: v.projectType, kind: v.kind, selected: emphasized }),
+      html: jobSiteIconHtml({ type: v.projectType, kind: v.kind, selected: emphasized, fill: visitPinColor(v) }),
       iconSize: jobSiteIconSize(emphasized),
       iconAnchor: jobSiteIconAnchor(emphasized),
       popupAnchor: [0, -32],
@@ -247,6 +274,8 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
     marker.addTo(layers);
   }
 
+  addDriveRoute(L, layers, current, refs.selectedId.current);
+
   if (opts.fit) {
     const token = selected ? `v:${selected}` : selectedVisit ? `j:${selectedVisit}` : null;
     const selectedChanged = refs.lastSelected.current !== token;
@@ -256,7 +285,8 @@ async function paint(refs: PaintRefs, opts: { fit: boolean; L?: Leaflet }) {
     refs.lastViewKey.current = viewKey;
     const animate = allowMapAnimation();
     if (selected && selectedChanged) {
-      focusVehicleOnMap(refs, L, map, groups, current, selected, animate);
+      const routed = fitRouteOnMap(L, map, current, selected, animate);
+      if (!routed) focusVehicleOnMap(refs, L, map, groups, current, selected, animate);
       refs.fitted.current = true;
     } else if (selectedVisit && selectedChanged) {
       const visit = current.visits.find((v) => v.jobId === selectedVisit);
@@ -384,11 +414,74 @@ function addVehicleMarker(
     zIndexOffset: emphasized ? 700 : v.status === "driving" ? 300 : v.status === "offline" ? 80 : 200,
     keyboard: false,
   });
-  const who = v.profile?.full_name ?? v.geotabDriverName ?? "Unassigned";
-  marker.bindPopup(`<strong>${escapeHtml(v.label || v.name)}</strong><br/>${escapeHtml(who)}`, { autoPan: false });
+  marker.bindPopup(truckCardHtml(v), { autoPan: false, closeButton: true, className: "fleet-truck-popup", maxWidth: 280, autoClose: false, closeOnClick: false });
+  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  marker.on("mouseover", () => {
+    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+    marker.openPopup();
+  });
+  marker.on("mouseout", () => {
+    if (v.id === refs.selectedId.current) return;
+    hoverTimer = setTimeout(() => { if (v.id !== refs.selectedId.current) marker.closePopup(); }, 200);
+  });
   marker.on("click", () => refs.onSelect.current?.(v.id));
   marker.addTo(layers);
-  if (selected) marker.openPopup();
+  if (selected || v.id === refs.previewVehicleId.current) marker.openPopup();
+}
+
+function routeLatLngs(current: FleetLocationsResponse, vehicleId: string): [number, number][] {
+  const sel = current.vehicles.find((v) => v.id === vehicleId);
+  const visit = sel?.nearestVisit;
+  if (!sel || !visit || visit.kind !== "enroute") return [];
+  if (visit.route.length >= 2) return visit.route;
+  const dest = current.visits.find((j) => j.jobId === visit.jobId);
+  if (!dest || !isMappablePoint(dest.latitude, dest.longitude)) return [];
+  return [[sel.latitude, sel.longitude], [dest.latitude, dest.longitude]];
+}
+
+function addDriveRoute(L: Leaflet, layers: import("leaflet").LayerGroup, current: FleetLocationsResponse, selectedId: string | null | undefined) {
+  if (!selectedId) return;
+  const latlngs = routeLatLngs(current, selectedId);
+  if (latlngs.length < 2) return;
+  const dashed = !current.vehicles.find((v) => v.id === selectedId)?.nearestVisit?.route.length;
+  L.polyline(latlngs, {
+    color: "#0f766e",
+    weight: 4,
+    opacity: 0.9,
+    dashArray: dashed ? "6 8" : undefined,
+    className: "fleet-drive-route",
+    interactive: false,
+  }).addTo(layers);
+}
+
+function fitRouteOnMap(L: Leaflet, map: import("leaflet").Map, current: FleetLocationsResponse, vehicleId: string, animate: boolean): boolean {
+  const latlngs = routeLatLngs(current, vehicleId);
+  if (latlngs.length < 2) return false;
+  map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 15, animate });
+  return true;
+}
+
+function BasemapToggle({ value, onChange }: { value: "map" | "satellite"; onChange: (v: "map" | "satellite") => void }) {
+  return (
+    <div
+      className="absolute right-3 top-3 z-[500] flex overflow-hidden rounded-lg border border-black/10 bg-white/95 text-[12px] font-semibold shadow-sm"
+      data-testid="fleet-basemap-toggle"
+      role="group"
+      aria-label="Map style"
+    >
+      {(["map", "satellite"] as const).map((key) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={value === key}
+          className={`px-2.5 py-1.5 capitalize ${value === key ? "bg-brand text-white" : "text-[#3d4744] hover:bg-canvas"}`}
+          onClick={() => onChange(key)}
+        >
+          {key === "map" ? "Map" : "Satellite"}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function FleetMapLegend() {
@@ -399,7 +492,7 @@ function FleetMapLegend() {
     >
       <LegendRow color={VEHICLE_FILL.driving} shape="vehicle" label="Driving" />
       <LegendRow color={VEHICLE_FILL.stopped} shape="vehicle" label="Stopped" />
-      <LegendRow color={JOB_SITE_FILL} shape="site" label="Job site" />
+      <LegendRow color={JOB_SITE_FILL} shape="site" label="Today's visit" />
     </div>
   );
 }

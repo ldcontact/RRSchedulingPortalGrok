@@ -1,7 +1,8 @@
 import "server-only";
 import { geotabConfigured, fetchGeotabSnapshots } from "./client";
 import { assembleLocations, type AssembleInput } from "./assemble";
-import { SAMPLE_AS_OF, SAMPLE_VEHICLES } from "./sample";
+import { stampSampleSnapshots } from "./sample";
+import { attachDrivingRoutes } from "./route-attach";
 import type { FleetLocationsResponse, GeotabVehicleSnapshot } from "./types";
 
 const TTL_MS = 30_000;
@@ -9,7 +10,8 @@ let cache: { at: number; snapshots: GeotabVehicleSnapshot[] } | null = null;
 
 export async function loadFleetSnapshots(): Promise<{ sample: boolean; asOf: string; snapshots: GeotabVehicleSnapshot[] }> {
   if (!geotabConfigured()) {
-    return { sample: true, asOf: SAMPLE_AS_OF, snapshots: SAMPLE_VEHICLES };
+    const sample = stampSampleSnapshots();
+    return { sample: true, asOf: sample.asOf, snapshots: sample.snapshots };
   }
   if (cache && Date.now() - cache.at < TTL_MS) {
     return { sample: false, asOf: new Date(cache.at).toISOString(), snapshots: cache.snapshots };
@@ -21,7 +23,8 @@ export async function loadFleetSnapshots(): Promise<{ sample: boolean; asOf: str
 
 export async function buildFleetLocations(input: Omit<AssembleInput, "sample" | "asOf" | "snapshots">): Promise<FleetLocationsResponse> {
   const { sample, asOf, snapshots } = await loadFleetSnapshots();
-  return assembleLocations({ ...input, sample, asOf, snapshots });
+  const assembled = assembleLocations({ ...input, sample, asOf, snapshots });
+  return { ...assembled, vehicles: await attachDrivingRoutes(assembled.vehicles, assembled.visits, asOf) };
 }
 
 /** Test helper. */

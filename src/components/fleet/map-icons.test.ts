@@ -45,6 +45,7 @@ describe("fleet map icons", () => {
     expect(jobSiteIconSize(true)[1]).toBeGreaterThan(jobSiteIconSize(false)[1]);
     expect(jobSiteIconHtml({ selected: true })).toContain("is-selected");
     expect(jobSiteIconHtml({ selected: true })).toContain(`width="${jobSiteIconSize(true)[0]}"`);
+    expect(jobSiteIconHtml({ fill: "#16a34a" })).toContain("#16a34a");
   });
 
   it("exposes the same status colors for list dots as the map icons", () => {
