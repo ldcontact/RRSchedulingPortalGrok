@@ -18,6 +18,9 @@ import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 import type { TicketVisitCrew } from "@/lib/types";
 import { compareTasksByDue, taskCounts } from "@/lib/tasks";
 import { TASK_ACTIVE } from "@/lib/types";
+import { normalizeTeamSmsPrefs } from "@/lib/team-sms/prefs";
+import { applyTeamSmsPrefs, supabaseTeamSmsStore } from "@/lib/team-sms/supabase-adapter";
+import { notifyServiceRequestAssigned, notifyTaskAssigned, notifyVisitAssigneesChanged, notifyVisitCreated, notifyVisitUpdated } from "@/lib/team-sms/notify";
 
 /** Search term safe inside a PostgREST or=() filter: quoted, without wildcard/grouping chars. */
 const searchTerm = (q: string | undefined) => {
@@ -36,6 +39,12 @@ type CustomerRowRaw = Pick<Customer, "id" | "name" | "phone" | "email" | "addres
 const mapCustomers = (data: unknown[] | null): CustomerRow[] =>
   ((data ?? []) as CustomerRowRaw[]).map(({ contacts, ...c }) => ({ ...c, primary_contact: contacts.find((x) => x.is_primary)?.name ?? contacts[0]?.name ?? null }));
 const iso = (t: string | null) => (t ? new Date(t).toISOString() : t); // normalise "+00:00" -> "Z" so string compares work
+function jobSnap(j: JobView) {
+  const bits = (j.address ?? "").split(",");
+  const city = bits.length > 1 ? bits[bits.length - 1]!.trim().replace(/\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?$/, "").trim() : null;
+  const address = bits.length > 1 ? bits.slice(0, -1).join(",").trim() : (j.address ?? null);
+  return { id: j.id, startsAt: j.starts_at, status: j.status, address, city, assigneeIds: j.assignees.map((a) => a.id) };
+}
 const JOB_SELECT = "*, projects!inner(name, type, customer_id, customers(name, address, city, state, zip, lat, lng, geocode_status)), service_requests!jobs_service_request_id_fkey(lat, lng, geocode_status, site_address), job_assignments(profiles(id, full_name, color, avatar_source, avatar_path, google_avatar_url))";
 type JobRow = Job & {
   projects: { name: string; type: Project["type"]; customer_id: string; customers: { name: string; address: string | null; city: string | null; state: string | null; zip: string | null; lat: number | null; lng: number | null; geocode_status: import("@/lib/types").GeocodeStatus | null } | null };
@@ -365,7 +374,7 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       fail(error);
       if (!data) return null;
       const profile = await withAvatarUrl(s, data as Profile);
-      return { ...profile, fleet_access: !!profile.fleet_access, can_delete: !!profile.can_delete };
+      return { ...profile, fleet_access: !!profile.fleet_access, can_delete: !!profile.can_delete, ...normalizeTeamSmsPrefs(profile) };
     },
     async upsertInvite(input) {
       const row = {
@@ -639,21 +648,40 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     },
     async createJob(input, assignees) {
       const s = await db();
+      const { data: { user } } = await s.auth.getUser();
       const { data, error } = await s.from("jobs").insert(input).select("id").single(); fail(error);
       if (assignees.length) fail((await s.from("job_assignments").insert([...new Set(assignees)].map((profile_id) => ({ job_id: data!.id, profile_id })))).error);
-      return data!.id as string;
+      const id = data!.id as string;
+      const view = await this.getJob(id);
+      if (view) {
+        await notifyVisitCreated({ store: supabaseTeamSmsStore(s), actorId: user?.id ?? null }, jobSnap(view), assignees);
+      }
+      return id;
     },
     async updateJob(id, patch) {
-      const { data, error } = await (await db()).from("jobs").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("id"); fail(error);
+      const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      const previous = await this.getJob(id);
+      const { data, error } = await s.from("jobs").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("id"); fail(error);
       if (!data?.length) throw new Error("Job not found or not allowed");
+      const next = await this.getJob(id);
+      if (previous && next) {
+        await notifyVisitUpdated({ store: supabaseTeamSmsStore(s), actorId: user?.id ?? null }, jobSnap(previous), jobSnap(next));
+      }
     },
     async setAssignees(jobId, ids) {
       const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      const previous = await this.getJob(jobId);
       const keep = [...new Set(ids)];
       let del = s.from("job_assignments").delete().eq("job_id", jobId);
       if (keep.length) del = del.not("profile_id", "in", `(${keep.join(",")})`);
       fail((await del).error);
       if (keep.length) fail((await s.from("job_assignments").upsert(keep.map((profile_id) => ({ job_id: jobId, profile_id })), { onConflict: "job_id,profile_id", ignoreDuplicates: true })).error);
+      const next = await this.getJob(jobId);
+      if (previous && next) {
+        await notifyVisitAssigneesChanged({ store: supabaseTeamSmsStore(s), actorId: user?.id ?? null }, jobSnap(next), previous.assignees.map((a) => a.id), ids);
+      }
     },
     async listPhotos(f) {
       const s = await db();
@@ -894,14 +922,23 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     },
     async createServiceRequest(input) {
       const s = await db();
+      const { data: { user } } = await s.auth.getUser();
       const { data, error } = await s.from("service_requests").insert(input).select().single(); fail(error);
       const sr = data as ServiceRequest;
       fail((await s.from("service_request_events").insert({ request_id: sr.id, kind: "created", body: `Logged from ${input.channel === "email" ? "an email" : input.channel === "call" ? "a phone call" : "another channel"}.` })).error);
+      await notifyServiceRequestAssigned({ store: supabaseTeamSmsStore(s), actorId: user?.id ?? null }, { id: sr.id, assigneeId: sr.assignee_id, number: sr.number, summary: sr.summary });
       return sr;
     },
     async updateServiceRequest(id, patch) {
-      const { data, error } = await (await db()).from("service_requests").update(patch).eq("id", id).select("id"); fail(error);
+      const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      const previous = await this.getServiceRequest(id);
+      const { data, error } = await s.from("service_requests").update(patch).eq("id", id).select("id"); fail(error);
       if (!data?.length) throw new Error("Service request not found or not allowed");
+      const next = await this.getServiceRequest(id);
+      if (next) {
+        await notifyServiceRequestAssigned({ store: supabaseTeamSmsStore(s), actorId: user?.id ?? null }, { id: next.id, assigneeId: next.assignee_id, previousAssigneeId: previous?.assignee_id, number: next.number, summary: next.summary });
+      }
     },
     async listServiceRequestEvents(requestId) {
       const { data, error } = await (await db()).from("service_request_events").select("*, profiles:actor_id(full_name, color, deleted_at)").eq("request_id", requestId).order("created_at");
@@ -961,6 +998,14 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const e = email.toLowerCase();
       fail((await s.from("invites").update({ can_delete: access }).eq("email", e).eq("role", "manager")).error);
       fail((await s.from("profiles").update({ can_delete: access }).eq("email", e).eq("role", "manager").is("deleted_at", null)).error);
+    },
+    async setTeamSmsPrefs(email, patch) {
+      await applyTeamSmsPrefs(await db(), email, patch);
+    },
+    async listTeamSmsOutbox() {
+      const { data, error } = await (await db()).from("team_sms_outbox").select("*").order("created_at", { ascending: false });
+      fail(error);
+      return (data ?? []) as import("@/lib/team-sms/types").TeamSmsOutboxRow[];
     },
     async countCustomerDependents(customerId) {
       const s = await db();
@@ -1098,10 +1143,13 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       fail(error);
       const created = data as Omit<Task, "assignee_ids">;
       await replaceTaskAssignees(s, created.id, assignee_ids);
+      await notifyTaskAssigned({ store: supabaseTeamSmsStore(s), actorId: user.id }, { id: created.id, title: created.title, due: created.due_date, addedIds: assignee_ids });
       return { ...created, assignee_ids, email_message_id: created.email_message_id ?? null };
     },
     async updateTask(id, patch) {
       const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      const previous = await this.getTask(id);
       const body: Record<string, unknown> = {};
       if (patch.title !== undefined) body.title = patch.title.trim();
       if (patch.description !== undefined) body.description = patch.description?.trim() ? patch.description.trim() : null;
@@ -1118,6 +1166,12 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       }
       if (patch.assignee_ids !== undefined) {
         await replaceTaskAssignees(s, id, patch.assignee_ids);
+        const prev = new Set(previous?.assignee_ids ?? []);
+        const added = patch.assignee_ids.filter((pid) => !prev.has(pid));
+        const next = await this.getTask(id);
+        if (next && added.length) {
+          await notifyTaskAssigned({ store: supabaseTeamSmsStore(s), actorId: user?.id ?? null }, { id: next.id, title: next.title, due: next.due_date, addedIds: added });
+        }
       }
     },
     async deleteTask(id) {

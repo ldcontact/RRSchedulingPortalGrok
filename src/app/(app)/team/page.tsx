@@ -8,6 +8,7 @@ import { getRepo } from "@/lib/data/repo";
 import { ROLE_LABEL, ROLES } from "@/lib/types";
 import { inviteMember, sendSelfTestEmail } from "./actions";
 import { emailConfigured } from "@/lib/email";
+import { TeamSmsOutboxPreview } from "@/components/team/team-sms-outbox";
 
 export const metadata: Metadata = { title: "Team" };
 
@@ -17,7 +18,9 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
   const me = await requireRole("admin", "manager");
   const admin = me.role === "admin";
   const { ok, error } = await searchParams;
-  let team = await (await getRepo()).listTeam();
+  const repo = await getRepo();
+  let team = await repo.listTeam();
+  const outbox = admin ? await repo.listTeamSmsOutbox() : [];
   if (!admin) team = team.filter((m) => m.status !== "invited"); // matches RLS: only admins see the invite list
   const active = team.filter((m) => m.status === "active").length;
   const emailReady = emailConfigured();
@@ -60,6 +63,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/team">) {
         </form>
       )}
 
+      {admin && <TeamSmsOutboxPreview rows={outbox} team={team} />}
       <TeamDirectory team={team} meEmail={me.email} admin={admin} />
     </>
   );

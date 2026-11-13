@@ -18,6 +18,8 @@ import {
 } from "@/app/(app)/team/actions";
 import { setFleetAccess } from "@/app/(app)/fleet/actions";
 import { setDeleteAccess } from "@/app/(app)/delete-actions";
+import { setTeamSmsPrefAction } from "@/app/(app)/team/actions";
+import { TeamSmsSwitches } from "@/components/team/team-sms-switches";
 
 const STORAGE_KEY = "rr-team-view";
 const STATUS = { active: "bg-green-100 text-green-800", invited: "bg-accent-50 text-amber-700", inactive: "bg-red-50 text-red-800" } as const;
@@ -60,6 +62,7 @@ function ManagePanel({ m, meEmail }: { m: TeamMember; meEmail: string }) {
           />
         </div>
         <form action={updateMember.bind(null, m.email)} className="grid gap-2.5"><MemberFields m={m} /><SubmitButton className="btn btn-sm btn-primary">Save</SubmitButton></form>
+        <TeamSmsSwitches member={m} action={setTeamSmsPrefAction} />
         {m.role === "admin" && (
           <div className="rounded-lg border border-line bg-white p-3 text-[12.5px] text-muted">Fleet access is always on for admins.</div>
         )}

@@ -24,6 +24,11 @@ export type Profile = {
   fleet_access: boolean;
   /** Admin-granted delete access. Admins always have it; techs never do, even when this is true. */
   can_delete: boolean;
+  /** Staff texting prefs. All default off. */
+  sms_notify_assignment: boolean;
+  sms_notify_same_day: boolean;
+  sms_notify_morning: boolean;
+  sms_stopped_at: string | null;
 };
 
 export type Invite = {
@@ -39,6 +44,9 @@ export type Invite = {
   accepted_at: string | null;
   fleet_access: boolean;
   can_delete: boolean;
+  sms_notify_assignment: boolean;
+  sms_notify_same_day: boolean;
+  sms_notify_morning: boolean;
 };
 
 export type TeamMember = {
@@ -59,6 +67,10 @@ export type TeamMember = {
   fleet_access: boolean;
   /** Raw flag from the profile, or from the invite before first sign-in. */
   can_delete: boolean;
+  sms_notify_assignment: boolean;
+  sms_notify_same_day: boolean;
+  sms_notify_morning: boolean;
+  sms_stopped_at: string | null;
 };
 
 export type GeocodeStatus = "matched" | "no_match" | "tie" | "error";
@@ -102,7 +114,7 @@ export type Contact = {
 };
 export type ContactInput = Omit<Contact, "id" | "customer_id">;
 
-export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: AvatarSource; avatar_path?: string | null; fleet_access?: boolean; can_delete?: boolean };
+export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: AvatarSource; avatar_path?: string | null; fleet_access?: boolean; can_delete?: boolean; sms_notify_assignment?: boolean; sms_notify_same_day?: boolean; sms_notify_morning?: boolean };
 
 export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean; avatar_url?: string | null; avatar_source?: AvatarSource; google_avatar_url?: string | null; fleet_access: boolean; can_delete: boolean };
 

@@ -4,12 +4,23 @@ import { Icon } from "@/components/icons";
 import { Avatar, PageHeader, RolePill } from "@/components/ui";
 import { AvatarEditor } from "@/components/avatar-editor";
 import { isStaff, requireMember } from "@/lib/auth";
-import { manageOwnAvatar } from "./actions";
+import { manageOwnAvatar, setOwnTeamSmsPrefAction } from "./actions";
+import { getRepo } from "@/lib/data/repo";
+import { TeamSmsSwitches } from "@/components/team/team-sms-switches";
 
 export const metadata: Metadata = { title: "Account" };
 
 export default async function AccountPage() {
   const u = await requireMember();
+  const profile = await (await getRepo()).getProfile(u.id);
+  const smsMember = profile ? {
+    email: profile.email,
+    phone: profile.phone,
+    sms_notify_assignment: profile.sms_notify_assignment,
+    sms_notify_same_day: profile.sms_notify_same_day,
+    sms_notify_morning: profile.sms_notify_morning,
+    sms_stopped_at: profile.sms_stopped_at,
+  } : null;
   return (
     <>
       <PageHeader title={u.role === "tech" ? "Profile" : "Account"} />
@@ -30,6 +41,12 @@ export default async function AccountPage() {
           action={manageOwnAvatar}
         />
       </div>
+      {smsMember && (
+        <div className="card mb-4 p-5">
+          <h3 className="mb-3 font-semibold">Texting</h3>
+          <TeamSmsSwitches member={smsMember} action={setOwnTeamSmsPrefAction} self />
+        </div>
+      )}
       <div className="card divide-y divide-line">
         {isStaff(u.role) && <Link href="/team" className="flex items-center gap-3 px-5 py-3.5 font-semibold hover:bg-[#fafbf9]"><Icon name="hardhat" />Team<Icon name="right" className="ml-auto size-4 text-muted" /></Link>}
         <Link href="/account/password" className="flex items-center gap-3 px-5 py-3.5 font-semibold hover:bg-[#fafbf9]"><Icon name="lock" />Set or change password<Icon name="right" className="ml-auto size-4 text-muted" /></Link>
