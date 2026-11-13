@@ -188,9 +188,10 @@ function ScheduleEmailDialog({
           </label>
           <label className="label">Message
             <textarea
-              className="input min-h-40 font-normal leading-relaxed"
+              className="input min-h-80 resize-y font-normal leading-relaxed"
               name="body"
               required
+              rows={22}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               data-testid="schedule-email-body"
@@ -211,7 +212,7 @@ function ScheduleEmailDialog({
           <input type="hidden" name="cc" value={ccs.join(",")} />
           <input type="hidden" name="subject" value={subject} />
           <input type="hidden" name="body" value={body} />
-          <p className="text-sm">This will email the customer. Nothing else is sent automatically.</p>
+          <p className="text-sm">This will email the customer. Nothing else is sent automatically. Review the message below as they will see it.</p>
           <dl className="grid gap-2 text-sm">
             <div><dt className="text-xs font-semibold text-muted">To</dt><dd className="break-all font-medium">{to}</dd></div>
             <div>
@@ -220,6 +221,21 @@ function ScheduleEmailDialog({
             </div>
             <div><dt className="text-xs font-semibold text-muted">Subject</dt><dd>{subject}</dd></div>
           </dl>
+          <div>
+            <h3 className="mb-1.5 text-xs font-semibold text-muted">Message</h3>
+            <div
+              className="max-h-[min(28rem,50vh)] overflow-y-auto rounded-xl border border-line bg-[#f4f6f5] p-3"
+              data-testid="schedule-email-body-preview"
+            >
+              <div className="overflow-hidden rounded-xl border border-[#e5e7eb] bg-white">
+                <div className="bg-[#134e4a] px-5 py-4 text-[16px] font-bold tracking-wide text-white">Retrofit Rebates, Inc.</div>
+                <div className="whitespace-pre-wrap px-5 py-5 text-[15px] leading-relaxed text-[#1c2423]">{body}</div>
+                <div className="border-t border-[#e5e7eb] px-5 py-3 text-xs leading-5 text-[#64748b]">
+                  Retrofit Rebates, Inc.<br />Field service visit confirmation
+                </div>
+              </div>
+            </div>
+          </div>
           <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
             <button type="button" className="btn" onClick={() => setStep("compose")}>Back</button>
             <SubmitButton className="btn btn-primary" pendingText="Sending…" data-testid="schedule-email-send">

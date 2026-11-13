@@ -5,7 +5,8 @@ vi.mock("server-only", () => ({}));
 const env = vi.hoisted(() => ({ MOCK_MODE: false }));
 
 const { redirect, requireRole, sendEmail, emailConfigured, getRepo, addServiceRequestEvent } = vi.hoisted(() => ({
-  redirect: vi.fn((): never => {
+  redirect: vi.fn((url: string): never => {
+    void url;
     throw new Error("NEXT_REDIRECT");
   }),
   requireRole: vi.fn(),
@@ -94,20 +95,27 @@ describe("sendScheduleEmail", () => {
   });
 
   it("sends through the shared mailer and logs who it went to", async () => {
+    const body = "Hi Dave,\n\nWe'll be on site for a warranty visit: Exit fixture batteries.\n\nThank you,\nThe Retrofit Rebates Team";
     sendEmail.mockResolvedValue({
       messageId: "msg-visit",
       accepted: ["dkowalski@egprecision.example", "maria.santos@gmail.com"],
       rejected: [],
       provider: "gmail-api",
     });
-    await expect(sendScheduleEmail(fd())).rejects.toThrow("NEXT_REDIRECT");
+    await expect(sendScheduleEmail(fd({ body }))).rejects.toThrow("NEXT_REDIRECT");
     expect(sendEmail).toHaveBeenCalledTimes(1);
     const arg = sendEmail.mock.calls[0][0];
     expect(arg.to).toBe("dkowalski@egprecision.example");
     expect(arg.cc).toEqual(["maria.santos@gmail.com"]);
     expect(arg.subject).toMatch(/scheduled for Saturday, November 14, 2026/);
-    expect(arg.text).toContain("Hi Dave");
-    expect(arg.html).toContain("Hi Dave");
+    expect(arg.text).toBe(body);
+    expect(arg.html).toBeDefined();
+    expect(arg.html).toMatch(/<!DOCTYPE html>/i);
+    expect(arg.html).toContain("Hi Dave,");
+    expect(arg.html).toContain("We&#39;ll be on site for a warranty visit: Exit fixture batteries.");
+    expect(arg.html).toContain("The Retrofit Rebates Team");
+    expect(arg.html).toContain("white-space:pre-wrap");
+    expect(arg.html).toContain("Retrofit Rebates, Inc.");
     expect(addServiceRequestEvent).toHaveBeenCalledWith("sr4", {
       kind: "emailed",
       body: "Schedule email sent to dkowalski@egprecision.example (cc maria.santos@gmail.com).",

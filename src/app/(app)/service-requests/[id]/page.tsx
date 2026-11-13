@@ -74,6 +74,11 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
         visit: scheduleVisit,
         address: site,
         ticketNumber: ticketNo(sr.number),
+        ticketDescription: sr.description,
+        isWarranty: scheduleVisit.kind === "warranty",
+        warrantyMonths: sr.warranty_months ?? DEFAULT_WARRANTY_MONTHS,
+        projectName: sr.project_name,
+        projectTypeLabel: sr.project_type ? PROJECT_TYPE_LABEL[sr.project_type] : null,
       })
     : { to: (sr.contact_email ?? "").trim().toLowerCase(), cc: [], subject: "", body: "" };
 

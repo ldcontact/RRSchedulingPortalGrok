@@ -1,4 +1,5 @@
-import type { SREvent } from "@/lib/types";
+import type { JobKind, SREvent } from "@/lib/types";
+import { DEFAULT_WARRANTY_MONTHS } from "@/lib/types";
 import { dayKey, fmtDay, fmtRange } from "@/lib/time";
 import { pickTicketVisit } from "@/lib/tickets";
 
@@ -7,6 +8,7 @@ export const COMPANY_NAME = "Retrofit Rebates, Inc.";
 export const COMPANY_ADDRESS = "507 Estes Ave, Schaumburg, IL 60193";
 export const COMPANY_PHONE = "773-362-5003";
 export const COMPANY_EMAIL = "luke@retrofitrebates.com";
+export const TEAM_SIGNOFF = "The Retrofit Rebates Team";
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -16,6 +18,10 @@ export type ScheduleVisitLike = {
   starts_at: string;
   ends_at: string;
   status: string;
+  title?: string | null;
+  instructions?: string | null;
+  notes?: string | null;
+  kind?: JobKind;
   assignees?: { full_name: string }[];
 };
 
@@ -26,7 +32,16 @@ export type ScheduleEmailDraftInput = {
   endsAt: string;
   address: string;
   techNames: string[];
-  ticketNumber: string;
+  ticketNumber?: string;
+  visitTitle?: string | null;
+  visitNotes?: string | null;
+  ticketDescription?: string | null;
+  isWarranty?: boolean;
+  warrantyMonths?: number | null;
+  projectName?: string | null;
+  projectTypeLabel?: string | null;
+  /** Empty string omits the phone. Null/undefined uses COMPANY_PHONE. */
+  companyPhone?: string | null;
 };
 
 export type ScheduleEmailDraft = {
@@ -102,53 +117,166 @@ export function scheduleEmailSubject(startsAt: string): string {
 }
 
 function greetingName(contactName: string | null, customerName: string): string {
-  const raw = (contactName ?? "").trim() || customerName.trim();
-  if (!raw) return "there";
-  return raw.split(/\s+/)[0];
+  const contact = (contactName ?? "").trim();
+  if (contact) return contact.split(/\s+/)[0];
+  const customer = customerName.trim();
+  // A single token (e.g. "Acme") can stand in as a greeting; a company name cannot.
+  if (customer && !/\s/.test(customer)) return customer;
+  return "there";
+}
+
+function sentence(text: string): string {
+  const t = text.trim();
+  if (!t) return "";
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+/** Drop the "Warranty —" / "Service —" prefix so the kind is not repeated. */
+export function cleanVisitTitle(title: string | null | undefined): string {
+  const raw = (title ?? "").trim();
+  if (!raw) return "";
+  const stripped = raw.replace(/^(warranty|service)\s*[—–:\-]\s*/i, "").trim() || raw;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+/** Keep customer-facing visit notes; skip photo/checklist instructions for the crew. */
+export function customerFacingNotes(notes: string | null | undefined): string {
+  const raw = (notes ?? "").trim();
+  if (!raw) return "";
+  const parts = raw.split(/(?<=[.!?])\s+/);
+  const kept = parts.filter((s) => !/^(photos?|take a photos?|take photos?|upload|attach|document each)\b/i.test(s.trim()));
+  return kept.join(" ").trim();
+}
+
+/** Friendly length of the arrival window, or null when it cannot be measured. */
+export function formatVisitDuration(startsAt: string, endsAt: string): string | null {
+  const ms = Date.parse(endsAt) - Date.parse(startsAt);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return null;
+  if (minutes < 60) return `about ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  if (rem === 0) return hours === 1 ? "about 1 hour" : `about ${hours} hours`;
+  const hPart = hours === 1 ? "1 hour" : `${hours} hours`;
+  const mPart = rem === 1 ? "1 minute" : `${rem} minutes`;
+  return `about ${hPart} and ${mPart}`;
+}
+
+function coverageSentence(input: ScheduleEmailDraftInput): string {
+  const program = (input.projectTypeLabel ?? "").trim();
+  const project = (input.projectName ?? "").trim();
+  const months = input.warrantyMonths ?? DEFAULT_WARRANTY_MONTHS;
+  const warranty = input.isWarranty ? `is covered under your ${months}-month warranty` : "";
+  let projectPart = "";
+  if (program && project) projectPart = `is on your ${program} project, ${project}`;
+  else if (project) projectPart = `is on your project, ${project}`;
+  else if (program) projectPart = `is on your ${program} project`;
+  if (projectPart && warranty) return `This work ${projectPart}, and ${warranty}.`;
+  if (warranty) return `This work ${warranty}.`;
+  if (projectPart) return `This work ${projectPart}.`;
+  return "";
+}
+
+
+/** Turn an imperative visit note into a first-person "We'll …" sentence when needed. */
+function asWorkSentence(notes: string): string {
+  const s = sentence(notes);
+  if (!s) return "";
+  if (/^(we'll|we will|our\b|the\b|this\b|during\b)/i.test(s)) return s;
+  return sentence(`We'll ${s.charAt(0).toLowerCase()}${s.slice(1)}`);
+}
+
+function serviceParagraphs(input: ScheduleEmailDraftInput): string[] {
+  const title = cleanVisitTitle(input.visitTitle);
+  const kind = input.isWarranty ? "warranty visit" : "service visit";
+  const paras: string[] = [
+    title ? `We'll be on site for a ${kind}: ${title}.` : `We'll be on site for a ${kind}.`,
+  ];
+  const description = sentence(input.ticketDescription ?? "");
+  if (description) paras.push(description);
+  const notes = customerFacingNotes(input.visitNotes);
+  if (notes) {
+    const noteSentence = asWorkSentence(notes);
+    if (noteSentence && noteSentence.toLowerCase() !== description.toLowerCase()) paras.push(noteSentence);
+  }
+  const coverage = coverageSentence(input);
+  if (coverage) paras.push(coverage);
+  return paras;
+}
+
+function officePhone(input: ScheduleEmailDraftInput): string {
+  if (input.companyPhone === "") return "";
+  return (input.companyPhone ?? COMPANY_PHONE).trim();
+}
+
+function pushSection(lines: string[], heading: string, value: string) {
+  if (!value.trim()) return;
+  if (lines.length) lines.push("");
+  lines.push(`${heading}:`, value);
 }
 
 export function scheduleEmailBody(input: ScheduleEmailDraftInput): string {
   const name = greetingName(input.contactName, input.customerName);
   const date = formatVisitDate(input.startsAt);
   const window = fmtRange(input.startsAt, input.endsAt);
-  const techs = input.techNames.map((n) => n.trim()).filter(Boolean).join(", ") || "To be assigned";
-  const address = input.address.trim() || "See your service address on file.";
-  return [
+  const techs = input.techNames.map((n) => n.trim()).filter(Boolean);
+  const address = input.address.trim();
+  const duration = formatVisitDuration(input.startsAt, input.endsAt);
+  const phone = officePhone(input);
+
+  const lines: string[] = [
     `Hi ${name},`,
     "",
-    `Your Retrofit Rebates service visit is scheduled for ${date}, ${window}.`,
+    `We're writing to confirm your upcoming service visit with ${COMPANY_NAME}`,
     "",
-    "Service address:",
-    address,
-    "",
-    "Assigned technician:",
-    techs,
-    "",
-    `Ticket: ${input.ticketNumber}`,
-    "",
-    `If you have questions or need to reschedule, call us at ${COMPANY_PHONE} or email ${COMPANY_EMAIL}.`,
-    "",
-    "Thank you,",
-    COMPANY_NAME,
-    COMPANY_ADDRESS,
-    COMPANY_PHONE,
-    COMPANY_EMAIL,
-  ].join("\n");
+    ...serviceParagraphs(input).flatMap((p, i, all) => (i < all.length - 1 ? [p, ""] : [p])),
+  ];
+
+  pushSection(lines, "Date and arrival window", `${date}, ${window} (Central Time)`);
+  pushSection(lines, techs.length > 1 ? "Assigned technicians" : "Assigned technician", techs.join(", "));
+  pushSection(lines, "Service address", address);
+
+  const expect: string[] = [
+    "Please have someone on site who can give our technician access to the work area.",
+  ];
+  if (duration) expect.push(`The visit is scheduled for ${duration}, based on the arrival window.`);
+  pushSection(lines, "What to expect", expect.join(" "));
+
+  lines.push("");
+  if (phone) {
+    lines.push(`If you need to reschedule or have any questions, just reply to this email or call us at ${phone}.`);
+  } else {
+    lines.push("If you need to reschedule or have any questions, just reply to this email.");
+  }
+  lines.push("", "Thank you,", TEAM_SIGNOFF);
+  return lines.join("\n");
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }
 
-/** Simple HTML twin of the editable plain-text body. */
+/** Simple branded HTML twin of the editable plain-text body, readable on phones. */
 export function scheduleEmailHtml(text: string): string {
+  const body = escapeHtml(text);
   return `<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#f4f6f5;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#1c2423">
-  <div style="max-width:560px;margin:24px auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-    <div style="background:#134e4a;color:#fff;padding:16px 20px;font-weight:700;font-size:15px">Retrofit Rebates</div>
-    <div style="padding:20px;font-size:14px;line-height:1.55;white-space:pre-wrap">${escapeHtml(text)}</div>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Retrofit Rebates</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f5;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1c2423;-webkit-text-size-adjust:100%;">
+  <div style="max-width:560px;margin:0 auto;padding:16px;">
+    <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+      <div style="background:#134e4a;color:#ffffff;padding:16px 20px;font-weight:700;font-size:16px;letter-spacing:0.01em;">Retrofit Rebates, Inc.</div>
+      <div style="padding:20px;font-size:15px;line-height:1.6;white-space:pre-wrap;">${body}</div>
+      <div style="padding:12px 20px 16px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.5;color:#64748b;">${escapeHtml(COMPANY_NAME)}<br>Field service visit confirmation</div>
+    </div>
   </div>
-</body></html>`;
+</body>
+</html>`;
 }
 
 export function buildScheduleEmailDraft(opts: {
@@ -156,13 +284,28 @@ export function buildScheduleEmailDraft(opts: {
   creatorEmail?: string | null;
   customerName: string;
   contactName: string | null;
-  visit: { starts_at: string; ends_at: string; assignees?: { full_name: string }[] };
+  visit: {
+    starts_at: string;
+    ends_at: string;
+    assignees?: { full_name: string }[];
+    title?: string | null;
+    instructions?: string | null;
+    notes?: string | null;
+    kind?: JobKind;
+  };
   address: string;
-  ticketNumber: string;
+  ticketNumber?: string;
+  ticketDescription?: string | null;
+  isWarranty?: boolean;
+  warrantyMonths?: number | null;
+  projectName?: string | null;
+  projectTypeLabel?: string | null;
+  companyPhone?: string | null;
 }): ScheduleEmailDraft {
   const to = opts.customerEmail.trim().toLowerCase();
   const creator = (opts.creatorEmail ?? "").trim().toLowerCase();
   const cc = creator && creator !== to && isValidEmail(creator) ? [creator] : [];
+  const isWarranty = opts.isWarranty ?? opts.visit.kind === "warranty";
   return {
     to,
     cc,
@@ -175,6 +318,14 @@ export function buildScheduleEmailDraft(opts: {
       address: opts.address,
       techNames: (opts.visit.assignees ?? []).map((a) => a.full_name),
       ticketNumber: opts.ticketNumber,
+      visitTitle: opts.visit.title,
+      visitNotes: opts.visit.instructions ?? opts.visit.notes,
+      ticketDescription: opts.ticketDescription,
+      isWarranty,
+      warrantyMonths: opts.warrantyMonths,
+      projectName: opts.projectName,
+      projectTypeLabel: opts.projectTypeLabel,
+      companyPhone: opts.companyPhone,
     }),
   };
 }
