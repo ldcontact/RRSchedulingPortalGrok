@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
+import { useOptionalNavProgress } from "@/components/nav-progress";
+import { PendingLink } from "@/components/pending-link";
 import { SalesMap } from "@/components/sales/sales-map";
 import { SalesPipelineTable } from "@/components/sales/sales-pipeline-table";
 import { PIPELINE_DEFS, stageBySlug } from "@/lib/sales/catalog";
@@ -67,7 +69,8 @@ export function SalesWorkspace(props: {
   priorityFilter: string;
 }) {
   const router = useRouter();
-  const go = (next: Partial<{ view: string; pipeline: string; q: string; owner: string; priority: string }>) => {
+  const nav = useOptionalNavProgress();
+  const hrefFor = (next: Partial<{ view: string; pipeline: string; q: string; owner: string; priority: string }> = {}) => {
     const sp = new URLSearchParams();
     const view = next.view ?? props.view;
     const pipeline = next.pipeline ?? props.pipeline;
@@ -79,7 +82,13 @@ export function SalesWorkspace(props: {
     if (q) sp.set("q", q);
     if (owner) sp.set("owner", owner);
     if (priority) sp.set("priority", priority);
-    router.push(`/sales${sp.toString() ? `?${sp}` : ""}`);
+    return `/sales${sp.toString() ? `?${sp}` : ""}`;
+  };
+  const go = (next: Partial<{ view: string; pipeline: string; q: string; owner: string; priority: string }>) => {
+    const href = hrefFor(next);
+    if (href === hrefFor()) return;
+    nav?.start();
+    router.push(href);
   };
   const pipe = PIPELINE_DEFS.find((p) => p.slug === props.pipeline);
   const deals = props.deals.filter((d) => {
@@ -112,11 +121,11 @@ export function SalesWorkspace(props: {
       <div className="mb-4">
         <div className="flex items-start justify-between gap-3">
           <h1 className="text-[22px] font-semibold tracking-tight">Sales</h1>
-          <Link href="/sales/deals/new" className="btn btn-primary shrink-0" data-testid="sales-new-deal">
+          <PendingLink href="/sales/deals/new" className="btn btn-primary shrink-0" data-testid="sales-new-deal">
             <Icon name="plus" />
             <span className="md:hidden">New</span>
             <span className="hidden md:inline">New deal</span>
-          </Link>
+          </PendingLink>
         </div>
         <div className="mt-0.5 text-muted">
           {pipe?.name ?? "Sales"} · {deals.length} deal{deals.length === 1 ? "" : "s"}{deals.length ? ` · avg ${avg} days open` : ""}
@@ -128,19 +137,18 @@ export function SalesWorkspace(props: {
           const on = p.slug === props.pipeline;
           const n = counts[p.slug] ?? 0;
           return (
-            <button
+            <Link
               key={p.slug}
-              type="button"
+              href={hrefFor({ pipeline: p.slug })}
               role="tab"
               aria-selected={on}
-              onClick={() => go({ pipeline: p.slug })}
               className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-semibold ${on ? "border-brand bg-brand-50 text-brand-700" : "border-line bg-white text-ink"}`}
               data-testid={`sales-pipeline-${p.slug}`}
             >
               <span className="hidden sm:inline">{p.name}</span>
               <span className="sm:hidden">{PIPE_SHORT[p.slug] ?? p.name}</span>
               <span className={`rounded-full px-1.5 text-[11.5px] font-bold ${on ? "bg-white text-brand-700" : "bg-canvas text-muted"}`}>{n}</span>
-            </button>
+            </Link>
           );
         })}
       </div>
@@ -150,15 +158,14 @@ export function SalesWorkspace(props: {
           const active = props.view === v.id;
           const count = v.id === "inbox" && props.inbox.length ? props.inbox.length : undefined;
           return (
-            <button
+            <Link
               key={v.id}
-              type="button"
-              onClick={() => go({ view: v.id })}
+              href={hrefFor({ view: v.id })}
               className={`inline-flex shrink-0 items-center gap-1.5 px-3.5 py-2 text-[13.5px] font-semibold ${active ? "border-b-2 border-brand text-ink" : "border-b-2 border-transparent text-muted hover:text-ink"}`}
             >
               <span>{v.label}</span>
               {count ? <span className="min-w-5 rounded-full bg-accent px-1.5 text-center text-[11px] font-bold text-[#3b2600]">{count}</span> : null}
-            </button>
+            </Link>
           );
         })}
         <Link href="/sales/automations" className="inline-flex shrink-0 items-center px-3.5 py-2 text-[13.5px] font-semibold text-muted hover:text-ink">Automations</Link>
