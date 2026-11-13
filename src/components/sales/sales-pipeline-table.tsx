@@ -66,7 +66,7 @@ function MoveToStageMenu({
       >
         <Icon name="more" className="size-3.5" />
       </summary>
-      <div className="absolute left-0 z-30 mt-1 min-w-[220px] rounded-lg border border-line bg-white py-1 shadow-lg">
+      <div className="absolute right-0 z-30 mt-1 max-h-[min(70vh,22rem)] min-w-[220px] overflow-y-auto rounded-lg border border-line bg-white py-1 shadow-lg md:left-0 md:right-auto">
         <div className="px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide text-muted">Move to stage</div>
         {stages.map((s) => {
           const on = s.slug === deal.stage_slug;
