@@ -81,6 +81,13 @@ function seed(): DB {
     p("u-tech4", "emily.chen@icloud.com", "Emily Chen", "tech", "Electrician", "(847) 555-0105", "#16a34a", { avatar_source: "upload", avatar_path: "seed/avatar/Emily%20Chen.svg" }),
     p("u-sales", "maya@retrofitrebates.com", "Maya Chen", "sales", "Sales Representative", "(847) 555-0201", "#0369a1", { avatar_source: "upload", avatar_path: "seed/avatar/Maya%20Chen.svg" }),
     p("u-sales2", "jordan.hale@retrofitrebates.com", "Jordan Hale", "sales", "Sales Representative", "(847) 555-0202", "#7c3aed"),
+    p("u-aaron", "aaron@retrofitrebates.com", "Aaron Ozrovitz", "sales", "Sales Representative", "", "#0369a1"),
+    p("u-mariusz", "mario@squarepropertyservices.com", "Mariusz Bartnik", "sales", "Sales Representative", "", "#b45309"),
+    p("u-ronan", "ronan@squarepropertyservices.com", "Ronan O'Connor", "sales", "Sales Representative", "", "#0e7490"),
+    p("u-terry", "terryl@retrofitrebates.com", "Terry Lazar", "sales", "Sales Representative", "", "#7c3aed"),
+    p("u-alexander", "alexander@retrofitrebates.com", "Alexander Miller", "sales", "Sales Representative", "", "#db2777"),
+    p("u-marek", "mark@retrofitrebates.com", "Marek Maksimowicz", "sales", "Sales Representative", "", "#2563eb"),
+    p("u-matthew", "matthew@retrofitrebates.com", "Matthew Dlugosz", "sales", "Sales Representative", "", "#16a34a"),
     p("u-stranger", "someone.else@gmail.com", "Someone Else", null, "", "", "#64748b"),
   ];
   const invites: Invite[] = profiles.filter((x) => x.role).map((x) => ({

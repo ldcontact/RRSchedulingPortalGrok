@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DEFAULT_AUTOMATIONS } from "./automations";
@@ -191,15 +191,19 @@ function seed(): SalesDB {
 }
 
 let cache: SalesDB | null = null;
+let cacheMtime = 0;
 
 export function loadSales(): SalesDB {
-  if (cache) return cache;
   if (existsSync(FILE)) {
+    const mtime = statSync(FILE).mtimeMs;
+    if (cache && mtime === cacheMtime) return cache;
     try {
       cache = JSON.parse(readFileSync(FILE, "utf8")) as SalesDB;
+      cacheMtime = mtime;
       return cache;
     } catch { /* fall through to seed */ }
   }
+  if (cache) return cache;
   cache = seed();
   saveSales(cache);
   return cache;
@@ -207,7 +211,10 @@ export function loadSales(): SalesDB {
 
 export function saveSales(db: SalesDB) {
   cache = db;
-  try { writeFileSync(FILE, JSON.stringify(db, null, 2)); } catch { /* ephemeral fs */ }
+  try {
+    writeFileSync(FILE, JSON.stringify(db, null, 2));
+    cacheMtime = existsSync(FILE) ? statSync(FILE).mtimeMs : 0;
+  } catch { /* ephemeral fs */ }
 }
 
 export function mutateSales<T>(fn: (db: SalesDB) => T): T {
