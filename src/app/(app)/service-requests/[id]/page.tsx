@@ -17,6 +17,13 @@ import { getRepo } from "@/lib/data/repo";
 import { ageText, formatAddress } from "@/lib/project-row";
 import { fmtDate, fmtReceived, visitDefaults } from "@/lib/tickets";
 import { canSeeServicePrice, formatServicePrice, visibleServiceRequestEvents } from "@/lib/service-request-price";
+import { MOCK_MODE } from "@/lib/env";
+import { CreateInvoiceDialog } from "@/components/qbo/create-invoice-dialog";
+import { InvoiceCard } from "@/components/qbo/invoice-card";
+import {
+  MOCK_NEXT_INVOICE_NUMBER, MOCK_QBO_ITEM, MOCK_QBO_TAX, MOCK_QBO_TERMS,
+  invoiceForRequest, invoiceHref, matchQboCustomer, money,
+} from "@/lib/qbo-mock";
 import { dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, addDays } from "@/lib/time";
 import { DEFAULT_WARRANTY_MONTHS, PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_OPEN, ticketNo, type SREvent } from "@/lib/types";
 import {
@@ -63,6 +70,14 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
   const notes = visible.filter((e) => e.kind === "note");
   const history = visible.filter((e) => e.kind !== "note");
   const price = prices[id] ?? null;
+  const invoiceOverride = str("invoice");
+  const invoice = MOCK_MODE && showPrice ? invoiceForRequest(id, invoiceOverride) : null;
+  const showInvoiceMock = MOCK_MODE && showPrice;
+  const creatingInvoice = showInvoiceMock && str("create") === "1";
+  const createStep = str("confirm") === "1" ? "confirm" as const : str("match") === "1" ? "match" as const : "compose" as const;
+  const createUnmatched = str("unmatched") === "1";
+  const voidingInvoice = showInvoiceMock && !!invoice && str("void") === "1";
+  const matchedCustomer = matchQboCustomer(sr.customer_name);
   const staffPeople = people.filter((p) => p.role === "admin" || p.role === "manager");
   const techs = people.filter((p) => p.role === "tech");
   const open = SR_OPEN.includes(sr.status);
@@ -197,6 +212,8 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
             </form>
           </div>
           )}
+
+          {showInvoiceMock && <InvoiceCard base={base} invoice={creatingInvoice ? null : invoice} canCreate />}
 
           <div className="card" data-testid="original-project">
             <div className="card-hd"><h3 className="font-semibold">Original project</h3>{project && <Link href={`/projects/${project.id}`} className="text-xs font-semibold text-brand">Open project</Link>}</div>
@@ -340,6 +357,41 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
               <SubmitButton className="btn btn-danger" pendingText="Clearing…">Clear price</SubmitButton>
             </div>
           </form>
+        </Modal>
+      )}
+      {creatingInvoice && (
+        <CreateInvoiceDialog
+          base={base}
+          ticketNo={ticketNo(sr.number)}
+          customerName={sr.customer_name}
+          issueSummary={sr.summary}
+          issueDescription={sr.description}
+          servicePrice={price}
+          terms={MOCK_QBO_TERMS}
+          itemName={MOCK_QBO_ITEM}
+          taxLabel={MOCK_QBO_TAX}
+          invoiceNumber={MOCK_NEXT_INVOICE_NUMBER}
+          initialMatch={matchedCustomer}
+          initialStep={createStep}
+          unmatched={createUnmatched}
+        />
+      )}
+      {voidingInvoice && invoice && (
+        <Modal title="Void this invoice?" sub="This can’t be undone." closeHref={invoiceHref(base, { invoice: invoice.status })}>
+          <div className="flex flex-col gap-4 p-5" data-testid="void-invoice-confirm">
+            <p className="text-sm">Void invoice <span className="font-semibold tabular-nums">#{invoice.number}</span> of <span className="font-semibold">{money(invoice.amount)}</span> on {ticketNo(sr.number)}?</p>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+              <li>The draft will be marked void in QuickBooks</li>
+              <li>This ticket will go back to having no invoice</li>
+              <li>Nothing is emailed to the customer</li>
+              <li>Field techs never see invoices or prices</li>
+              <li>This is a design mock — no real invoice is changed</li>
+            </ul>
+            <div className="flex justify-end gap-2 border-t border-line pt-4">
+              <Link href={invoiceHref(base, { invoice: invoice.status })} scroll={false} className="btn">Cancel</Link>
+              <Link href={invoiceHref(base, { invoice: "none", ok: `Invoice #${invoice.number} was voided (mock).` })} className="btn btn-danger" data-testid="void-invoice-confirm-btn">Void invoice</Link>
+            </div>
+          </div>
         </Modal>
       )}
       {canDelete && str("delete") === "1" && (

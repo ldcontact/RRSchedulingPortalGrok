@@ -11,6 +11,9 @@ import { getRepo } from "@/lib/data/repo";
 import { formatAddress, ageText } from "@/lib/project-row";
 import { fmtMonthYear, fmtReceived, localInput, ticketAssigneeStack } from "@/lib/tickets";
 import { canSeeServicePrice, formatServicePrice } from "@/lib/service-request-price";
+import { MOCK_MODE } from "@/lib/env";
+import { InvoiceListChip } from "@/components/qbo/invoice-status-pill";
+import { invoiceForRequest } from "@/lib/qbo-mock";
 import { PAGE_SIZE, SR_CHANNEL_LABEL, SR_STATUSES, SR_STATUS_LABEL, WARRANTY_LABEL, ticketNo, type Person, type SRChannel, type SRPageFilter, type SRStatus, type WarrantyState } from "@/lib/types";
 import { LogCallForm } from "./log-call-form";
 
@@ -86,6 +89,7 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
             ? [personById.get(t.assignee_id) ?? { id: t.assignee_id, full_name: t.assignee_name ?? "?", color: t.assignee_color ?? "#64748b" }]
             : [];
           const assignees = ticketAssigneeStack(office, t.visit?.techs ?? []);
+          const invoice = MOCK_MODE ? invoiceForRequest(t.id) : null;
           return (
           <Link key={t.id} href={`/service-requests/${t.id}`} data-testid="ticket-row"
             className="block min-w-0 px-4 py-3 hover:bg-[#fafbf9] sm:px-5">
@@ -113,6 +117,7 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
                       : <span className="sr-only">Unassigned</span>}
                   </div>
                   {prices[t.id] != null && <span className="pill bg-brand-50 text-[#134e4a]" data-testid="ticket-price">{formatServicePrice(prices[t.id])}</span>}
+                  {invoice && <InvoiceListChip invoice={invoice} />}
                   <WarrantyPill state={t.warranty_state} className="xl:min-w-[8rem] xl:justify-center" />
                   <SRStatusPill status={t.status} className="xl:min-w-[6.25rem] xl:justify-center" />
                 </div>

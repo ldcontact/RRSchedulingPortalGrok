@@ -4,6 +4,7 @@ import { Icon } from "@/components/icons";
 import { Avatar, PageHeader, RolePill } from "@/components/ui";
 import { AvatarEditor } from "@/components/avatar-editor";
 import { isStaff, requireMember } from "@/lib/auth";
+import { MOCK_MODE } from "@/lib/env";
 import { manageOwnAvatar, setOwnTeamSmsPrefAction } from "./actions";
 import { getRepo } from "@/lib/data/repo";
 import { TeamSmsSwitches } from "@/components/team/team-sms-switches";
@@ -48,6 +49,7 @@ export default async function AccountPage() {
         </div>
       )}
       <div className="card divide-y divide-line">
+        {isStaff(u.role) && MOCK_MODE && <Link href="/settings/integrations" className="flex items-center gap-3 px-5 py-3.5 font-semibold hover:bg-[#fafbf9]"><Icon name="gear" />Settings<Icon name="right" className="ml-auto size-4 text-muted" /></Link>}
         {isStaff(u.role) && <Link href="/team" className="flex items-center gap-3 px-5 py-3.5 font-semibold hover:bg-[#fafbf9]"><Icon name="hardhat" />Team<Icon name="right" className="ml-auto size-4 text-muted" /></Link>}
         <Link href="/account/password" className="flex items-center gap-3 px-5 py-3.5 font-semibold hover:bg-[#fafbf9]"><Icon name="lock" />Set or change password<Icon name="right" className="ml-auto size-4 text-muted" /></Link>
         <form action="/auth/signout" method="post"><button className="flex w-full items-center gap-3 px-5 py-3.5 text-left font-semibold hover:bg-[#fafbf9]"><Icon name="logout" />Sign out</button></form>

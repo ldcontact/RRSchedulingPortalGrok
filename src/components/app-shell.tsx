@@ -59,7 +59,7 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, updateNotifica
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   // Staff bottom nav stays at 6 items (Fleet is desktop-sidebar + "Where's my crew"). Techs with access get Fleet in their shorter nav.
   const bottom: NavItem[] = tech ? items : [...items.filter((i) => i.href !== "/team" && i.href !== "/fleet" && i.href !== "/tasks" && i.href !== "/account"), { href: "/account", label: "More", icon: "user" }];
-  const bottomActive = (href: string) => active(href) || (href === "/account" && path.startsWith("/team"));
+  const bottomActive = (href: string) => active(href) || (href === "/account" && (path.startsWith("/team") || path.startsWith("/settings")));
 
   return (
     <div className={`min-h-screen ${tech ? "" : "md:grid md:grid-cols-[244px_1fr] md:bg-[linear-gradient(to_right,var(--color-brand-900)_244px,transparent_244px)]"}`}>
@@ -79,7 +79,7 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, updateNotifica
             ))}
           </nav>
           <div className="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
-            <Link href="/account" className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-white/5">
+            <Link href="/account" className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-white/5 ${path.startsWith("/account") || path.startsWith("/settings") ? "bg-white/12 text-white" : ""}`}>
               <Avatar name={user.name} color={user.color} src={user.avatar_url} />
               <div className="min-w-0"><div className="truncate font-semibold text-white">{user.name}</div><div className="truncate text-[11.5px] text-[#8fb5ae]">{user.email}</div></div>
             </Link>
