@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
+import { DeleteConfirmDialog } from "@/components/delete-confirm";
 import { Banner, PageHeader } from "@/components/ui";
 import { requireSales } from "@/lib/auth";
 import { summarizeDeal } from "@/lib/sales/ai";
@@ -49,7 +50,7 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
         title={deal.title}
         sub={`${deal.contact_name ?? "No contact"} · ${[deal.address, deal.city, deal.state, deal.zip].filter(Boolean).join(", ")}`}
         actions={canDelete ? (
-          <form action={deleteDealAction.bind(null, deal.id)}><button className="btn" data-testid="delete-deal">Delete</button></form>
+          <Link href={`/sales/deals/${deal.id}?delete=1`} scroll={false} className="btn" data-testid="delete-deal">Delete</Link>
         ) : undefined}
       />
       {typeof sp.ok === "string" && sp.ok && <div className="mb-3"><Banner tone="ok">{sp.ok}</Banner></div>}
@@ -219,6 +220,19 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
         </aside>
       </div>
       <span className="sr-only">{stageBySlug(deal.pipeline_slug, deal.stage_slug)?.name}</span>
+      {canDelete && sp.delete === "1" && (
+        <DeleteConfirmDialog
+          title="Delete deal"
+          itemName={deal.title}
+          cancelHref={`/sales/deals/${deal.id}`}
+          action={deleteDealAction.bind(null, deal.id)}
+          consequences={[
+            "Its team updates and replies are deleted too",
+            "Conversation history, proposals, and alerts on this deal are also deleted",
+          ]}
+          confirmLabel="Delete deal"
+        />
+      )}
     </>
   );
 }
