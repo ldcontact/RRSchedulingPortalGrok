@@ -118,6 +118,9 @@ export function supabaseSalesRepo(): SalesRepo {
         source: found.source,
         notes: found.message,
         owner_id: opts?.owner_id ?? null,
+        sms_consent: found.raw?.sms_consent === true,
+        sms_consent_at: found.raw?.sms_consent === true ? found.created_at : null,
+        sms_consent_by: null,
       });
       await c.from("sales_inbox").update({ status: "accepted", accepted_deal_id: deal.id }).eq("id", id);
       return deal;

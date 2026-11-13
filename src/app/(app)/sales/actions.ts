@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSales } from "@/lib/auth";
 import { pipelineBySlug } from "@/lib/sales/catalog";
+import { parseDealContactFields, smsConsentPatch } from "@/lib/sales/deal-contact";
 import { getSalesRepo } from "@/lib/sales/repo";
 import { canDeleteSalesRecord } from "@/lib/sales/permissions";
 
@@ -137,27 +138,56 @@ export async function markAlertReadAction(id: string) {
 
 export async function createDealAction(_prev: { error?: string } | undefined, fd: FormData) {
   const user = await requireSales();
-  const title = String(fd.get("title") ?? "").trim();
   const pipeline = String(fd.get("pipeline_slug") ?? "single_family_whe");
   const pipe = pipelineBySlug(pipeline);
-  if (!title) return { error: "Enter an address or deal name." };
   if (!pipe) return { error: "Pick a valid program." };
-  const contact_name = String(fd.get("contact_name") ?? "").trim() || null;
-  const contact_phone = String(fd.get("contact_phone") ?? "").trim() || null;
-  const city = String(fd.get("city") ?? "").trim() || null;
+  const parsed = parseDealContactFields(fd);
+  if (!parsed.ok) return { error: parsed.error };
+  const consent = smsConsentPatch({ checked: parsed.value.sms_consent, previous: null, userId: user.id });
+  const { title, contact_name, contact_phone, contact_email, address, city, state, zip, lat, lng } = parsed.value;
   const deal = await (await getSalesRepo()).createDeal({
     title,
     pipeline_slug: pipe.slug,
     stage_slug: pipe.stages[0]?.slug ?? "potential_lead",
-    address: title,
+    address,
     city,
-    state: "IL",
+    state,
+    zip,
+    lat,
+    lng,
     contact_name,
     contact_phone,
+    contact_email,
     owner_id: user.id,
     priority: "Medium",
     source: "manual",
+    ...consent,
   });
   pathFor(deal.id);
   redirect(`/sales/deals/${deal.id}`);
+}
+
+export async function updateDealDetailsAction(dealId: string, _prev: { error?: string; ok?: string } | undefined, fd: FormData) {
+  const user = await requireSales();
+  const repo = await getSalesRepo();
+  const existing = await repo.getDeal(dealId);
+  if (!existing) return { error: "Deal not found." };
+  const parsed = parseDealContactFields(fd);
+  if (!parsed.ok) return { error: parsed.error };
+  const consent = smsConsentPatch({ checked: parsed.value.sms_consent, previous: existing, userId: user.id });
+  const { title, contact_name, contact_phone, contact_email, address, city, state, zip, lat, lng } = parsed.value;
+  await repo.updateDeal(dealId, {
+    title,
+    contact_name,
+    contact_phone,
+    contact_email,
+    address,
+    city,
+    state,
+    zip,
+    ...(lat != null && lng != null ? { lat, lng } : {}),
+    ...consent,
+  });
+  pathFor(dealId);
+  return { ok: "Contact and address saved." };
 }

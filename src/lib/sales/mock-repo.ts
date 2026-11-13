@@ -131,6 +131,9 @@ export function mockSalesRepo(): SalesRepo {
           monday_item_id: input.monday_item_id ?? null,
           monday_board_id: input.monday_board_id ?? null,
           notes: input.notes ?? null,
+          sms_consent: input.sms_consent ?? false,
+          sms_consent_at: input.sms_consent_at ?? null,
+          sms_consent_by: input.sms_consent_by ?? null,
           created_at: now(),
           updated_at: now(),
         };
@@ -215,6 +218,9 @@ export function mockSalesRepo(): SalesRepo {
           monday_item_id: null,
           monday_board_id: null,
           notes: item.message,
+          sms_consent: item.raw?.sms_consent === true,
+          sms_consent_at: item.raw?.sms_consent === true ? (item.created_at ?? now()) : null,
+          sms_consent_by: null,
           created_at: now(),
           updated_at: now(),
         };
@@ -520,6 +526,9 @@ export function mockSalesRepo(): SalesRepo {
             monday_item_id: row.monday_item_id,
             monday_board_id: row.monday_board_id,
             notes: row.owner_name ? `Monday owner: ${row.owner_name}` : null,
+            sms_consent: false,
+            sms_consent_at: null,
+            sms_consent_by: null,
             created_at: now(),
             updated_at: now(),
           });

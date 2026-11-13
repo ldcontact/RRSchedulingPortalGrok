@@ -13,8 +13,10 @@ import { getSalesRepo } from "@/lib/sales/repo";
 import { smsEnabled } from "@/lib/sales/sms";
 import { dealLengthDays } from "@/lib/sales/types";
 import { convertDealAction, createBookingLinkAction, deleteDealAction, draftMessage, moveDealStage, saveAiFollowUpDraft, saveDealNote, sendDraftAction, sendProposalAction } from "../../actions";
+import { DealDetailsForm } from "@/components/sales/deal-details-form";
 import { UpdatesPanel } from "@/components/updates/updates-panel";
 import { getUpdatesRepo } from "@/lib/updates/repo";
+import { fmtDateTime } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Deal" };
 
@@ -42,6 +44,9 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
   const stages = pipe?.stages ?? [];
   const canDelete = canDeleteSalesRecord(user);
   const bookingBase = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const consentNote = deal.sms_consent_at
+    ? `Consent last updated ${fmtDateTime(deal.sms_consent_at)}${deal.sms_consent_by && directory[deal.sms_consent_by]?.name ? ` by ${directory[deal.sms_consent_by].name}` : ""}.`
+    : null;
 
   return (
     <>
@@ -68,6 +73,7 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex flex-col gap-4">
+          <DealDetailsForm deal={deal} consentNote={consentNote} />
           <div className="card p-4">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="font-semibold">AI summary & next step</div>
@@ -194,8 +200,6 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
               <dt className="text-muted">Est. rebate</dt><dd>{deal.est_rebate ? money(deal.est_rebate) : "—"}</dd>
               <dt className="text-muted">Open</dt><dd>{dealLengthDays(deal)} days</dd>
               <dt className="text-muted">Assessment</dt><dd>{deal.assessment_date ?? "—"}</dd>
-              <dt className="text-muted">Phone</dt><dd>{deal.contact_phone ?? "—"}</dd>
-              <dt className="text-muted">Email</dt><dd className="truncate">{deal.contact_email ?? "—"}</dd>
             </dl>
             {deal.notes && <p className="mt-3 text-muted">{deal.notes}</p>}
             {deal.customer_id && <Link href={`/customers/${deal.customer_id}`} className="mt-3 inline-flex text-sm font-semibold text-brand">Open customer</Link>}

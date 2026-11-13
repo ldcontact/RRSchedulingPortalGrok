@@ -60,6 +60,9 @@ function seed(): SalesDB {
     monday_item_id: null,
     monday_board_id: null,
     notes: null,
+    sms_consent: false,
+    sms_consent_at: null,
+    sms_consent_by: null,
     created_at: opened(20),
     updated_at: iso(1),
     ...row,
@@ -199,6 +202,11 @@ export function loadSales(): SalesDB {
     if (cache && mtime === cacheMtime) return cache;
     try {
       cache = JSON.parse(readFileSync(FILE, "utf8")) as SalesDB;
+      for (const d of cache.deals ?? []) {
+        if (d.sms_consent == null) d.sms_consent = false;
+        if (d.sms_consent_at === undefined) d.sms_consent_at = null;
+        if (d.sms_consent_by === undefined) d.sms_consent_by = null;
+      }
       cacheMtime = mtime;
       return cache;
     } catch { /* fall through to seed */ }

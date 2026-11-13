@@ -36,6 +36,10 @@ export type SalesDeal = {
   monday_item_id: string | null;
   monday_board_id: string | null;
   notes: string | null;
+  /** Staff-recorded SMS consent for this deal's phone. Does not send messages. */
+  sms_consent: boolean;
+  sms_consent_at: string | null;
+  sms_consent_by: string | null;
   created_at: string;
   updated_at: string;
 };
