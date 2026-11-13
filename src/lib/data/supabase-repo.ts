@@ -9,6 +9,7 @@ import { mimeForFile, projectFileStoragePath, sanitizeFilename, storageExtFor, v
 import { addDays, todayKey, zonedToUtc } from "@/lib/time";
 import { formatAddress, projectDates } from "@/lib/project-row";
 import { avatarStorageFolder, resolveAvatarUrl } from "@/lib/avatar";
+import { serviceRequestActorAvatarUrl } from "@/lib/service-request-notes";
 import { authorColor, authorLabel } from "@/lib/author";
 import { applySearch, parseSearch } from "@/lib/search";
 import { PROJECT_HIT_LIMIT, toProjectHit } from "@/lib/project-hit";
@@ -941,15 +942,50 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       }
     },
     async listServiceRequestEvents(requestId) {
-      const { data, error } = await (await db()).from("service_request_events").select("*, profiles:actor_id(full_name, color, deleted_at)").eq("request_id", requestId).order("created_at");
+      const s = await db();
+      const { data, error } = await s.from("service_request_events").select("*, profiles:actor_id(full_name, color, deleted_at, avatar_source, avatar_path, google_avatar_url)").eq("request_id", requestId).order("created_at");
       fail(error);
-      type EvJoin = Omit<SREvent, "actor_name" | "actor_color"> & { profiles: { full_name: string; color: string; deleted_at: string | null } | null };
-      return ((data ?? []) as EvJoin[]).map(({ profiles, ...e }) => ({
-        ...e, actor_name: e.actor_id ? authorLabel(e.actor_id, profiles) : "System", actor_color: authorColor(profiles),
+      type EvProfile = { full_name: string; color: string; deleted_at: string | null } & AvatarFields;
+      type EvJoin = Omit<SREvent, "actor_name" | "actor_color" | "actor_avatar_url"> & { profiles: EvProfile | null };
+      const rows = (data ?? []) as EvJoin[];
+      const signed = await signAvatarPaths(s, rows.map((r) => (r.profiles?.avatar_source === "upload" ? r.profiles.avatar_path : null)));
+      return rows.map(({ profiles, ...e }) => ({
+        ...e,
+        actor_name: e.actor_id ? authorLabel(e.actor_id, profiles) : "System",
+        actor_color: authorColor(profiles),
+        actor_avatar_url: serviceRequestActorAvatarUrl(profiles, profiles?.avatar_path ? signed.get(profiles.avatar_path) ?? null : null),
+        edited_at: e.edited_at ?? null,
       }));
     },
     async addServiceRequestEvent(requestId, e) {
       fail((await (await db()).from("service_request_events").insert({ request_id: requestId, kind: e.kind, body: e.body })).error);
+    },
+    async getServiceRequestEvent(eventId) {
+      const s = await db();
+      const { data, error } = await s.from("service_request_events").select("*, profiles:actor_id(full_name, color, deleted_at, avatar_source, avatar_path, google_avatar_url)").eq("id", eventId).maybeSingle();
+      fail(error);
+      if (!data) return null;
+      type EvProfile = { full_name: string; color: string; deleted_at: string | null } & AvatarFields;
+      const row = data as Omit<SREvent, "actor_name" | "actor_color" | "actor_avatar_url"> & { profiles: EvProfile | null };
+      const { profiles, ...e } = row;
+      const signed = await signAvatarPaths(s, [profiles?.avatar_source === "upload" ? profiles.avatar_path : null]);
+      return {
+        ...e,
+        actor_name: e.actor_id ? authorLabel(e.actor_id, profiles) : "System",
+        actor_color: authorColor(profiles),
+        actor_avatar_url: serviceRequestActorAvatarUrl(profiles, profiles?.avatar_path ? signed.get(profiles.avatar_path) ?? null : null),
+        edited_at: e.edited_at ?? null,
+      };
+    },
+    async updateServiceRequestEvent(requestId, eventId, body) {
+      const { data, error } = await (await db()).from("service_request_events").update({ body }).eq("id", eventId).eq("request_id", requestId).eq("kind", "note").select("id");
+      fail(error);
+      if (!data?.length) throw new Error("Note not found or not allowed");
+    },
+    async deleteServiceRequestEvent(requestId, eventId) {
+      const { data, error } = await (await db()).from("service_request_events").delete().eq("id", eventId).eq("request_id", requestId).eq("kind", "note").select("id");
+      fail(error);
+      if (!data?.length) throw new Error("Note not found or not allowed");
     },
     async getServiceRequestPrices(ids) {
       if (!ids.length) return {};

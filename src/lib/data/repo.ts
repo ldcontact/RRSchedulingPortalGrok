@@ -100,6 +100,9 @@ export interface Repo {
   updateServiceRequest(id: string, patch: ServiceRequestPatch): Promise<void>;
   listServiceRequestEvents(requestId: string): Promise<SREvent[]>;
   addServiceRequestEvent(requestId: string, e: { kind: SREventKind; body: string }): Promise<void>;
+  getServiceRequestEvent(eventId: string): Promise<SREvent | null>;
+  updateServiceRequestEvent(requestId: string, eventId: string, body: string): Promise<void>;
+  deleteServiceRequestEvent(requestId: string, eventId: string): Promise<void>;
   /** Office-only amounts keyed by request id. Empty for roles that must not see a price (techs). */
   getServiceRequestPrices(ids: string[]): Promise<Record<string, number>>;
   /** Set or clear (null) a ticket's service price. RLS / mock who() reject techs. */

@@ -285,10 +285,10 @@ export type ServiceRequestInput = Pick<ServiceRequest, "customer_id" | "project_
   /** Office owner. The create action defaults this to the person who logged the ticket. */
   assignee_id?: string | null;
 };
-export type ServiceRequestPatch = Partial<Pick<ServiceRequest, "project_id" | "status" | "billable" | "assignee_id" | "converted_project_id" | "resolved_at" | "resolved_by" | "resolved_job_id" | "priority">>;
+export type ServiceRequestPatch = Partial<Pick<ServiceRequest, "project_id" | "status" | "billable" | "assignee_id" | "converted_project_id" | "resolved_at" | "resolved_by" | "resolved_job_id" | "priority" | "summary" | "description">>;
 export const ticketNo = (n: number) => `SR-${n}`;
 export type SREventKind = "created" | "note" | "status" | "linked" | "unlinked" | "assigned" | "billable" | "scheduled" | "converted" | "resolved" | "closed" | "reopened" | "price";
-export type SREvent = { id: string; request_id: string; kind: SREventKind; body: string; actor_id: string | null; actor_name: string; actor_color: string; created_at: string };
+export type SREvent = { id: string; request_id: string; kind: SREventKind; body: string; actor_id: string | null; actor_name: string; actor_color: string; actor_avatar_url?: string | null; created_at: string; edited_at?: string | null };
 /** status: one status, "open" (new+triaged+scheduled, the default), or "all". */
 export type SRPageFilter = {
   q?: string; status?: SRStatus | "open" | "all"; channel?: SRChannel; warranty?: WarrantyState; assignee?: string | "none"; page: number; size?: number;

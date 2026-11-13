@@ -366,6 +366,45 @@ select pg_temp.fails('tech cannot write a service price', $$insert into service_
 select pg_temp.check('tech still cannot read price history', (select count(*) from service_request_events where kind='price')=0);
 reset role;
 
+-- ---- service request note edit / delete
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager, can_delete default false
+update service_request_events set body='Inside warranty, schedule a swap (updated)' where body='Inside warranty, schedule a swap';
+select pg_temp.check('author can edit own note', exists (select 1 from service_request_events where body='Inside warranty, schedule a swap (updated)'));
+select pg_temp.check('edited_at stamped on note edit', (select edited_at is not null from service_request_events where body='Inside warranty, schedule a swap (updated)'));
+insert into service_request_events (id, request_id, kind, body)
+  values ('60000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000001','note','Maria follow-up');
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a'); -- Luke admin
+insert into service_request_events (id, request_id, kind, body)
+  values ('60000000-0000-0000-0000-000000000002','50000000-0000-0000-0000-000000000001','note','Luke checked the fixture');
+update service_request_events set body='Maria follow-up (admin edit)' where id='60000000-0000-0000-0000-000000000001';
+select pg_temp.check('admin can edit another staff note', (select body from service_request_events where id='60000000-0000-0000-0000-000000000001')='Maria follow-up (admin edit)');
+select pg_temp.fails('history events cannot be edited', $$update service_request_events set body='rewritten' where kind='price'$$);
+select pg_temp.fails('history events cannot be deleted', $$delete from service_request_events where kind='price'$$);
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria without delete toggle
+update service_request_events set body='Luke rewritten by manager' where id='60000000-0000-0000-0000-000000000002'; -- RLS: 0 rows
+select pg_temp.check('manager cannot edit another staff note', (select body from service_request_events where id='60000000-0000-0000-0000-000000000002')='Luke checked the fixture');
+delete from service_request_events where id='60000000-0000-0000-0000-000000000002'; -- RLS: 0 rows
+select pg_temp.check('manager without toggle cannot delete another staff note', exists (select 1 from service_request_events where id='60000000-0000-0000-0000-000000000002'));
+delete from service_request_events where id='60000000-0000-0000-0000-000000000001';
+select pg_temp.check('author can delete own note', not exists (select 1 from service_request_events where id='60000000-0000-0000-0000-000000000001'));
+reset role;
+set role postgres;
+update public.profiles set can_delete=true where id='00000000-0000-0000-0000-00000000000b';
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria with delete toggle
+delete from service_request_events where id='60000000-0000-0000-0000-000000000002';
+select pg_temp.check('manager with toggle can delete another staff note', not exists (select 1 from service_request_events where id='60000000-0000-0000-0000-000000000002'));
+reset role;
+set role postgres;
+update public.profiles set can_delete=false where id='00000000-0000-0000-0000-00000000000b';
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e'); -- tech on that ticket
+select pg_temp.fails('tech cannot edit a ticket note', $$update service_request_events set body='tech rewrite' where kind='note'$$);
+select pg_temp.fails('tech cannot delete a ticket note', $$delete from service_request_events where kind='note'$$);
+reset role;
+
 -- ---- search side tables (customer_search / project_search)
 select pg_temp.as_user(null);
 insert into contacts (customer_id, name, phone, email) values ('10000000-0000-0000-0000-000000000001','Priya Nair','+1 (847) 555-0174','priya@lakeview.example');

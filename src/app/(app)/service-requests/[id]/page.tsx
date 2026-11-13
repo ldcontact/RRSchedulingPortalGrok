@@ -3,7 +3,7 @@ import Link from "next/link";
 import { PendingLink } from "@/components/pending-link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
-import { Avatar, Banner, PageHeader } from "@/components/ui";
+import { Banner, PageHeader } from "@/components/ui";
 import { AvatarStack, JobKindBadge, JobStatusPill, PriorityPill, ProjectStatusPill, SRStatusPill, TypeTag } from "@/components/status";
 import { Modal } from "@/components/modal";
 import { SubmitButton } from "@/components/submit-button";
@@ -20,8 +20,11 @@ import { canSeeServicePrice, formatServicePrice, visibleServiceRequestEvents } f
 import { dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, addDays } from "@/lib/time";
 import { DEFAULT_WARRANTY_MONTHS, PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_OPEN, ticketNo, type SREvent } from "@/lib/types";
 import {
-  addTicketNote, assignTicket, convertTicket, finishTicket, linkProject, markTriaged, reopenTicket, setBillable, setServiceRequestPrice, unlinkProject,
+  assignTicket, convertTicket, finishTicket, linkProject, markTriaged, reopenTicket, setBillable, setServiceRequestPrice, unlinkProject,
 } from "../actions";
+import { canEditServiceRequestIssue } from "@/lib/service-request-notes";
+import { IssueCard } from "../issue-card";
+import { NotesCard } from "../notes-card";
 import { ScheduleVisitForm } from "./schedule-form";
 
 export async function generateMetadata({ params }: PageProps<"/service-requests/[id]">): Promise<Metadata> {
@@ -87,27 +90,15 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
       </div>
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="card">
-            <div className="card-hd"><h3 className="font-semibold">Issue</h3><span className="text-xs text-muted">Logged from {sr.channel === "email" ? "an email" : sr.channel === "call" ? "a phone call" : "another channel"} · {fmtDateTime(sr.received_at)}</span></div>
-            <div className="p-5 text-sm leading-relaxed">
-              <div className="mb-1 font-semibold">{sr.summary}</div>
-              <div className="whitespace-pre-wrap">{sr.description || <span className="text-muted">No details written.</span>}</div>
-            </div>
-          </div>
+          <IssueCard
+            requestId={id}
+            summary={sr.summary}
+            description={sr.description}
+            sub={`Logged from ${sr.channel === "email" ? "an email" : sr.channel === "call" ? "a phone call" : "another channel"} · ${fmtDateTime(sr.received_at)}`}
+            canEdit={canEditServiceRequestIssue({ userId: user.id, role: user.role, createdBy: sr.created_by })}
+          />
 
-          <div className="card" data-testid="ticket-notes">
-            <div className="card-hd"><h3 className="font-semibold">Notes</h3><span className="text-xs text-muted">Internal · not sent to the customer</span></div>
-            <ol className="divide-y divide-line">
-              {notes.map((n) => (
-                <li key={n.id} className="flex gap-2.5 px-5 py-3 text-sm"><Avatar name={n.actor_name} color={n.actor_color} size="sm" />
-                  <div className="min-w-0 flex-1"><div className="text-xs text-muted">{n.actor_name} · {fmtDateTime(n.created_at)}</div><div className="whitespace-pre-wrap">{n.body}</div></div></li>
-              ))}
-            </ol>
-            <form action={addTicketNote.bind(null, id)} className="flex gap-2 border-t border-line p-4">
-              <input name="body" required className="input" placeholder="Add an internal note…" aria-label="Note" maxLength={5000} />
-              <SubmitButton className="btn btn-primary">Add note</SubmitButton>
-            </form>
-          </div>
+          <NotesCard requestId={id} notes={notes} user={{ id: user.id, role: user.role, can_delete: user.can_delete }} />
 
           <div className="card" data-testid="ticket-visits">
             <div className="card-hd"><h3 className="font-semibold">Visits</h3><span className="text-xs text-muted">Warranty and service visits for this ticket</span></div>

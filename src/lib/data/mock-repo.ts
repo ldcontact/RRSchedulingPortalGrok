@@ -17,6 +17,7 @@ import { authorColor, authorLabel } from "@/lib/author";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 import { applyTicketVisits } from "@/lib/tickets";
 import { canSeeServicePrice, visibleServiceRequestEvents } from "@/lib/service-request-price";
+import { canDeleteServiceRequestNote, canEditServiceRequestNote, serviceRequestActorAvatarUrl } from "@/lib/service-request-notes";
 import { SAMPLE_DEFAULT_MAP } from "@/lib/geotab/sample";
 import { hasFleetAccess } from "@/lib/geotab/access";
 import { customerDeleteBlockers, hasDeleteAccess } from "@/lib/delete-access";
@@ -39,7 +40,7 @@ type ProjectFileRow = Omit<ProjectFile, "url" | "download_url" | "uploader_name"
 type NoteRow = Omit<Note, "author_name" | "author_color">;
 type MessageRow = Omit<Message, "sender_name" | "sender_color">;
 type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[]; project_files: ProjectFileRow[] };
-type SREventRow = Omit<SREvent, "actor_name" | "actor_color">;
+type SREventRow = Omit<SREvent, "actor_name" | "actor_color" | "actor_avatar_url">;
 type ServiceRequestPriceRow = { service_request_id: string; amount: number; updated_at: string; updated_by: string | null };
 type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[]; service_request_pricing: ServiceRequestPriceRow[] };
 type Tasks = { tasks: Task[]; task_comments: TaskComment[] };
@@ -751,6 +752,21 @@ function viewJob(db: DB, j: Job): JobView {
 const profileOf = (db: DB, id: string | null) => (id ? db.profiles.find((p) => p.id === id) ?? null : null);
 const labelOf = (db: DB, id: string | null) => authorLabel(id, profileOf(db, id));
 const colorOf = (db: DB, id: string | null) => authorColor(profileOf(db, id));
+const avatarOf = (db: DB, id: string | null) => {
+  const p = profileOf(db, id);
+  if (!p) return null;
+  const signed = p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null;
+  return serviceRequestActorAvatarUrl(p, signed);
+};
+function decorateSrEvent(db: DB, e: SREventRow): SREvent {
+  return {
+    ...e,
+    actor_name: e.actor_id ? labelOf(db, e.actor_id) : "System",
+    actor_color: colorOf(db, e.actor_id),
+    actor_avatar_url: avatarOf(db, e.actor_id),
+    edited_at: e.edited_at ?? null,
+  };
+}
 
 
 function viewTaskComment(db: DB, c: TaskComment): TaskCommentView {
@@ -1480,13 +1496,40 @@ export const mockRepo: Repo = {
     const w = await who(); if (!w.staff && !canSeeServicePrice(w.role)) return [];
     const db = load();
     const rows = db.sr_events.filter((e) => e.request_id === requestId).sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((e) => ({ ...e, actor_name: e.actor_id ? labelOf(db, e.actor_id) : "System", actor_color: colorOf(db, e.actor_id) }));
+      .map((e) => decorateSrEvent(db, e));
     return visibleServiceRequestEvents(rows, w.role);
   },
   async addServiceRequestEvent(requestId, e) {
     const w = await who(); requireStaffMock(w);
     if (e.kind === "note" && !e.body.trim()) throw new Error("note is empty");
-    mutate((db) => { db.sr_events.push({ id: randomUUID(), request_id: requestId, kind: e.kind, body: e.body, actor_id: w.uid, created_at: now() }); });
+    mutate((db) => { db.sr_events.push({ id: randomUUID(), request_id: requestId, kind: e.kind, body: e.body, actor_id: w.uid, created_at: now(), edited_at: null }); });
+  },
+  async getServiceRequestEvent(eventId) {
+    const w = await who(); if (!w.staff && !canSeeServicePrice(w.role)) return null;
+    const db = load();
+    const row = db.sr_events.find((e) => e.id === eventId);
+    if (!row) return null;
+    const ev = decorateSrEvent(db, row);
+    return visibleServiceRequestEvents([ev], w.role)[0] ?? null;
+  },
+  async updateServiceRequestEvent(requestId, eventId, body) {
+    const w = await who(); requireStaffMock(w);
+    mutate((db) => {
+      const ev = db.sr_events.find((e) => e.id === eventId && e.request_id === requestId);
+      if (!ev || ev.kind !== "note") throw new Error("Note not found or not allowed");
+      if (!canEditServiceRequestNote({ userId: w.uid, role: w.role, authorId: ev.actor_id })) throw new Error("permission denied (mock RLS)");
+      ev.body = body;
+      ev.edited_at = now();
+    });
+  },
+  async deleteServiceRequestEvent(requestId, eventId) {
+    const w = await who(); requireStaffMock(w);
+    mutate((db) => {
+      const ev = db.sr_events.find((e) => e.id === eventId && e.request_id === requestId);
+      if (!ev || ev.kind !== "note") throw new Error("Note not found or not allowed");
+      if (!canDeleteServiceRequestNote({ userId: w.uid, role: w.role, canDeleteFlag: w.canDelete, authorId: ev.actor_id })) throw new Error("permission denied (mock RLS)");
+      db.sr_events = db.sr_events.filter((e) => e.id !== ev.id);
+    });
   },
   async getServiceRequestPrices(ids) {
     const w = await who();

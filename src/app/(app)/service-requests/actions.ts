@@ -10,6 +10,10 @@ import { formatAddress } from "@/lib/project-row";
 import { resolveNewTicketAssignee } from "@/lib/tickets";
 import { canSeeServicePrice, parseServicePrice, priceHistoryBody, formatServicePrice } from "@/lib/service-request-price";
 import {
+  canDeleteServiceRequestNote, canEditServiceRequestIssue, canEditServiceRequestNote,
+  issueEditedHistoryBody, parseTicketIssue, parseTicketNoteBody,
+} from "@/lib/service-request-notes";
+import {
   SR_OPEN, ticketNo, type JobKind, type ProjectPick, type ServiceRequestInput, type SRChannel, type SRPriority, type SRStatus,
 } from "@/lib/types";
 
@@ -261,4 +265,40 @@ export async function scheduleTicketVisit(_: ScheduleState, fd: FormData): Promi
   refresh(id);
   revalidatePath("/schedule"); revalidatePath("/"); revalidatePath(`/projects/${sr.project_id}`); revalidatePath(`/jobs/${jobId}`);
   redirect(`/service-requests/${id}?ok=${encodeURIComponent(`${kind === "warranty" ? "Warranty" : "Service"} visit scheduled. ${sr.project_name ?? "The original project"} stays ${sr.project_status === "complete" ? "Complete" : "as it was"}.`)}`);
+}
+
+export async function editTicketNote(id: string, eventId: string, fd: FormData) {
+  const { user, repo } = await load(id);
+  const parsed = parseTicketNoteBody(s(fd, "body"));
+  if (!parsed.ok) return go(id, parsed.error, "error");
+  const ev = await repo.getServiceRequestEvent(eventId);
+  if (!ev || ev.request_id !== id || ev.kind !== "note") go(id, "That note was not found.", "error");
+  if (!canEditServiceRequestNote({ userId: user.id, role: user.role, authorId: ev!.actor_id })) go(id, "You can't edit this note.", "error");
+  if (ev!.body === parsed.body) go(id, "No change.");
+  await repo.updateServiceRequestEvent(id, eventId, parsed.body);
+  go(id, "Note updated.");
+}
+
+export async function deleteTicketNote(id: string, eventId: string) {
+  const { user, repo } = await load(id);
+  const ev = await repo.getServiceRequestEvent(eventId);
+  if (!ev || ev.request_id !== id || ev.kind !== "note") go(id, "That note was not found.", "error");
+  if (!canDeleteServiceRequestNote({ userId: user.id, role: user.role, canDeleteFlag: user.can_delete, authorId: ev!.actor_id })) {
+    go(id, "You can't delete this note.", "error");
+  }
+  await repo.deleteServiceRequestEvent(id, eventId);
+  go(id, "Note deleted.");
+}
+
+export async function editTicketIssue(id: string, fd: FormData) {
+  const { user, repo, sr } = await load(id);
+  if (!canEditServiceRequestIssue({ userId: user.id, role: user.role, createdBy: sr.created_by })) {
+    go(id, "You can't edit this issue.", "error");
+  }
+  const parsed = parseTicketIssue(s(fd, "summary"), s(fd, "description"));
+  if (!parsed.ok) return go(id, parsed.error, "error");
+  if (sr.summary === parsed.summary && sr.description === parsed.description) go(id, "No change.");
+  await repo.updateServiceRequest(id, { summary: parsed.summary, description: parsed.description });
+  await repo.addServiceRequestEvent(id, { kind: "status", body: issueEditedHistoryBody(sr.summary, parsed.summary) });
+  go(id, "Issue updated.");
 }
