@@ -934,12 +934,20 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     },
 
     async listFleetVehicles() {
-      const { data, error } = await (await db()).from("fleet_vehicles").select("geotab_device_id, label, profile_id");
+      const { data, error } = await (await db()).from("fleet_vehicles").select("geotab_device_id, label, profile_id, invite_email");
       fail(error);
       return (data ?? []) as FleetVehicleRow[];
     },
     async setFleetVehicleMapping(deviceId, patch) {
-      const row = { geotab_device_id: deviceId, updated_at: new Date().toISOString(), ...patch };
+      const row = {
+        geotab_device_id: deviceId,
+        updated_at: new Date().toISOString(),
+        ...(patch.label !== undefined ? { label: patch.label } : {}),
+        ...(patch.profile_id !== undefined || patch.invite_email !== undefined ? {
+          profile_id: patch.profile_id ?? null,
+          invite_email: patch.invite_email ?? null,
+        } : {}),
+      };
       fail((await (await db()).from("fleet_vehicles").upsert(row)).error);
     },
     async setFleetAccess(email, access) {

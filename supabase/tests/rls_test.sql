@@ -911,3 +911,42 @@ update public.invites set fleet_access = false where email='ready.manager@exampl
 select pg_temp.check('invite fleet_access toggle syncs onto existing profile',
   (select fleet_access from public.profiles where email='ready.manager@example.com') = false);
 reset role;
+
+-- ---- fleet vehicle assignment on an invite moves to the profile at first sign-in
+select pg_temp.as_user(null);
+insert into public.invites (email, role, full_name, fleet_access)
+  values ('fleet.invite@example.com','tech','Fleet Invite', true)
+  on conflict (email) do nothing;
+insert into public.fleet_vehicles (geotab_device_id, label, invite_email)
+  values ('gt-invite-1', 'Invite Van', 'fleet.invite@example.com')
+  on conflict (geotab_device_id) do update
+    set invite_email = excluded.invite_email, profile_id = null, label = excluded.label;
+select pg_temp.check('invite vehicle mapping stored on invite_email',
+  (select invite_email from public.fleet_vehicles where geotab_device_id='gt-invite-1') = 'fleet.invite@example.com'
+  and (select profile_id from public.fleet_vehicles where geotab_device_id='gt-invite-1') is null);
+insert into auth.users (id, email, email_confirmed_at)
+  values ('00000000-0000-0000-0000-0000000000f3','fleet.invite@example.com', now())
+  on conflict (id) do nothing;
+select pg_temp.check('confirmed sign-in moves fleet assignment onto the profile',
+  (select profile_id from public.fleet_vehicles where geotab_device_id='gt-invite-1') = '00000000-0000-0000-0000-0000000000f3');
+select pg_temp.check('confirmed sign-in clears invite_email on the vehicle',
+  (select invite_email from public.fleet_vehicles where geotab_device_id='gt-invite-1') is null);
+
+-- later confirmation (unconfirmed signup first) also claims the vehicle
+insert into public.invites (email, role, full_name)
+  values ('fleet.later@example.com','tech','Later Invite')
+  on conflict (email) do nothing;
+insert into public.fleet_vehicles (geotab_device_id, label, invite_email)
+  values ('gt-invite-2', 'Later Van', 'fleet.later@example.com');
+insert into auth.users (id, email)
+  values ('00000000-0000-0000-0000-0000000000f4','fleet.later@example.com');
+select pg_temp.check('unconfirmed signup leaves vehicle on invite_email',
+  (select invite_email from public.fleet_vehicles where geotab_device_id='gt-invite-2') = 'fleet.later@example.com'
+  and (select profile_id from public.fleet_vehicles where geotab_device_id='gt-invite-2') is null);
+update auth.users set email_confirmed_at = now() where email='fleet.later@example.com';
+select pg_temp.check('later confirm moves fleet assignment onto the profile',
+  (select profile_id from public.fleet_vehicles where geotab_device_id='gt-invite-2') = '00000000-0000-0000-0000-0000000000f4'
+  and (select invite_email from public.fleet_vehicles where geotab_device_id='gt-invite-2') is null);
+select pg_temp.check('authenticated cannot execute private.apply_invite_fleet_assignments',
+  not has_function_privilege('authenticated', 'private.apply_invite_fleet_assignments(text,uuid)', 'execute'));
+reset role;

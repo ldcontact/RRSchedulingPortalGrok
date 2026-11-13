@@ -1,10 +1,44 @@
--- Permission toggles on invites, copied onto the profile at first sign-in.
--- Admins can set fleet_access / can_delete before the person has an auth account.
--- Do not apply this to production until it is approved for go-live.
+-- Invite pre-registration: permission toggles and fleet vehicle assignments.
+-- Admins can set fleet_access / can_delete, and assign a vehicle, before the
+-- person has an auth account. Flags and vehicle mappings move onto the profile
+-- at first confirmed sign-in. Do not apply this to production until go-live.
 
 alter table public.invites
   add column if not exists fleet_access boolean not null default false,
   add column if not exists can_delete boolean not null default false;
+
+-- Fleet vehicle assignments can point at an invite until first sign-in, then
+-- private.apply_invite_fleet_assignments moves them onto the new profile.
+alter table public.fleet_vehicles
+  add column if not exists invite_email text
+    references public.invites (email) on delete set null on update cascade;
+
+alter table public.fleet_vehicles
+  drop constraint if exists fleet_vehicles_assignee_exclusive;
+alter table public.fleet_vehicles
+  add constraint fleet_vehicles_assignee_exclusive
+    check (profile_id is null or invite_email is null);
+
+alter table public.fleet_vehicles
+  drop constraint if exists fleet_vehicles_invite_email_lower;
+alter table public.fleet_vehicles
+  add constraint fleet_vehicles_invite_email_lower
+    check (invite_email is null or invite_email = lower(invite_email));
+
+create index if not exists fleet_vehicles_invite_email_idx on public.fleet_vehicles (invite_email);
+
+create or replace function private.apply_invite_fleet_assignments(p_email text, p_profile_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.fleet_vehicles
+     set profile_id = p_profile_id,
+         invite_email = null,
+         updated_at = now()
+   where invite_email = lower(p_email);
+end $$;
+revoke all on function private.apply_invite_fleet_assignments(text, uuid) from public, anon, authenticated;
+
 
 -- Current handle_new_user is from 20261109170000_profile_avatars (avatars + role).
 -- Also copy invite permission flags when the email is already confirmed.
@@ -49,6 +83,7 @@ begin
   on conflict (id) do nothing;
   if inv.email is not null and confirmed then
     update public.invites set accepted_at = coalesce(accepted_at, now()) where email = inv.email;
+    perform private.apply_invite_fleet_assignments(inv.email, new.id);
   end if;
   return new;
 end $$;
@@ -68,6 +103,7 @@ begin
              can_delete = coalesce(inv.can_delete, false)
        where id = new.id and role is null and deleted_at is null;
       update public.invites set accepted_at = coalesce(accepted_at, now()) where email = inv.email;
+      perform private.apply_invite_fleet_assignments(inv.email, new.id);
     end if;
   end if;
   return new;

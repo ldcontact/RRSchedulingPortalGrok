@@ -13,6 +13,7 @@ import type { FleetVehicle, FleetVisitPin } from "@/lib/geotab/types";
 import { FleetMapCanvas } from "./fleet-map";
 import { SampleBadge } from "./sample-badge";
 import { suggestFleetAssignee } from "@/lib/geotab/suggest";
+import { fleetAssigneeOptionLabel, fleetAssigneeOptionValue, selectedFleetAssigneeValue } from "@/lib/geotab/assign";
 import { jobSiteFill, vehicleStatusDotStyle } from "./map-icons";
 import { driverLabel, statusDetail, STATUS_LABEL, STATUS_PILL, vehicleTitle } from "./status";
 import { useFleetLocations } from "./use-fleet-locations";
@@ -277,9 +278,9 @@ function VehicleRow({ v, selected, onSelect, admin, team, mapping }: { v: FleetV
           <form action={setFleetMapping} className="grid grid-cols-[1fr_auto] gap-2">
             <input type="hidden" name="geotab_device_id" value={v.id} />
             <input type="hidden" name="label" value={mapping?.label ?? ""} />
-            <select name="profile_id" defaultValue={mapping?.profile_id ?? v.profile?.id ?? ""} className="input text-sm" aria-label={`Assign ${vehicleTitle(v)}`}>
+            <select name="assignee" data-testid="fleet-assign-select" defaultValue={selectedFleetAssigneeValue(mapping, v.profile?.id)} className="input text-sm" aria-label={`Assign ${vehicleTitle(v)}`}>
               <option value="">Unassigned</option>
-              {team.map((m) => <option key={m.profile_id} value={m.profile_id!}>{m.full_name}</option>)}
+              {team.map((m) => <option key={fleetAssigneeOptionValue(m)} value={fleetAssigneeOptionValue(m)}>{fleetAssigneeOptionLabel(m)}</option>)}
             </select>
             <SubmitButton className="btn btn-sm">Save</SubmitButton>
           </form>
@@ -326,16 +327,16 @@ function JobRow({ v, selected, onSelect, onPointerEnter, onPointerLeave }: { v: 
 }
 
 function SuggestedMapping({ v, team, mapping }: { v: FleetVehicle; team: TeamMember[]; mapping?: FleetVehicleRow }) {
-  if (mapping?.profile_id || v.profile) return null;
+  if (mapping?.profile_id || mapping?.invite_email || v.profile) return null;
   const suggestion = suggestFleetAssignee(v.name, team);
-  if (!suggestion?.profile_id) return null;
+  if (!suggestion) return null;
   return (
     <form action={setFleetMapping}>
       <input type="hidden" name="geotab_device_id" value={v.id} />
       <input type="hidden" name="label" value={mapping?.label ?? ""} />
-      <input type="hidden" name="profile_id" value={suggestion.profile_id} />
+      <input type="hidden" name="assignee" value={fleetAssigneeOptionValue(suggestion)} />
       <button type="submit" data-testid="suggested-mapping" className="text-[12.5px] font-semibold text-brand hover:underline">
-        Suggested: {suggestion.full_name}
+        Suggested: {fleetAssigneeOptionLabel(suggestion)}
       </button>
     </form>
   );

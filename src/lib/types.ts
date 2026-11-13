@@ -294,7 +294,7 @@ export type ProjectHit = {
 };
 
 /** Geotab device ↔ team-member mapping (public.fleet_vehicles). */
-export type FleetVehicleRow = { geotab_device_id: string; label: string | null; profile_id: string | null };
+export type FleetVehicleRow = { geotab_device_id: string; label: string | null; profile_id: string | null; invite_email: string | null };
 
 // ---------------------------------------------------------------- tasks
 export type TaskStatus = "open" | "in_progress" | "done";

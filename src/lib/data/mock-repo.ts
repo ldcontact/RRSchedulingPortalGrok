@@ -138,7 +138,7 @@ function seed(): DB {
     k("c-sales-owen", "Owen Blake", "Homeowner", "(847) 555-0194", "owen.blake@example.com"),
     k("c-sales-linda", "Linda Cho", "Property Manager", "(630) 555-0172", "linda.cho@example.com"),
   ];
-  const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m }));
+  const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m, invite_email: null }));
   const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [], task_comments: [] } as DB;
   seedServiceRequests(db);
   seedTasks(db);
@@ -474,7 +474,10 @@ function load(): DB {
     save(db);
   }
   let fleetTouched = false;
-  if (!db.fleet_vehicles) { db.fleet_vehicles = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m })); fleetTouched = true; }
+  if (!db.fleet_vehicles) { db.fleet_vehicles = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m, invite_email: null })); fleetTouched = true; }
+  for (const row of db.fleet_vehicles) {
+    if (row.invite_email === undefined) { row.invite_email = null; fleetTouched = true; }
+  }
   for (const prof of db.profiles) {
     if (prof.fleet_access === undefined) {
       prof.fleet_access = prof.id === "u-manager";
@@ -1352,9 +1355,12 @@ export const mockRepo: Repo = {
       const existing = db.fleet_vehicles.find((r) => r.geotab_device_id === deviceId);
       if (existing) {
         if (patch.label !== undefined) existing.label = patch.label;
-        if (patch.profile_id !== undefined) existing.profile_id = patch.profile_id;
+        if (patch.profile_id !== undefined || patch.invite_email !== undefined) {
+          existing.profile_id = patch.profile_id ?? null;
+          existing.invite_email = patch.invite_email ?? null;
+        }
       } else {
-        db.fleet_vehicles.push({ geotab_device_id: deviceId, label: patch.label ?? null, profile_id: patch.profile_id ?? null });
+        db.fleet_vehicles.push({ geotab_device_id: deviceId, label: patch.label ?? null, profile_id: patch.profile_id ?? null, invite_email: patch.invite_email ?? null });
       }
     });
   },

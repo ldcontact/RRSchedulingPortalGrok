@@ -104,7 +104,7 @@ export interface Repo {
 
   // ---- fleet (Geotab). Reads are scoped by RLS / mock who(); writes are admin-only.
   listFleetVehicles(): Promise<FleetVehicleRow[]>;
-  setFleetVehicleMapping(deviceId: string, patch: { label?: string | null; profile_id?: string | null }): Promise<void>;
+  setFleetVehicleMapping(deviceId: string, patch: { label?: string | null; profile_id?: string | null; invite_email?: string | null }): Promise<void>;
   setFleetAccess(email: string, access: boolean): Promise<void>;
   setDeleteAccess(email: string, access: boolean): Promise<void>;
   countCustomerDependents(customerId: string): Promise<{ projects: number; serviceRequests: number }>;

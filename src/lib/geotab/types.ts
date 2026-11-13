@@ -6,6 +6,7 @@ export type FleetMapping = {
   geotab_device_id: string;
   label: string | null;
   profile_id: string | null;
+  invite_email?: string | null;
 };
 
 export type FleetPerson = {
