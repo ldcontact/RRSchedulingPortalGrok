@@ -3,6 +3,7 @@ import { MockRoleSwitcher } from "@/components/mock-role-switcher";
 import { isStaff, requireMember } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { MOCK_MODE } from "@/lib/env";
+import { getUpdatesRepo } from "@/lib/updates/repo";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireMember();
@@ -11,5 +12,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const repo = await getRepo();
   const open = isStaff(user.role) ? await repo.countOpenServiceRequests().catch(() => 0) : 0;
   const myTasks = await repo.countMyOpenTasks().catch(() => 0);
-  return <AppShell user={user} mock={MOCK_MODE} roleSwitcher={switcher} badges={{ "/service-requests": open, "/tasks": myTasks }}>{children}</AppShell>;
+  const updatesRepo = await getUpdatesRepo();
+  const [unreadUpdates, updateNotices] = await Promise.all([
+    updatesRepo.countUnread(user.id).catch(() => 0),
+    updatesRepo.listNotifications(user.id, 15).catch(() => []),
+  ]);
+  return <AppShell user={user} mock={MOCK_MODE} roleSwitcher={switcher} badges={{ "/service-requests": open, "/tasks": myTasks }} updateNotifications={{ unread: unreadUpdates, items: updateNotices }}>{children}</AppShell>;
 }

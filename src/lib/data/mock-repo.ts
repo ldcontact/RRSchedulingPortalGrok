@@ -521,6 +521,12 @@ function mutate<T>(fn: (db: DB) => T): T { const db = load(); const r = fn(db); 
 
 export function mockProfiles() { return load().profiles; }
 
+export function mockProjectAssigneeIds(projectId: string): string[] {
+  const db = load();
+  const jobs = new Set(db.jobs.filter((j) => j.project_id === projectId).map((j) => j.id));
+  return [...new Set(db.assignments.filter((a) => jobs.has(a.job_id)).map((a) => a.profile_id))];
+}
+
 /** Mock stand-in for auth.uid() + RLS helpers. */
 async function who() {
   const uid = (await cookies()).get("rr_mock_uid")?.value ?? "";
@@ -567,6 +573,28 @@ export function mockCreateConvertedProject(input: import("@/lib/types").ProjectI
       if (typeof syncProject === "function") syncProject(db, project.id);
     }
     return { project, jobId };
+  });
+}
+
+
+export function mockAssignTechToProject(projectId: string, profileId: string) {
+  return mutate((db) => {
+    let job = db.jobs.find((j) => j.project_id === projectId);
+    if (!job) {
+      const start = new Date(); start.setDate(start.getDate() + 7); start.setHours(14, 0, 0, 0);
+      const end = new Date(start.getTime() + 3 * 3600_000);
+      job = {
+        id: `j-${projectId}`, project_id: projectId, title: "First visit",
+        starts_at: start.toISOString(), ends_at: end.toISOString(), status: "scheduled",
+        instructions: null, started_at: null, completed_at: null, completed_by: null,
+        approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null,
+      };
+      db.jobs.push(job);
+    }
+    if (!db.assignments.some((a) => a.job_id === job!.id && a.profile_id === profileId)) {
+      db.assignments.push({ job_id: job.id, profile_id: profileId });
+    }
+    return job.id;
   });
 }
 

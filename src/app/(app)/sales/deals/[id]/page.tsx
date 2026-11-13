@@ -12,6 +12,8 @@ import { getSalesRepo } from "@/lib/sales/repo";
 import { smsEnabled } from "@/lib/sales/sms";
 import { dealLengthDays } from "@/lib/sales/types";
 import { convertDealAction, createBookingLinkAction, deleteDealAction, draftMessage, moveDealStage, saveAiFollowUpDraft, saveDealNote, sendDraftAction, sendProposalAction } from "../../actions";
+import { UpdatesPanel } from "@/components/updates/updates-panel";
+import { getUpdatesRepo } from "@/lib/updates/repo";
 
 export const metadata: Metadata = { title: "Deal" };
 
@@ -26,10 +28,13 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
   const repo = await getSalesRepo();
   const deal = await repo.getDeal(id);
   if (!deal) notFound();
-  const [activities, proposals, owners] = await Promise.all([
+  const updatesRepo = await getUpdatesRepo();
+  const [activities, proposals, owners, threads, mentionable] = await Promise.all([
     repo.listActivities(deal.id),
     repo.listProposals(deal.id),
     repo.ownerNames(),
+    updatesRepo.listForDeal(deal.id),
+    updatesRepo.mentionableUsers(),
   ]);
   const brief = await summarizeDeal(deal, activities);
   const pipe = pipelineBySlug(deal.pipeline_slug);
@@ -86,6 +91,15 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
               </>
             )}
           </div>
+
+          <UpdatesPanel
+            dealId={deal.id}
+            projectId={deal.converted_project_id}
+            contextTitle={deal.title}
+            threads={threads}
+            users={mentionable}
+            user={user}
+          />
 
           <div className="card p-4">
             <div className="mb-3 font-semibold">Conversation</div>

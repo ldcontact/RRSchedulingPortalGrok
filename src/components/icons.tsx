@@ -44,6 +44,9 @@ const P: Record<string, string> = {
   funnel: "M3 4h18l-7 8v6l-4 2v-8z",
   kanban: "M3 4h5v16H3zM10 4h4v10h-4zM16 4h5v7h-5z",
   map: "M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15",
+  bell: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0",
+  paperclip: "M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48",
+  at: "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM16 12v1a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94",
 };
 
 export function Icon({ name, className = "size-[18px]", ...rest }: { name: keyof typeof P | string } & SVGProps<SVGSVGElement>) {

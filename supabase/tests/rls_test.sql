@@ -608,6 +608,10 @@ returns jsonb language sql stable as $$
           select 1 from public.task_assignees a
           where a.task_id = t.id and a.profile_id = (select auth.uid())
         )
+    ),
+    'unread_updates', (
+      select count(*)::int from public.team_update_notifications n
+      where n.user_id = (select auth.uid()) and n.read_at is null
     )
   );
 $$;
@@ -751,3 +755,118 @@ select pg_temp.check('service_role can execute ingest, sign, and convert',
   has_function_privilege('service_role', 'public.ingest_sales_lead(text, text, text, text, text, text, text, text, text, text, jsonb)', 'execute')
   and has_function_privilege('service_role', 'public.sign_sales_proposal(text, text, boolean, text)', 'execute')
   and has_function_privilege('service_role', 'public.convert_sales_deal(uuid, timestamptz, timestamptz)', 'execute'));
+
+-- ---- Team Updates (deal + converted project history)
+reset role;
+insert into public.team_updates (id, deal_id, author_id, author_name, author_email, body, monday_update_id, created_at)
+values (
+  '60000000-0000-0000-0000-000000000001',
+  '50000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-000000000021',
+  'Ronan Sales',
+  'ronan@example.com',
+  'Can we confirm the attic baffles before we schedule?',
+  'mon-karla-1',
+  '2026-07-23T18:00:00Z'
+);
+insert into public.team_updates (id, deal_id, parent_id, author_id, author_name, body, monday_update_id, created_at)
+values (
+  '60000000-0000-0000-0000-000000000002',
+  '50000000-0000-0000-0000-000000000001',
+  '60000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-000000000021',
+  'Ronan Sales',
+  'Yes — Thursday afternoon works.',
+  'mon-karla-2',
+  '2026-07-23T19:00:00Z'
+);
+
+select pg_temp.as_user('00000000-0000-0000-0000-000000000021');
+select pg_temp.check('sales can read deal updates', (select count(*) from team_updates where deal_id='50000000-0000-0000-0000-000000000001')=2);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d'); -- Emily tech
+select pg_temp.check('tech cannot read unconverted deal updates', (select count(*) from team_updates)=0);
+reset role;
+
+update public.sales_deals
+   set converted_project_id = '20000000-0000-0000-0000-000000000002'
+ where id = '50000000-0000-0000-0000-000000000001';
+
+select pg_temp.check('converting a deal copies project_id onto its updates',
+  (select project_id from team_updates where id='60000000-0000-0000-0000-000000000001')
+  = '20000000-0000-0000-0000-000000000002');
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d'); -- Emily, assigned to project 2
+select pg_temp.check('tech can read updates on an assigned converted project', (select count(*) from team_updates)=2);
+select pg_temp.check('tech sees the full reply under the question',
+  (select parent_id from team_updates where id='60000000-0000-0000-0000-000000000002')
+  = '60000000-0000-0000-0000-000000000001');
+
+-- Tech can post on the project they can see.
+select public.post_team_update(
+  null,
+  '20000000-0000-0000-0000-000000000002',
+  '60000000-0000-0000-0000-000000000001',
+  'On site Thursday. I will send photos.',
+  '{}'
+);
+select pg_temp.check('tech can reply on a converted project thread',
+  (select count(*) from team_updates where parent_id='60000000-0000-0000-0000-000000000001')=2);
+
+select pg_temp.fails('tech cannot delete someone else''s update',
+  $$select public.delete_team_update('60000000-0000-0000-0000-000000000001')$$);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-000000000021');
+select pg_temp.check('deal owner is notified of the tech reply',
+  (select count(*) from team_update_notifications
+    where user_id='00000000-0000-0000-0000-000000000021' and kind in ('owner','thread')) >= 1);
+select pg_temp.check('nav_badges includes unread updates',
+  (public.nav_badges()->>'unread_updates')::int >= 1);
+select public.delete_team_update('60000000-0000-0000-0000-000000000002');
+select pg_temp.check('author can soft-delete their own update',
+  (select deleted_at is not null from team_updates where id='60000000-0000-0000-0000-000000000002'));
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager, can_delete default false
+select pg_temp.fails('manager without Delete access cannot delete someone else''s update',
+  $$select public.delete_team_update('60000000-0000-0000-0000-000000000001')$$);
+select pg_temp.as_user(null);
+update public.profiles set can_delete=true where id='00000000-0000-0000-0000-00000000000b';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select public.delete_team_update('60000000-0000-0000-0000-000000000001');
+select pg_temp.check('manager with Delete access can delete someone else''s update',
+  (select deleted_at is not null from team_updates where id='60000000-0000-0000-0000-000000000001'));
+select pg_temp.as_user(null);
+update public.profiles set can_delete=false where id='00000000-0000-0000-0000-00000000000b';
+
+-- Notifications are only visible to the recipient.
+insert into public.team_update_notifications (id, user_id, update_id, kind, title, body, link)
+values (
+  '70000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-00000000000d',
+  '60000000-0000-0000-0000-000000000001',
+  'assignee',
+  'New update',
+  'preview',
+  '/projects/20000000-0000-0000-0000-000000000002#update-60000000-0000-0000-0000-000000000001'
+);
+select pg_temp.as_user('00000000-0000-0000-0000-000000000021');
+select pg_temp.check('sales cannot read another user''s update notifications',
+  (select count(*) from team_update_notifications where id='70000000-0000-0000-0000-000000000001')=0);
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select pg_temp.check('recipient can read their update notification',
+  (select count(*) from team_update_notifications where id='70000000-0000-0000-0000-000000000001')=1);
+reset role;
+
+select pg_temp.check('team updates still added no sales SELECT policies on customers, projects, or jobs',
+  not exists (
+    select 1 from pg_policies
+    where policyname in ('sales_customers_read','sales_projects_read','sales_jobs_read')
+  ));
+select pg_temp.check('authenticated has table grants on team_updates',
+  has_table_privilege('authenticated', 'public.team_updates', 'select'));
+select pg_temp.check('anon has no access to team_updates',
+  not has_table_privilege('anon', 'public.team_updates', 'select'));

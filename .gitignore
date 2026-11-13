@@ -47,3 +47,4 @@ supabase/.temp/
 
 # local visual fixtures
 tmp-shots/
+.mock-updates.json

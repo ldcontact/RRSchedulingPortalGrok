@@ -9,7 +9,7 @@ import { PhotoGrid, PhotoUploader } from "@/components/photos";
 import { ProjectFilePanel } from "@/components/project-files";
 import { MessageLog } from "@/components/messages";
 import { SubmitButton } from "@/components/submit-button";
-import { requireRole } from "@/lib/auth";
+import { requireMember } from "@/lib/auth";
 import { countLabel, hasDeleteAccess, visitDeleteConsequences } from "@/lib/delete-access";
 import { DeleteConfirmDialog } from "@/components/delete-confirm";
 import { deleteProjectAction, deleteVisitAction } from "@/app/(app)/delete-actions";
@@ -21,6 +21,9 @@ import { MilestoneRow } from "./milestone-row";
 import { ScopeEditor } from "./scope-editor";
 import { PhotoRequirementsEditor } from "@/components/photo-requirements-editor";
 import { parseScopeItems } from "@/lib/scope-items";
+import { UpdatesPanel } from "@/components/updates/updates-panel";
+import { displayMentions } from "@/lib/updates/mentions";
+import { getUpdatesRepo } from "@/lib/updates/repo";
 import { groupPhotosByVisitAndPhase, PHOTO_PHASE_LABEL, visitPhotoCounts } from "@/lib/photo-phase";
 import { projectDates } from "@/lib/project-row";
 import { projectStepper, projectWhatsNext } from "@/lib/project-progress";
@@ -34,11 +37,11 @@ export async function generateMetadata({ params }: PageProps<"/projects/[id]">):
   return { title: p?.name ?? "Project" };
 }
 
-const TABS = ["overview", "scope", "visits", "files", "costs", "team", "notes"] as const;
+const TABS = ["overview", "scope", "visits", "files", "costs", "team", "notes", "updates"] as const;
 type Tab = (typeof TABS)[number];
 
 export default async function ProjectPage({ params, searchParams }: PageProps<"/projects/[id]">) {
-  const user = await requireRole("admin", "manager", "sales");
+  const user = await requireMember();
   const canDelete = hasDeleteAccess(user);
   const { id } = await params;
   const sp = await searchParams;
@@ -47,12 +50,16 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   if (!p) notFound();
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
   const deleteVisitId = typeof sp.deleteVisit === "string" ? sp.deleteVisit : null;
-  const [c, contacts, milestones, jobs, allPhotos, messages, notes, requirements, allProjectFiles, deleteVisitReqs] = await Promise.all([
+  const updatesRepo = await getUpdatesRepo();
+  const [c, contacts, milestones, jobs, allPhotos, messages, notes, requirements, allProjectFiles, deleteVisitReqs, updateThreads, mentionable] = await Promise.all([
     repo.getCustomer(p.customer_id), repo.listContacts(p.customer_id), repo.listMilestones(id), repo.listJobs({ projectId: id }),
     repo.listPhotos({ projectId: id }), repo.listMessages({ projectId: id }), repo.listNotes({ projectId: id }),
     repo.listPhotoRequirements(id), repo.listProjectFiles({ projectId: id }),
     deleteVisitId ? repo.listPhotoRequirements(id, deleteVisitId) : Promise.resolve([]),
+    updatesRepo.listForProject(id),
+    updatesRepo.mentionableUsers(),
   ]);
+  const updateCount = updateThreads.reduce((n, th) => n + 1 + th.replies.length, 0);
   const completionPhotos = allPhotos.filter((ph) => ph.kind === "completion");
   const projectDocs = allProjectFiles.filter((f) => !f.job_id);
   const fileCount = allPhotos.length + allProjectFiles.length;
@@ -117,6 +124,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
         { id: "costs", label: "Costs" },
         { id: "team", label: "Team", count: team.size || undefined },
         { id: "notes", label: "Field notes", count: fieldNotes.length },
+        { id: "updates", label: "Updates", count: updateCount || undefined },
       ]} />
 
       {tab === "overview" && (
@@ -148,6 +156,23 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 <Link href={`${base}?tab=scope`} className="text-xs font-semibold text-brand">Edit scope</Link>
               </div>
               <ScopeTable items={scopeItems} empty={<>No scope written yet. <Link className="font-semibold text-brand" href={`${base}?tab=scope`}>Add scope</Link></>} />
+            </div>
+            <div className="card min-w-0" data-testid="project-updates-preview">
+              <div className="card-hd">
+                <h3 className="font-semibold">Team updates</h3>
+                <Link href={`${base}?tab=updates`} className="text-xs font-semibold text-brand">View all</Link>
+              </div>
+              <div className="flex flex-col gap-3 p-4">
+                <p className="text-xs text-muted">Questions and answers from Sales stay with this project so techs and managers can keep the history. Internal only.</p>
+                {updateThreads.length === 0 && <p className="text-sm text-muted">No updates yet.</p>}
+                {updateThreads.slice(0, 2).map((th) => (
+                  <Link key={th.id} href={`${base}?tab=updates#update-${th.id}`} className="block rounded-lg border border-line p-3 hover:border-brand">
+                    <div className="text-sm font-semibold">{th.author_name}</div>
+                    <p className="mt-1 line-clamp-3 text-sm text-muted">{th.deleted_at ? "This update was deleted." : displayMentions(th.body)}</p>
+                    {!!th.replies.length && <div className="mt-1 text-xs font-medium text-brand">{th.replies.length} {th.replies.length === 1 ? "reply" : "replies"}</div>}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
           <div className="flex min-w-0 flex-col gap-4">
@@ -357,6 +382,18 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           </div>
           <MessageLog messages={messages} customerId={p.customer_id} projectId={p.id} />
         </div>
+      )}
+
+      {tab === "updates" && (
+        <UpdatesPanel
+          dealId={updateThreads[0]?.deal_id ?? null}
+          projectId={p.id}
+          contextTitle={p.name}
+          threads={updateThreads}
+          users={mentionable}
+          user={user}
+          empty="No team updates on this project yet. If this project was converted from a Sales deal, imported Monday questions will appear here after the updates import."
+        />
       )}
 
       {canDelete && deletingVisit && (

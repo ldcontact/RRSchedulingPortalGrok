@@ -436,6 +436,8 @@ export function mockSalesRepo(): SalesRepo {
       const { mockCreateConvertedProject } = await import("@/lib/data/mock-repo");
       const { project } = mockCreateConvertedProject(plan.project, plan.visit);
       const next = await this.updateDeal(id, { converted_project_id: project.id, stage_slug: plan.nextStage, scheduled_date: visit ? visit.starts_at.slice(0, 10) : working.scheduled_date });
+      const { syncMockUpdatesProject } = await import("@/lib/updates/mock-repo");
+      syncMockUpdatesProject(id, project.id);
       void uid;
       return { projectId: project.id, deal: next };
     },

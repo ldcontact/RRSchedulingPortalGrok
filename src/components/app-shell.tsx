@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { Icon } from "./icons";
 import { Avatar, Logo, MockBadge } from "./ui";
 import { WorkspaceSearch } from "./workspace-search";
+import { NotificationBell } from "./updates/notification-bell";
+import type { TeamUpdateNotification } from "@/lib/updates/types";
 import { hasFleetAccess } from "@/lib/geotab/access";
 import { ROLE_LABEL, type Role, type SessionUser } from "@/lib/types";
 
@@ -39,7 +41,7 @@ const NAV: Record<Role, NavItem[]> = {
 NAV.manager = NAV.admin;
 
 /** badges: small counts next to nav items, keyed by href (e.g. open service requests). */
-export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { user: SessionUser & { role: Role }; mock: boolean; roleSwitcher?: ReactNode; badges?: Record<string, number>; children: ReactNode }) {
+export function AppShell({ user, mock, roleSwitcher, badges = {}, updateNotifications, children }: { user: SessionUser & { role: Role }; mock: boolean; roleSwitcher?: ReactNode; badges?: Record<string, number>; updateNotifications?: { unread: number; items: TeamUpdateNotification[] }; children: ReactNode }) {
   const path = usePathname();
   const tech = user.role === "tech";
   const fleet = hasFleetAccess(user);
@@ -96,6 +98,7 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, children }: { 
               {!!badges["/tasks"] && <span className="absolute top-0.5 right-0 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold text-[#3b2600]">{badges["/tasks"]}</span>}
             </Link>
           )}
+          <NotificationBell unread={updateNotifications?.unread ?? 0} items={updateNotifications?.items ?? []} />
           <WorkspaceSearch />
           {mock && <span className="hidden sm:inline"><MockBadge /></span>}
           {roleSwitcher}
