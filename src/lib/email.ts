@@ -7,6 +7,7 @@ import {
   buildRfc2822Message,
   emailMissingMessage,
   gmailApiEnv,
+  normalizeRecipients,
   requireSendInput,
   resolveEmailTransport,
   sanitizeGmailError,
@@ -48,9 +49,11 @@ async function sendViaGmailApi(cfg: GmailApiConfig, input: SendEmailInput, to: s
     const tok = await client.authorize();
     const accessToken = tok?.access_token;
     if (!accessToken) throw new Error("did not return an access token");
+    const cc = normalizeRecipients(input.cc ?? []);
     const raw = toBase64Url(buildRfc2822Message({
       from: cfg.from,
       to,
+      cc: cc.length ? cc : undefined,
       subject: input.subject,
       text: input.text,
       html: input.html,
@@ -92,9 +95,11 @@ async function sendViaSmtp(input: SendEmailInput, to: string[]): Promise<SendEma
   if (!cfg) throw new Error(emailMissingMessage());
   const transporter = nodemailer.createTransport(smtpTransportOptions(cfg));
   try {
+    const cc = normalizeRecipients(input.cc ?? []);
     const info = await transporter.sendMail({
       from: cfg.from,
       to,
+      cc: cc.length ? cc : undefined,
       subject: input.subject,
       text: input.text,
       html: input.html,

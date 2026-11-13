@@ -22,6 +22,8 @@ import {
   addTicketNote, assignTicket, convertTicket, finishTicket, linkProject, markTriaged, reopenTicket, setBillable, unlinkProject,
 } from "../actions";
 import { ScheduleVisitForm } from "./schedule-form";
+import { SendScheduleEmailButton } from "../schedule-email-dialog";
+import { buildScheduleEmailDraft, lastScheduleEmailEvent, pickScheduleVisit, scheduleEmailBlockers } from "@/lib/service-request-email";
 
 export async function generateMetadata({ params }: PageProps<"/service-requests/[id]">): Promise<Metadata> {
   const sr = await (await getRepo()).getServiceRequest((await params).id).catch(() => null);
@@ -31,6 +33,7 @@ export async function generateMetadata({ params }: PageProps<"/service-requests/
 const EV_ICON: Record<SREvent["kind"], string> = {
   created: "plus", note: "note", status: "flag", linked: "briefcase", unlinked: "x", assigned: "user", billable: "dollar",
   scheduled: "calendar", converted: "briefcase", resolved: "check", closed: "check", reopened: "undo",
+  emailed: "mail",
 };
 
 export default async function ServiceRequestPage({ params, searchParams }: PageProps<"/service-requests/[id]">) {
@@ -44,10 +47,11 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
   if (!sr) notFound();
   const pq = str("pq");
   const picking = str("link") === "1" || !!pq;
-  const [events, visits, people, project, picks] = await Promise.all([
+  const [events, visits, people, project, picks, creator] = await Promise.all([
     repo.listServiceRequestEvents(id), repo.listJobs({ serviceRequestId: id }), repo.listAssignable(),
     sr.project_id ? repo.getProject(sr.project_id) : Promise.resolve(null),
     picking ? repo.findProjects(pq ? { q: pq, limit: 10 } : { customerId: sr.customer_id, limit: 10 }) : Promise.resolve([]),
+    sr.created_by ? repo.getProfile(sr.created_by) : Promise.resolve(null),
   ]);
   const notes = events.filter((e) => e.kind === "note");
   const history = events.filter((e) => e.kind !== "note");
@@ -58,6 +62,20 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
   const ok = str("ok"), error = str("error");
   const site = formatAddress({ address: sr.site_address, city: sr.site_city, state: sr.site_state, zip: sr.site_zip });
   const tel = (p: string) => `tel:${p.replace(/[^\d+]/g, "")}`;
+  const scheduleVisit = pickScheduleVisit(visits);
+  const emailBlocker = scheduleEmailBlockers({ visit: scheduleVisit, customerEmail: sr.contact_email });
+  const lastEmail = lastScheduleEmailEvent(events);
+  const scheduleDraft = scheduleVisit && !emailBlocker
+    ? buildScheduleEmailDraft({
+        customerEmail: sr.contact_email ?? "",
+        creatorEmail: creator?.email ?? null,
+        customerName: sr.customer_name,
+        contactName: sr.contact_name,
+        visit: scheduleVisit,
+        address: site,
+        ticketNumber: ticketNo(sr.number),
+      })
+    : { to: (sr.contact_email ?? "").trim().toLowerCase(), cc: [], subject: "", body: "" };
 
   // warranty box
   const months = sr.warranty_months ?? DEFAULT_WARRANTY_MONTHS;
@@ -246,6 +264,14 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
           <div className="card" data-testid="ticket-actions">
             <div className="card-hd"><h3 className="font-semibold">Actions</h3></div>
             <div className="flex flex-col gap-2 p-4">
+              <SendScheduleEmailButton
+                requestId={id}
+                ticketNo={ticketNo(sr.number)}
+                enabled={!emailBlocker}
+                disabledReason={emailBlocker}
+                lastSentLabel={lastEmail ? fmtDateTime(lastEmail.created_at) : null}
+                draft={scheduleDraft}
+              />
               {open ? <>
                 {sr.project_id
                   ? <PendingLink href={`${base}?schedule=1`} scroll={false} className="btn btn-primary" data-testid="schedule-visit"><Icon name="calendar" />Schedule {defaults.kind === "warranty" ? "warranty" : "service"} visit</PendingLink>

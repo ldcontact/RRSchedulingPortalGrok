@@ -80,6 +80,29 @@ describe("sendEmail", () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it("passes CC recipients through SMTP", async () => {
+    stubSmtp();
+    sendMail.mockResolvedValue({
+      messageId: "<cc@smtp.gmail.com>",
+      accepted: ["dave@x.com", "maria@x.com"],
+      rejected: [],
+    });
+    const { sendEmail } = await import("./email");
+    await sendEmail({
+      to: "dave@x.com",
+      cc: "maria@x.com",
+      subject: "Visit scheduled",
+      text: "See you Saturday.",
+    });
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: ["dave@x.com"],
+        cc: ["maria@x.com"],
+        subject: "Visit scheduled",
+      }),
+    );
+  });
+
   it("logs and skips when neither Gmail API nor SMTP is configured", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const { sendEmail } = await import("./email");
@@ -135,12 +158,33 @@ describe("sendEmail", () => {
     expect(decoded).toContain("From: \"Retrofit Rebates Scheduler\" <admin@retrofitrebates.com>");
     expect(decoded).toContain("To: luke@retrofitrebates.com");
     expect(decoded).toContain("Subject: RR Scheduler test email");
+    expect(decoded).not.toContain("Cc:");
     expect(result).toEqual({
       messageId: "msg-123",
       accepted: ["luke@retrofitrebates.com"],
       rejected: [],
       provider: "gmail-api",
     });
+  });
+
+  it("includes Cc in the Gmail API RFC2822 payload", async () => {
+    vi.stubEnv("GOOGLE_MAILER_SA_JSON", JSON.stringify(SA));
+    vi.stubEnv("EMAIL_SENDER", "admin@retrofitrebates.com");
+    authorize.mockResolvedValue({ access_token: "tok-cc" });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "msg-cc" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { sendEmail } = await import("./email");
+    await sendEmail({
+      to: "dave@x.com",
+      cc: ["maria@x.com", "luke@retrofitrebates.com"],
+      subject: "Visit scheduled",
+      text: "See you Saturday.",
+    });
+    const sent = fetchMock.mock.calls[0][1] as { body: string };
+    const raw = JSON.parse(sent.body).raw as string;
+    const decoded = Buffer.from(raw.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    expect(decoded).toContain("To: dave@x.com");
+    expect(decoded).toContain("Cc: maria@x.com, luke@retrofitrebates.com");
   });
 
   it("sanitizes Gmail API failures and does not leak the private key", async () => {

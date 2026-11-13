@@ -6,7 +6,7 @@ import { Icon } from "./icons";
 export function Modal({ title, sub, closeHref, onClose, children, wide = false }: { title: ReactNode; sub?: ReactNode; closeHref?: string; onClose?: () => void; children: ReactNode; wide?: boolean }) {
   const closeBtnClass = "grid size-9 place-items-center rounded-lg border border-line hover:bg-[#fafbf9]";
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 p-0 sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
+    <div className="fixed inset-0 z-[2000] flex items-end justify-center bg-slate-900/45 p-0 sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
       {closeHref ? (
         <Link href={closeHref} className="absolute inset-0" aria-label="Close" scroll={false} tabIndex={-1} />
       ) : (

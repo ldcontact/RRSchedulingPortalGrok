@@ -7,13 +7,24 @@ import { findConflicts, getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDay, fmtRange, parseHHMM, validDay, zonedToUtc } from "@/lib/time";
 import { formatAddress } from "@/lib/project-row";
 import { resolveNewTicketAssignee } from "@/lib/tickets";
+import { MOCK_MODE } from "@/lib/env";
+import { sendEmail, emailConfigured, emailMissingMessage } from "@/lib/email";
+import {
+  formatScheduleEmailEventBody,
+  invalidEmails,
+  isValidEmail,
+  parseEmailList,
+  pickScheduleVisit,
+  scheduleEmailHtml,
+} from "@/lib/service-request-email";
 import {
   SR_OPEN, ticketNo, type JobKind, type ProjectPick, type ServiceRequestInput, type SRChannel, type SRPriority, type SRStatus,
 } from "@/lib/types";
 
 /*
- * Service requests (tickets). Staff only (admin + manager). Nothing here sends email or texts:
- * tickets are logged by hand from a call or email, and every change is recorded in the ticket history.
+ * Service requests (tickets). Staff only (admin + manager). Customer email is never
+ * sent automatically: a schedule notification goes out only when a staff member
+ * reviews the compose dialog and clicks Send. Every send is recorded in ticket history.
  */
 const staff = () => requireRole("admin", "manager");
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -228,4 +239,54 @@ export async function scheduleTicketVisit(_: ScheduleState, fd: FormData): Promi
   refresh(id);
   revalidatePath("/schedule"); revalidatePath("/"); revalidatePath(`/projects/${sr.project_id}`); revalidatePath(`/jobs/${jobId}`);
   redirect(`/service-requests/${id}?ok=${encodeURIComponent(`${kind === "warranty" ? "Warranty" : "Service"} visit scheduled. ${sr.project_name ?? "The original project"} stays ${sr.project_status === "complete" ? "Complete" : "as it was"}.`)}`);
+}
+
+
+// ---------------------------------------------------------------- schedule notification email (staff-initiated only)
+export async function sendScheduleEmail(fd: FormData) {
+  const id = s(fd, "request_id");
+  const { repo } = await load(id);
+  const to = parseEmailList(s(fd, "to"))[0] ?? "";
+  const cc = parseEmailList(s(fd, "cc")).filter((e) => e !== to);
+  const subject = s(fd, "subject");
+  const body = s(fd, "body");
+  if (!isValidEmail(to)) go(id, "Enter a valid customer email in To.", "error");
+  const bad = invalidEmails(cc);
+  if (bad.length) go(id, `Not a valid CC email: ${bad.join(", ")}.`, "error");
+  if (!subject) go(id, "Add a subject.", "error");
+  if (!body) go(id, "Add a message body.", "error");
+
+  const visits = await repo.listJobs({ serviceRequestId: id });
+  const visit = pickScheduleVisit(visits);
+  if (!visit) go(id, "Schedule a visit first.", "error");
+
+  const eventBody = formatScheduleEmailEventBody(to, cc);
+
+  if (MOCK_MODE) {
+    await repo.addServiceRequestEvent(id, { kind: "emailed", body: eventBody });
+    go(id, `Dev mock mode: schedule email to ${to} simulated (not sent).`);
+  }
+  if (!emailConfigured()) go(id, emailMissingMessage(), "error");
+
+  let result: Awaited<ReturnType<typeof sendEmail>> | undefined;
+  try {
+    result = await sendEmail({
+      to,
+      cc: cc.length ? cc : undefined,
+      subject,
+      text: body,
+      html: scheduleEmailHtml(body),
+    });
+  } catch (e) {
+    go(id, (e as Error).message, "error");
+  }
+  if (!result || result.skipped) go(id, emailMissingMessage(), "error");
+  const sent = result!;
+  if (sent.rejected.includes(to) || (sent.rejected.length && !sent.accepted.length)) {
+    const rejected = sent.rejected.length ? ` Not accepted: ${sent.rejected.join(", ")}.` : "";
+    go(id, `The mail server did not accept ${to}.${rejected}`, "error");
+  }
+  await repo.addServiceRequestEvent(id, { kind: "emailed", body: eventBody });
+  const ccNote = cc.length ? ` CC ${cc.join(", ")}.` : "";
+  go(id, `Schedule email sent to ${to}.${ccNote}`);
 }
