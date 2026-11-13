@@ -7,7 +7,8 @@ import { updateSession } from "@/lib/supabase/proxy";
 // page/action and in Postgres row-level security.
 // /api/mcp checks its own bearer token; /.well-known is OAuth metadata; /oauth/consent sends
 // signed-out visitors to /login?next=… itself so they come back to the consent screen.
-export const PUBLIC = ["/login", "/forgot-password", "/auth/", "/not-invited", "/account/password", "/offline", "/api/mcp", "/.well-known/", "/oauth/", "/get-started", "/privacy", "/book", "/sign/", "/api/sales/leads", "/api/sales/inbound-email", "/api/sales/booking"];
+// /api/cron/team-sms and /api/team/sms/inbound check CRON_SECRET / Twilio themselves.
+export const PUBLIC = ["/login", "/forgot-password", "/auth/", "/not-invited", "/account/password", "/offline", "/api/mcp", "/.well-known/", "/oauth/", "/get-started", "/privacy", "/book", "/sign/", "/api/sales/leads", "/api/sales/inbound-email", "/api/sales/booking", "/api/cron/team-sms", "/api/team/sms/inbound"];
 
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC.some((p) => pathname === p || pathname.startsWith(p.endsWith("/") ? p : p + "/"));
