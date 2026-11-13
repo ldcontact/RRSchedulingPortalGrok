@@ -1,3 +1,4 @@
+import { publicSiteUrl } from "@/lib/portal-url";
 import { dayKey } from "@/lib/time";
 import type { TeamSmsEntityType } from "./constants";
 
@@ -38,8 +39,7 @@ export function fmtSmsWhen(iso: string): string {
 }
 
 export function siteBaseUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "https://rrschedulingportal.vercel.app";
-  return raw.replace(/\/$/, "");
+  return publicSiteUrl();
 }
 
 export function entityPath(type: TeamSmsEntityType, id: string): string {

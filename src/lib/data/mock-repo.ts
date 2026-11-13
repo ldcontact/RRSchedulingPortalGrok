@@ -22,6 +22,7 @@ import { customerDeleteBlockers, hasDeleteAccess } from "@/lib/delete-access";
 import { canUpdateTaskStatus, canViewTask, compareTasksByDue, completedAtFor, isMyOpenTask, matchesTaskFilters, parseTaskPriority, parseTaskStatus, taskCounts } from "@/lib/tasks";
 import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 import { TEAM_SMS_PREF_DEFAULTS, normalizeTeamSmsPrefs, prefsFromPatch } from "@/lib/team-sms/prefs";
+import { entityLink, formatMorningSummary, formatSingleText, siteBaseUrl } from "@/lib/team-sms/copy";
 import { notifyServiceRequestAssigned, notifyTaskAssigned, notifyVisitAssigneesChanged, notifyVisitCreated, notifyVisitUpdated } from "@/lib/team-sms/notify";
 import { toE164 } from "@/lib/team-sms/phone";
 import type { TeamSmsStore } from "@/lib/team-sms/store";
@@ -171,14 +172,27 @@ function seedTeamTexting(db: DB) {
     jake.sms_stopped_at = "2026-11-12T18:14:00.000Z";
   }
   const now = new Date().toISOString();
+  // Sample assignment uses a real seeded visit (j1). /jobs/:id is the visit detail route.
+  const visitLink = entityLink("visit", "j1");
+  const morningLink = `${siteBaseUrl()}/schedule`;
+  const assignmentBody = formatSingleText({
+    kind: "assignment",
+    entityType: "visit",
+    summary: "New visit Tue 9:00 AM, 3642 S 52nd Ct, Cicero",
+    link: visitLink,
+  });
+  const morningBody = formatMorningSummary([
+    { startsAt: "2026-11-10T15:00:00.000Z", address: "3642 South 52nd Court", city: "Cicero" },
+    { startsAt: "2026-11-10T19:00:00.000Z", address: "219 Oakton St", city: "Des Plaines" },
+  ]);
   db.team_sms_outbox = [
     {
       id: "sms-held-carlos-visit",
       profile_id: "u-tech1",
       to_phone: "+18475550102",
       kind: "assignment",
-      body: "RR: New visit Tue 9:00 AM, 3642 S 52nd Ct, Cicero. Open: https://rrschedulingportal.vercel.app/jobs/demo-karla-visit",
-      link: "https://rrschedulingportal.vercel.app/jobs/demo-karla-visit",
+      body: assignmentBody,
+      link: visitLink,
       payload: { events: 1 },
       status: "held",
       send_after: now,
@@ -193,8 +207,8 @@ function seedTeamTexting(db: DB) {
       profile_id: "u-tech1",
       to_phone: "+18475550102",
       kind: "morning",
-      body: "RR: Today: 9:00 AM 3642 S 52nd Ct, Cicero; 1:00 PM 219 Oakton St, Des Plaines. Open: https://rrschedulingportal.vercel.app/schedule",
-      link: "https://rrschedulingportal.vercel.app/schedule",
+      body: morningBody,
+      link: morningLink,
       payload: { morning_for: "preview" },
       status: "held",
       send_after: now,

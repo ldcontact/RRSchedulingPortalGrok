@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { zonedToUtc, dayKey } from "@/lib/time";
 import { FORBIDDEN_MESSAGING_SERVICE_SIDS, FORBIDDEN_PHONE_NUMBERS, TEAM_SMS_MESSAGING_SERVICE_SID_DEFAULT } from "./constants";
-import { formatBatchText, formatMorningSummary, formatSingleText, shortAddress, visitAssignmentSummary } from "./copy";
+import { entityLink, formatBatchText, formatMorningSummary, formatSingleText, shortAddress, siteBaseUrl, visitAssignmentSummary } from "./copy";
 import { enqueueTeamSms } from "./enqueue";
 import { enqueueMorningSummaries, flushDueTeamSms } from "./flush";
 import { handleTeamSmsInbound, isStopKeyword } from "./inbound";
@@ -82,6 +82,31 @@ afterEach(() => {
   }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("site links", () => {
+  it("falls back to the live portal and never the retired project", () => {
+    const prevSite = process.env.NEXT_PUBLIC_SITE_URL;
+    const prevApp = process.env.APP_URL;
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.APP_URL;
+    try {
+      expect(siteBaseUrl()).toBe("https://rr-scheduling-portal-grokv1.vercel.app");
+      expect(entityLink("visit", "j1")).toBe("https://rr-scheduling-portal-grokv1.vercel.app/jobs/j1");
+      expect(entityLink("service_request", "sr1")).toBe("https://rr-scheduling-portal-grokv1.vercel.app/service-requests/sr1");
+      expect(entityLink("task", "t1")).toBe("https://rr-scheduling-portal-grokv1.vercel.app/tasks/t1");
+      expect(siteBaseUrl()).not.toContain("rrschedulingportal.vercel.app");
+    } finally {
+      if (prevSite === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+      else process.env.NEXT_PUBLIC_SITE_URL = prevSite;
+      if (prevApp === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = prevApp;
+    }
+  });
+
+  it("prefers NEXT_PUBLIC_SITE_URL over the default", () => {
+    expect(entityLink("visit", "j1")).toBe("https://app.example.com/jobs/j1");
+  });
 });
 
 describe("prefs", () => {

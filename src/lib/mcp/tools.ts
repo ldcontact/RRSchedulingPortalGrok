@@ -18,7 +18,7 @@ import {
 } from "@/lib/types";
 import { applicablePhotoRequirements } from "@/lib/photo-requirements";
 
-export const DEFAULT_PORTAL_URL = "https://rr-scheduling-portal-grokv1.vercel.app";
+export { DEFAULT_PORTAL_URL } from "@/lib/portal-url";
 
 export type ToolContext = { user: SessionUser; repo: Repo; portal: string };
 type Member = SessionUser & { role: Role };
