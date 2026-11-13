@@ -44,3 +44,16 @@ export function sampleVisitPins(jobs: { id: string; title: string; customer_name
     }];
   });
 }
+
+/** Shift frozen sample timestamps so lastUpdate/asOf line up with "now" (durations stay the same). */
+export function stampSampleSnapshots(now = new Date(), snapshots: GeotabVehicleSnapshot[] = SAMPLE_VEHICLES): { asOf: string; snapshots: GeotabVehicleSnapshot[] } {
+  const origin = Date.parse(SAMPLE_AS_OF);
+  const shift = now.getTime() - origin;
+  return {
+    asOf: now.toISOString(),
+    snapshots: snapshots.map((s) => ({
+      ...s,
+      lastUpdate: s.lastUpdate ? new Date(Date.parse(s.lastUpdate) + shift).toISOString() : null,
+    })),
+  };
+}

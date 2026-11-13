@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
-import { fmtDateTime, fmtTime } from "@/lib/time";
+import { fmtDateTime } from "@/lib/time";
 import { FleetMapCanvas } from "./fleet-map";
 import { SampleBadge } from "./sample-badge";
 import { driverLabel, statusDetail, STATUS_LABEL, STATUS_PILL, vehicleTitle } from "./status";
@@ -36,7 +36,7 @@ export function AssignedTruckCard({ jobId, assigneeIds }: { jobId: string; assig
             </div>
             {assigned.nearestVisit?.kind === "onsite" ? (
               <div className="rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-900">
-                <b>Arrived</b> at {assigned.nearestVisit.customerName}{assigned.lastUpdate ? ` · on site since ${fmtTime(assigned.lastUpdate)}` : ""}. Arrival is automatic when a stopped truck is within 150 m of the visit.
+                <b>Arrived</b> at {assigned.nearestVisit.customerName}{assigned.nearestVisit.onSiteSinceLabel ? ` · ${assigned.nearestVisit.onSiteSinceLabel.charAt(0).toLowerCase() + assigned.nearestVisit.onSiteSinceLabel.slice(1)}` : ""}. Arrival is automatic when a stopped truck is within 150 m of the visit.
               </div>
             ) : assigned.nearestVisit ? (
               <div className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">

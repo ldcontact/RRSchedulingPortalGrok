@@ -33,6 +33,7 @@ import {
   type VehicleFilterKey,
 } from "./filters";
 import { createPreviewController, type PreviewTarget } from "./preview";
+import { unmappedVehicleNames } from "./truck-card";
 
 export function FleetPageClient({ admin, team, mappings }: { admin: boolean; team: TeamMember[]; mappings: FleetVehicleRow[] }) {
   const { data, error, loading } = useFleetLocations();
@@ -121,7 +122,12 @@ export function FleetPageClient({ admin, team, mappings }: { admin: boolean; tea
       />
       {error && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div>}
       {data && (
-        <p className="mb-3 text-[12.5px] text-muted">Visit pins use geocoded job-site coordinates (US Census). Arrival is automatic when a stopped truck is within 150 m. Sites that have not been geocoded yet are omitted.</p>
+        <p className="mb-3 text-[12.5px] text-muted">Visit pins are shown in each tech&apos;s calendar color, using geocoded job-site coordinates (US Census). Arrival is automatic when a stopped truck is within 150 m. Sites that have not been geocoded yet are omitted.</p>
+      )}
+      {!!unmappedVehicleNames(filtered?.vehicles ?? data?.vehicles ?? []).length && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="fleet-unmapped-notice" role="status">
+          {unmappedNotice(unmappedVehicleNames(filtered?.vehicles ?? data?.vehicles ?? []))}
+        </div>
       )}
 
       <div className="mb-3 flex flex-col gap-2">
@@ -266,9 +272,20 @@ function VehicleRow({ v, selected, onSelect, admin, team, mapping }: { v: FleetV
             <span className="min-w-0 truncate">{driverLabel(v)}</span>
             <span className="shrink-0">· {statusDetail(v)}</span>
           </div>
+          {!v.profile && (
+            <div className="mt-1 text-[12.5px] font-semibold text-amber-800">No tech mapped to this truck</div>
+          )}
           {v.nearestVisit && (
             <div className="mt-1 text-[12.5px] text-muted">
-              {v.nearestVisit.kind === "onsite" ? <span className="font-semibold text-teal-800">Arrived · {v.nearestVisit.customerName}</span> : <span>En route to {v.nearestVisit.customerName} · {v.nearestVisit.distanceLabel}{v.nearestVisit.etaMinutes ? ` · ${v.nearestVisit.etaMinutes} min` : ""}</span>}
+              {v.nearestVisit.kind === "onsite" ? (
+                <span className="font-semibold text-teal-800">{v.nearestVisit.onSiteSinceLabel || "On site"} · {v.nearestVisit.customerName}</span>
+              ) : (
+                <span>
+                  En route to {v.nearestVisit.customerName} · {v.nearestVisit.drivingDistanceLabel}
+                  {v.nearestVisit.etaMinutes ? ` · ${v.nearestVisit.etaMinutes} min` : ""}
+                  {v.nearestVisit.etaSummary ? <span className={v.nearestVisit.late ? " font-semibold text-red-700" : " font-semibold text-teal-800"}> · {v.nearestVisit.etaSummary}</span> : null}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -341,3 +358,9 @@ function SuggestedMapping({ v, team, mapping }: { v: FleetVehicle; team: TeamMem
     </form>
   );
 }
+
+function unmappedNotice(names: string[]): string {
+  if (names.length === 1) return `${names[0]} has no tech mapped.`;
+  return `${names.length} trucks have no tech mapped: ${names.join(", ")}.`;
+}
+

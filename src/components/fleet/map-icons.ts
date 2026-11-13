@@ -91,8 +91,8 @@ export function clusterIconHtml(opts: { count: number; fill: string; split?: boo
   return `<div class="fleet-cluster-icon${opts.selected ? " is-selected" : ""}" data-testid="fleet-cluster" data-count="${opts.count}" style="position:relative;width:${size}px;height:${size}px;line-height:0;${ring}">${vehicleSvg(color, size, defs)}<span class="fleet-cluster-count">${opts.count}</span></div>`;
 }
 
-export function jobSiteIconHtml(opts: { type?: ProjectType | null; kind?: JobKind | null; selected?: boolean } = {}): string {
-  const fill = jobSiteFill(opts.type);
+export function jobSiteIconHtml(opts: { type?: ProjectType | null; kind?: JobKind | null; selected?: boolean; fill?: string } = {}): string {
+  const fill = opts.fill || jobSiteFill(opts.type);
   const size = jobSiteIconSize(!!opts.selected);
   const ring = opts.selected
     ? `box-shadow:0 0 0 2px #fff,0 0 0 4px ${fill};border-radius:16px;`
