@@ -37,6 +37,8 @@ export type Invite = {
   avatar_path: string | null;
   invited_at: string;
   accepted_at: string | null;
+  fleet_access: boolean;
+  can_delete: boolean;
 };
 
 export type TeamMember = {
@@ -53,9 +55,9 @@ export type TeamMember = {
   avatar_path: string | null;
   google_avatar_url: string | null;
   avatar_url?: string | null;
-  /** Raw flag; invited members are false until they have a profile. */
+  /** Raw flag from the profile, or from the invite before first sign-in. */
   fleet_access: boolean;
-  /** Raw flag; invited members are false until they have a profile. */
+  /** Raw flag from the profile, or from the invite before first sign-in. */
   can_delete: boolean;
 };
 
@@ -100,7 +102,7 @@ export type Contact = {
 };
 export type ContactInput = Omit<Contact, "id" | "customer_id">;
 
-export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: AvatarSource; avatar_path?: string | null };
+export type InviteInput = { email: string; role: Role; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: AvatarSource; avatar_path?: string | null; fleet_access?: boolean; can_delete?: boolean };
 
 export type SessionUser = { id: string; email: string; name: string; role: Role | null; color: string; active: boolean; avatar_url?: string | null; avatar_source?: AvatarSource; google_avatar_url?: string | null; fleet_access: boolean; can_delete: boolean };
 

@@ -942,11 +942,17 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const row = { geotab_device_id: deviceId, updated_at: new Date().toISOString(), ...patch };
       fail((await (await db()).from("fleet_vehicles").upsert(row)).error);
     },
-    async setFleetAccess(profileId, access) {
-      fail((await (await db()).from("profiles").update({ fleet_access: access }).eq("id", profileId).is("deleted_at", null)).error);
+    async setFleetAccess(email, access) {
+      const s = await db();
+      const e = email.toLowerCase();
+      fail((await s.from("invites").update({ fleet_access: access }).eq("email", e)).error);
+      fail((await s.from("profiles").update({ fleet_access: access }).eq("email", e).is("deleted_at", null)).error);
     },
-    async setDeleteAccess(profileId, access) {
-      fail((await (await db()).from("profiles").update({ can_delete: access }).eq("id", profileId).eq("role", "manager").is("deleted_at", null)).error);
+    async setDeleteAccess(email, access) {
+      const s = await db();
+      const e = email.toLowerCase();
+      fail((await s.from("invites").update({ can_delete: access }).eq("email", e).eq("role", "manager")).error);
+      fail((await s.from("profiles").update({ can_delete: access }).eq("email", e).eq("role", "manager").is("deleted_at", null)).error);
     },
     async countCustomerDependents(customerId) {
       const s = await db();

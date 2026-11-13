@@ -17,10 +17,10 @@ export async function setFleetMapping(fd: FormData) {
   revalidatePath("/team");
 }
 
-export async function setFleetAccess(profileId: string, access: boolean) {
+export async function setFleetAccess(email: string, access: boolean) {
   await requireRole("admin");
-  if (!profileId) return;
-  await (await getRepo()).setFleetAccess(profileId, access);
+  if (!email) return;
+  await (await getRepo()).setFleetAccess(email, access);
   revalidatePath("/team");
   revalidatePath("/fleet");
   revalidatePath("/");

@@ -60,11 +60,11 @@ function ManagePanel({ m, meEmail }: { m: TeamMember; meEmail: string }) {
           />
         </div>
         <form action={updateMember.bind(null, m.email)} className="grid gap-2.5"><MemberFields m={m} /><SubmitButton className="btn btn-sm btn-primary">Save</SubmitButton></form>
-        {m.profile_id && m.role === "admin" && (
+        {m.role === "admin" && (
           <div className="rounded-lg border border-line bg-white p-3 text-[12.5px] text-muted">Fleet access is always on for admins.</div>
         )}
-        {m.profile_id && m.role !== "admin" && (
-          <form action={setFleetAccess.bind(null, m.profile_id, !m.fleet_access)} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white p-3" data-testid="fleet-access-toggle">
+        {m.role !== "admin" && (
+          <form action={setFleetAccess.bind(null, m.email, !m.fleet_access)} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white p-3" data-testid="fleet-access-toggle">
             <div className="min-w-0">
               <div className="text-xs font-semibold uppercase tracking-wide text-muted">Fleet access</div>
               <div className="text-[12.5px] text-muted">{m.fleet_access ? "Can open the fleet map and live truck cards." : "Off by default. Turn on so they can use Geotab in the portal."}</div>
@@ -72,11 +72,11 @@ function ManagePanel({ m, meEmail }: { m: TeamMember; meEmail: string }) {
             <SubmitButton className="btn btn-sm shrink-0" pendingText="Saving…">{m.fleet_access ? "On" : "Off"}</SubmitButton>
           </form>
         )}
-        {m.profile_id && m.role === "admin" && (
+        {m.role === "admin" && (
           <div className="rounded-lg border border-line bg-white p-3 text-[12.5px] text-muted">Delete access is always on for admins.</div>
         )}
-        {m.profile_id && m.role === "manager" && (
-          <form action={setDeleteAccess.bind(null, m.profile_id, !m.can_delete)} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white p-3" data-testid="delete-access-toggle">
+        {m.role === "manager" && (
+          <form action={setDeleteAccess.bind(null, m.email, !m.can_delete)} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white p-3" data-testid="delete-access-toggle">
             <div className="min-w-0">
               <div className="text-xs font-semibold uppercase tracking-wide text-muted">Delete access</div>
               <div className="text-[12.5px] text-muted">{m.can_delete ? "Can delete customers, projects, visits, and service requests." : "Off by default. Turn on so this manager can delete records."}</div>
@@ -84,7 +84,7 @@ function ManagePanel({ m, meEmail }: { m: TeamMember; meEmail: string }) {
             <SubmitButton className="btn btn-sm shrink-0" pendingText="Saving…">{m.can_delete ? "On" : "Off"}</SubmitButton>
           </form>
         )}
-        {m.profile_id && m.role === "tech" && (
+        {m.role === "tech" && (
           <div className="rounded-lg border border-line bg-white p-3 text-[12.5px] text-muted">Techs can’t delete customers, projects, visits, or service requests.</div>
         )}
         <div className="flex flex-col gap-3 border-t border-line pt-3">

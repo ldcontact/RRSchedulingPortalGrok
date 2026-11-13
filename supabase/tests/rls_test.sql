@@ -870,3 +870,44 @@ select pg_temp.check('authenticated has table grants on team_updates',
   has_table_privilege('authenticated', 'public.team_updates', 'select'));
 select pg_temp.check('anon has no access to team_updates',
   not has_table_privilege('anon', 'public.team_updates', 'select'));
+
+-- ---- invite permission toggles carry onto the profile at first sign-in
+select pg_temp.as_user(null);
+insert into public.invites (email, role, full_name, fleet_access, can_delete)
+  values ('pending.manager@example.com','manager','Pending Manager', true, true);
+insert into auth.users (id, email)
+  values ('00000000-0000-0000-0000-0000000000f1','pending.manager@example.com');
+select pg_temp.check('unconfirmed manager invite gets no role',
+  (select role from public.profiles where email='pending.manager@example.com') is null);
+select pg_temp.check('unconfirmed manager invite does not get fleet_access',
+  (select fleet_access from public.profiles where email='pending.manager@example.com') = false);
+select pg_temp.check('unconfirmed manager invite does not get can_delete',
+  (select can_delete from public.profiles where email='pending.manager@example.com') = false);
+update auth.users set email_confirmed_at = now() where email='pending.manager@example.com';
+select pg_temp.check('confirm copies manager role from invite',
+  (select role::text from public.profiles where email='pending.manager@example.com') = 'manager');
+select pg_temp.check('confirm copies fleet_access from invite',
+  (select fleet_access from public.profiles where email='pending.manager@example.com') = true);
+select pg_temp.check('confirm copies can_delete from invite',
+  (select can_delete from public.profiles where email='pending.manager@example.com') = true);
+
+-- Already-confirmed create (Google sign-in) copies flags in handle_new_user
+insert into public.invites (email, role, full_name, fleet_access, can_delete)
+  values ('ready.manager@example.com','manager','Ready Manager', true, false);
+insert into auth.users (id, email, email_confirmed_at)
+  values ('00000000-0000-0000-0000-0000000000f2','ready.manager@example.com', now());
+select pg_temp.check('confirmed create copies invite fleet_access',
+  (select fleet_access from public.profiles where email='ready.manager@example.com') = true);
+select pg_temp.check('confirmed create leaves can_delete off when invite is off',
+  (select can_delete from public.profiles where email='ready.manager@example.com') = false);
+select pg_temp.check('confirmed create copies manager role',
+  (select role::text from public.profiles where email='ready.manager@example.com') = 'manager');
+
+-- Admin toggle on the invite syncs onto an existing confirmed profile
+update public.invites set can_delete = true where email='ready.manager@example.com';
+select pg_temp.check('invite can_delete toggle syncs onto existing profile',
+  (select can_delete from public.profiles where email='ready.manager@example.com') = true);
+update public.invites set fleet_access = false where email='ready.manager@example.com';
+select pg_temp.check('invite fleet_access toggle syncs onto existing profile',
+  (select fleet_access from public.profiles where email='ready.manager@example.com') = false);
+reset role;

@@ -90,11 +90,15 @@ function seed(): DB {
     p("u-matthew", "matthew@retrofitrebates.com", "Matthew Dlugosz", "sales", "Sales Representative", "", "#16a34a", { avatar_source: "google", google_avatar_url: "/api/mock-photo/seed/avatar/Matthew%20Dlugosz.svg" }),
     p("u-stranger", "someone.else@gmail.com", "Someone Else", null, "", "", "#64748b"),
   ];
+  const mariaPre = profiles.find((x) => x.id === "u-manager");
+  if (mariaPre) mariaPre.fleet_access = true; // operations manager — used for manager fleet demos
   const invites: Invite[] = profiles.filter((x) => x.role).map((x) => ({
     email: x.email, role: x.role!, full_name: x.full_name, phone: x.phone, title: x.title, color: x.color,
     avatar_source: x.avatar_source, avatar_path: x.avatar_path, invited_at: ago(40), accepted_at: ago(39),
+    fleet_access: !!x.fleet_access, can_delete: !!x.can_delete,
   }));
-  invites.push({ email: "sam.ortiz@gmail.com", role: "tech", full_name: "Sam Ortiz", phone: "(630) 555-0177", title: "Apprentice Electrician", color: "#0891b2", avatar_source: "none", avatar_path: null, invited_at: ago(1), accepted_at: null });
+  invites.push({ email: "sam.ortiz@gmail.com", role: "tech", full_name: "Sam Ortiz", phone: "(630) 555-0177", title: "Apprentice Electrician", color: "#0891b2", avatar_source: "none", avatar_path: null, invited_at: ago(1), accepted_at: null, fleet_access: false, can_delete: false });
+  invites.push({ email: "kevin.bradford@example.com", role: "manager", full_name: "Kevin Bradford", phone: "(847) 555-0210", title: "Project Manager", color: "#7c3aed", avatar_source: "none", avatar_path: null, invited_at: ago(1), accepted_at: null, fleet_access: false, can_delete: false });
   const c = (id: string, name: string, phone: string, email: string, address: string, city: string, zip: string, tags: string[], notes: string, days: number): Customer =>
     ({ id, name, phone, email, address, city, state: "IL", zip, tags, notes, created_at: ago(days), updated_at: ago(days), ...emptyGeocode() });
   const customers = [
@@ -134,8 +138,6 @@ function seed(): DB {
     k("c-sales-owen", "Owen Blake", "Homeowner", "(847) 555-0194", "owen.blake@example.com"),
     k("c-sales-linda", "Linda Cho", "Property Manager", "(630) 555-0172", "linda.cho@example.com"),
   ];
-  const maria = profiles.find((x) => x.id === "u-manager");
-  if (maria) maria.fleet_access = true; // operations manager — used for manager fleet demos
   const fleet_vehicles: FleetVehicleRow[] = SAMPLE_DEFAULT_MAP.map((m) => ({ ...m }));
   const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [], task_comments: [] } as DB;
   seedServiceRequests(db);
@@ -775,16 +777,24 @@ export const mockRepo: Repo = {
     mutate((db) => {
       const email = input.email.toLowerCase();
       const existing = db.invites.find((i) => i.email === email);
-      if (existing) Object.assign(existing, input, { email, avatar_source: input.avatar_source ?? existing.avatar_source, avatar_path: input.avatar_path !== undefined ? input.avatar_path : existing.avatar_path });
-      else db.invites.push({ ...input, email, avatar_source: input.avatar_source ?? "none", avatar_path: input.avatar_path ?? null, invited_at: now(), accepted_at: null });
+      if (existing) Object.assign(existing, input, {
+        email,
+        avatar_source: input.avatar_source ?? existing.avatar_source,
+        avatar_path: input.avatar_path !== undefined ? input.avatar_path : existing.avatar_path,
+        fleet_access: input.fleet_access ?? existing.fleet_access,
+        can_delete: input.can_delete ?? existing.can_delete,
+      });
+      else db.invites.push({ ...input, email, avatar_source: input.avatar_source ?? "none", avatar_path: input.avatar_path ?? null, invited_at: now(), accepted_at: null, fleet_access: input.fleet_access ?? false, can_delete: input.can_delete ?? false });
       const prof = db.profiles.find((p) => p.email === email); // mirrors the sync_invite_to_profile trigger
       if (prof) {
+        const inv = db.invites.find((i) => i.email === email)!;
         Object.assign(prof, {
           role: input.role, full_name: input.full_name || prof.full_name, title: input.title, phone: input.phone, color: input.color,
           ...(input.avatar_source !== undefined ? { avatar_source: input.avatar_source } : {}),
           ...(input.avatar_path !== undefined ? { avatar_path: input.avatar_path } : {}),
+          fleet_access: inv.fleet_access, can_delete: inv.can_delete,
         });
-        const inv = db.invites.find((i) => i.email === email)!; inv.accepted_at ??= now();
+        inv.accepted_at ??= now();
       }
     });
   },
@@ -1348,19 +1358,25 @@ export const mockRepo: Repo = {
       }
     });
   },
-  async setFleetAccess(profileId, access) {
+  async setFleetAccess(email, access) {
     const w = await who();
     if (w.role !== "admin") throw new Error("permission denied (mock RLS)");
     mutate((db) => {
-      const prof = db.profiles.find((x) => x.id === profileId);
+      const e = email.toLowerCase();
+      const inv = db.invites.find((x) => x.email === e);
+      if (inv) inv.fleet_access = access;
+      const prof = db.profiles.find((x) => x.email === e);
       if (prof && !prof.deleted_at) prof.fleet_access = access;
     });
   },
-  async setDeleteAccess(profileId, access) {
+  async setDeleteAccess(email, access) {
     const w = await who();
     if (w.role !== "admin") throw new Error("permission denied (mock RLS)");
     mutate((db) => {
-      const prof = db.profiles.find((x) => x.id === profileId);
+      const e = email.toLowerCase();
+      const inv = db.invites.find((x) => x.email === e);
+      if (inv && inv.role === "manager") inv.can_delete = access;
+      const prof = db.profiles.find((x) => x.email === e);
       if (prof && !prof.deleted_at && prof.role === "manager") prof.can_delete = access;
     });
   },

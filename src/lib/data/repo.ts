@@ -105,8 +105,8 @@ export interface Repo {
   // ---- fleet (Geotab). Reads are scoped by RLS / mock who(); writes are admin-only.
   listFleetVehicles(): Promise<FleetVehicleRow[]>;
   setFleetVehicleMapping(deviceId: string, patch: { label?: string | null; profile_id?: string | null }): Promise<void>;
-  setFleetAccess(profileId: string, access: boolean): Promise<void>;
-  setDeleteAccess(profileId: string, access: boolean): Promise<void>;
+  setFleetAccess(email: string, access: boolean): Promise<void>;
+  setDeleteAccess(email: string, access: boolean): Promise<void>;
   countCustomerDependents(customerId: string): Promise<{ projects: number; serviceRequests: number }>;
   deleteCustomer(id: string): Promise<void>;
   deleteProject(id: string): Promise<void>;
@@ -152,7 +152,7 @@ export async function getRepo(): Promise<Repo> {
 /** Merge signed-up profiles with the admin-managed invite list into one team view. */
 export function mergeTeam(
   profiles: Profile[],
-  invites: { email: string; role: TeamMember["role"]; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: TeamMember["avatar_source"]; avatar_path?: string | null; invited_at: string; accepted_at: string | null }[],
+  invites: { email: string; role: TeamMember["role"]; full_name: string; title: string | null; phone: string | null; color: string; avatar_source?: TeamMember["avatar_source"]; avatar_path?: string | null; invited_at: string; accepted_at: string | null; fleet_access?: boolean; can_delete?: boolean }[],
 ): TeamMember[] {
   const byEmail = new Map<string, TeamMember>();
   for (const p of profiles) {
@@ -182,8 +182,8 @@ export function mergeTeam(
       profile_id: null, status: "invited", invited_at: i.invited_at,
       avatar_source: i.avatar_source ?? "none", avatar_path: i.avatar_path ?? null,
       google_avatar_url: null, avatar_url: null,
-      fleet_access: false,
-      can_delete: false,
+      fleet_access: !!i.fleet_access,
+      can_delete: !!i.can_delete,
     });
   }
   const order = { admin: 0, manager: 1, sales: 2, tech: 3 } as const;
