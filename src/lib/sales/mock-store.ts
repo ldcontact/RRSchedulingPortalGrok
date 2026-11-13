@@ -63,6 +63,7 @@ function seed(): SalesDB {
     sms_consent: false,
     sms_consent_at: null,
     sms_consent_by: null,
+    sms_consent_text_version: null,
     created_at: opened(20),
     updated_at: iso(1),
     ...row,
@@ -206,6 +207,7 @@ export function loadSales(): SalesDB {
         if (d.sms_consent == null) d.sms_consent = false;
         if (d.sms_consent_at === undefined) d.sms_consent_at = null;
         if (d.sms_consent_by === undefined) d.sms_consent_by = null;
+        if (d.sms_consent_text_version === undefined) d.sms_consent_text_version = null;
       }
       cacheMtime = mtime;
       return cache;

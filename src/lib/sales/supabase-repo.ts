@@ -9,6 +9,7 @@ import { sendEmail } from "@/lib/email";
 import { sendSms } from "./sms";
 import { bookingToken } from "./booking";
 import { coordsForDeal } from "./geocode-deal";
+import { SMS_CONSENT_TEXT_VERSION_GET_STARTED } from "./deal-contact";
 import { resolveAvatarUrl } from "@/lib/avatar";
 import type { AvatarSource } from "@/lib/types";
 
@@ -121,6 +122,7 @@ export function supabaseSalesRepo(): SalesRepo {
         sms_consent: found.raw?.sms_consent === true,
         sms_consent_at: found.raw?.sms_consent === true ? found.created_at : null,
         sms_consent_by: null,
+        sms_consent_text_version: found.raw?.sms_consent === true ? SMS_CONSENT_TEXT_VERSION_GET_STARTED : null,
       });
       await c.from("sales_inbox").update({ status: "accepted", accepted_deal_id: deal.id }).eq("id", id);
       return deal;

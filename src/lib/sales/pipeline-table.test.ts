@@ -48,6 +48,7 @@ const deal = (over: Partial<SalesDeal> & { id: string; stage_slug: string }): Sa
   sms_consent: false,
   sms_consent_at: null,
   sms_consent_by: null,
+  sms_consent_text_version: null,
   created_at: "2026-10-01T12:00:00.000Z",
   updated_at: "2026-10-01T12:00:00.000Z",
   ...over,

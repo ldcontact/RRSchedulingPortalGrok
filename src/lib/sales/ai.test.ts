@@ -50,6 +50,7 @@ const deal = (over: Partial<SalesDeal> = {}): SalesDeal => ({
   sms_consent: false,
   sms_consent_at: null,
   sms_consent_by: null,
+  sms_consent_text_version: null,
   created_at: "2026-03-31T12:00:00.000Z",
   updated_at: "2026-03-31T12:00:00.000Z",
   ...over,

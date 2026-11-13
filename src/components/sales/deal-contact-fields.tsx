@@ -1,7 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { AddressFields } from "@/components/address-autocomplete";
+import {
+  SMS_CONSENT_LABEL,
+  SMS_CONSENT_LEGAL_TEXT,
+  SMS_CONSENT_OFF_NOTE,
+} from "@/lib/sales/deal-contact";
 import type { SalesDeal } from "@/lib/sales/types";
+
+const POLICY_TAIL = "See our Privacy Policy.";
+
+function ConsentLegalText() {
+  const body = SMS_CONSENT_LEGAL_TEXT.endsWith(POLICY_TAIL)
+    ? SMS_CONSENT_LEGAL_TEXT.slice(0, -POLICY_TAIL.length).trimEnd()
+    : SMS_CONSENT_LEGAL_TEXT;
+  return (
+    <span className="mt-1 block text-xs leading-snug text-muted">
+      {body}{" "}
+      See our{" "}
+      <Link href="/privacy" className="text-brand underline">Privacy Policy</Link>.
+    </span>
+  );
+}
 
 export function DealContactFields({
   deal,
@@ -27,9 +48,12 @@ export function DealContactFields({
         </label>
         <label className="flex items-start gap-2 text-sm leading-snug">
           <input type="checkbox" name="sms_consent" value="yes" defaultChecked={!!deal?.sms_consent} className="mt-1" />
-          <span>This is a cell phone, OK to text</span>
+          <span>
+            <span>{SMS_CONSENT_LABEL}</span>
+            <ConsentLegalText />
+          </span>
         </label>
-        <p className="text-xs text-muted">Texting is off in Sales right now. Checking this records consent; nothing is sent automatically.</p>
+        <p className="text-xs text-muted">{SMS_CONSENT_OFF_NOTE}</p>
         {consentNote ? <p className="text-xs text-muted">{consentNote}</p> : null}
       </div>
       <div className="flex flex-col gap-3">

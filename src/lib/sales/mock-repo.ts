@@ -5,6 +5,7 @@ import { DEFAULT_AUTOMATIONS, effectsFor, matchingAutomations } from "./automati
 import { bookingToken, openSlots } from "./booking";
 import { planConvert } from "./convert";
 import { canAccessSales, canDeleteSalesRecord, canSeeAllDeals, canViewDeal } from "./permissions";
+import { SMS_CONSENT_TEXT_VERSION_GET_STARTED } from "./deal-contact";
 import { signProposal } from "./proposals";
 import { sendSms, smsEnabled } from "./sms";
 import { loadSales, mutateSales, newId, visibleCustomerIds, type SalesDB } from "./mock-store";
@@ -134,6 +135,7 @@ export function mockSalesRepo(): SalesRepo {
           sms_consent: input.sms_consent ?? false,
           sms_consent_at: input.sms_consent_at ?? null,
           sms_consent_by: input.sms_consent_by ?? null,
+          sms_consent_text_version: input.sms_consent_text_version ?? null,
           created_at: now(),
           updated_at: now(),
         };
@@ -221,6 +223,7 @@ export function mockSalesRepo(): SalesRepo {
           sms_consent: item.raw?.sms_consent === true,
           sms_consent_at: item.raw?.sms_consent === true ? (item.created_at ?? now()) : null,
           sms_consent_by: null,
+          sms_consent_text_version: item.raw?.sms_consent === true ? SMS_CONSENT_TEXT_VERSION_GET_STARTED : null,
           created_at: now(),
           updated_at: now(),
         };
@@ -529,6 +532,7 @@ export function mockSalesRepo(): SalesRepo {
             sms_consent: false,
             sms_consent_at: null,
             sms_consent_by: null,
+            sms_consent_text_version: null,
             created_at: now(),
             updated_at: now(),
           });

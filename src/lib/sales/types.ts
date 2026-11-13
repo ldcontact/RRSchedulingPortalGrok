@@ -40,6 +40,7 @@ export type SalesDeal = {
   sms_consent: boolean;
   sms_consent_at: string | null;
   sms_consent_by: string | null;
+  sms_consent_text_version: string | null;
   created_at: string;
   updated_at: string;
 };

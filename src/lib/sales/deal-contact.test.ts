@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isValidEmail, parseDealContactFields, smsConsentPatch } from "./deal-contact";
+import { isValidEmail, parseDealContactFields, smsConsentPatch, SMS_CONSENT_LABEL, SMS_CONSENT_LEGAL_TEXT, SMS_CONSENT_OFF_NOTE, SMS_CONSENT_TEXT_VERSION } from "./deal-contact";
 
 function fd(entries: Record<string, string>): FormData {
   const data = new FormData();
@@ -63,25 +63,50 @@ describe("parseDealContactFields", () => {
 
 describe("smsConsentPatch", () => {
   const now = "2026-11-13T15:01:00.000Z";
-  it("records who and when when consent is granted", () => {
+  it("records who, when, and which wording when consent is granted", () => {
     expect(smsConsentPatch({ checked: true, previous: null, userId: "u-admin", now })).toEqual({
       sms_consent: true,
       sms_consent_at: now,
       sms_consent_by: "u-admin",
+      sms_consent_text_version: SMS_CONSENT_TEXT_VERSION,
     });
   });
 
   it("leaves audit fields alone when the box is unchanged", () => {
-    const previous = { sms_consent: true, sms_consent_at: "2026-11-01T00:00:00.000Z", sms_consent_by: "u-sales" };
+    const previous = {
+      sms_consent: true,
+      sms_consent_at: "2026-11-01T00:00:00.000Z",
+      sms_consent_by: "u-sales",
+      sms_consent_text_version: "staff-deal-v1",
+    };
     expect(smsConsentPatch({ checked: true, previous, userId: "u-admin", now })).toEqual(previous);
   });
 
-  it("records a withdrawal with a new timestamp", () => {
-    const previous = { sms_consent: true, sms_consent_at: "2026-11-01T00:00:00.000Z", sms_consent_by: "u-sales" };
+  it("records a withdrawal with a new timestamp and keeps the wording version", () => {
+    const previous = {
+      sms_consent: true,
+      sms_consent_at: "2026-11-01T00:00:00.000Z",
+      sms_consent_by: "u-sales",
+      sms_consent_text_version: "staff-deal-v1",
+    };
     expect(smsConsentPatch({ checked: false, previous, userId: "u-admin", now })).toEqual({
       sms_consent: false,
       sms_consent_at: now,
       sms_consent_by: "u-admin",
+      sms_consent_text_version: "staff-deal-v1",
     });
+  });
+});
+
+describe("staff SMS consent wording", () => {
+  it("uses the staff-recorded TCPA text and a stable version id", () => {
+    expect(SMS_CONSENT_TEXT_VERSION).toBe("staff-deal-v1");
+    expect(SMS_CONSENT_LABEL).toBe("This is a cell phone, OK to text");
+    expect(SMS_CONSENT_LEGAL_TEXT).toContain("Customer confirmed this is a mobile number");
+    expect(SMS_CONSENT_LEGAL_TEXT).toContain("Retrofit Rebates, Inc.");
+    expect(SMS_CONSENT_LEGAL_TEXT).toContain("Reply STOP to opt out, HELP for help");
+    expect(SMS_CONSENT_LEGAL_TEXT).toContain("Consent is not a condition of service");
+    expect(SMS_CONSENT_LEGAL_TEXT).toContain("Privacy Policy");
+    expect(SMS_CONSENT_OFF_NOTE).toMatch(/texting is off/i);
   });
 });

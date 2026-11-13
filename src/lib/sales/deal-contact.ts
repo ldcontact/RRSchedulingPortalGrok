@@ -1,5 +1,20 @@
 /** Shared parsing for the New deal and deal-detail contact/address forms. */
 
+/** Short checkbox label on staff deal forms. */
+export const SMS_CONSENT_LABEL = "This is a cell phone, OK to text";
+
+/**
+ * Staff-recorded TCPA wording shown under the checkbox, adapted from the
+ * public Get started form so it reads as consent the customer gave to staff.
+ * Bump SMS_CONSENT_TEXT_VERSION if this text changes.
+ */
+export const SMS_CONSENT_TEXT_VERSION = "staff-deal-v1";
+export const SMS_CONSENT_TEXT_VERSION_GET_STARTED = "get-started-v1";
+export const SMS_CONSENT_LEGAL_TEXT =
+  "Customer confirmed this is a mobile number and agrees to receive texts from Retrofit Rebates, Inc. about their project and appointments. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Consent is not a condition of service. See our Privacy Policy.";
+export const SMS_CONSENT_OFF_NOTE =
+  "Texting is off in Sales right now. Checking this records consent; nothing is sent automatically.";
+
 export type ParsedDealContact = {
   title: string;
   contact_name: string | null;
@@ -75,24 +90,44 @@ export function parseDealContactFields(fd: FormData): { ok: true; value: ParsedD
 
 export function smsConsentPatch(opts: {
   checked: boolean;
-  previous?: { sms_consent?: boolean | null; sms_consent_at?: string | null; sms_consent_by?: string | null } | null;
+  previous?: {
+    sms_consent?: boolean | null;
+    sms_consent_at?: string | null;
+    sms_consent_by?: string | null;
+    sms_consent_text_version?: string | null;
+  } | null;
   userId: string;
   now?: string;
-}): { sms_consent: boolean; sms_consent_at: string | null; sms_consent_by: string | null } {
+  textVersion?: string;
+}): {
+  sms_consent: boolean;
+  sms_consent_at: string | null;
+  sms_consent_by: string | null;
+  sms_consent_text_version: string | null;
+} {
   const now = opts.now ?? new Date().toISOString();
+  const version = opts.textVersion ?? SMS_CONSENT_TEXT_VERSION;
   const was = !!opts.previous?.sms_consent;
   if (opts.checked === was) {
     return {
       sms_consent: opts.checked,
       sms_consent_at: opts.previous?.sms_consent_at ?? null,
       sms_consent_by: opts.previous?.sms_consent_by ?? null,
+      sms_consent_text_version: opts.previous?.sms_consent_text_version ?? null,
     };
   }
-  return { sms_consent: opts.checked, sms_consent_at: now, sms_consent_by: opts.userId };
+  return {
+    sms_consent: opts.checked,
+    sms_consent_at: now,
+    sms_consent_by: opts.userId,
+    // Record the wording in force when consent is granted; keep it on withdrawal.
+    sms_consent_text_version: opts.checked ? version : (opts.previous?.sms_consent_text_version ?? version),
+  };
 }
 
 export const SMS_CONSENT_DEFAULTS = {
   sms_consent: false,
   sms_consent_at: null as string | null,
   sms_consent_by: null as string | null,
+  sms_consent_text_version: null as string | null,
 };
