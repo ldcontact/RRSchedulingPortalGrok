@@ -19,6 +19,18 @@ export const emptyGeocode = (): { lat: null; lng: null; geocoded_at: null; geoco
 
 export type AddressParts = { address?: string | null; city?: string | null; state?: string | null; zip?: string | null };
 
+/** Coordinates posted by AddressFields (hidden geo_lat / geo_lng inputs). */
+export function parsePickedCoords(fd: FormData, latName = "geo_lat", lngName = "geo_lng"): { lat: number; lng: number } | null {
+  const latRaw = String(fd.get(latName) ?? "").trim();
+  const lngRaw = String(fd.get(lngName) ?? "").trim();
+  if (!latRaw || !lngRaw) return null;
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
 /** One-line form used by /locations/onelineaddress (and as a change detector). */
 export function formatGeocodeLine(p: AddressParts | null | undefined): string {
   if (!p) return "";

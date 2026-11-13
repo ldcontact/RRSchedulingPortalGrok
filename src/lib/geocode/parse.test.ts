@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressChanged, formatBatchInput, isPendingGeocode, parseBatchResponse, parseCensusLngLat, parseOnelineResponse, shouldGeocode, visitCoords } from "./parse";
+import { addressChanged, formatBatchInput, isPendingGeocode, parseBatchResponse, parseCensusLngLat, parseOnelineResponse, parsePickedCoords, shouldGeocode, visitCoords } from "./parse";
 import { haversineMeters } from "@/lib/geotab/distance";
 
 const MATCH_LINE = '"1","2250 Lunt Ave, Elk Grove Village, IL, 60007","Match","Exact","2250 LUNT AVE, ELK GROVE VILLAGE, IL, 60007","-87.948362438668,42.002294921649","111721694","L"';
@@ -69,5 +69,24 @@ describe("distance from a Census-matched site", () => {
     const m = haversineMeters(truck, site);
     expect(m).toBeGreaterThan(50);
     expect(m).toBeLessThanOrEqual(150);
+  });
+});
+
+describe("parsePickedCoords", () => {
+  const fd = (entries: Record<string, string>) => {
+    const data = new FormData();
+    for (const [k, v] of Object.entries(entries)) data.set(k, v);
+    return data;
+  };
+  it("reads a valid lat/lng pair from AddressFields hidden inputs", () => {
+    expect(parsePickedCoords(fd({ geo_lat: "42.031", geo_lng: "-88.084" }))).toEqual({ lat: 42.031, lng: -88.084 });
+  });
+  it("returns null when either coordinate is missing, non-numeric, or out of range", () => {
+    expect(parsePickedCoords(fd({}))).toBeNull();
+    expect(parsePickedCoords(fd({ geo_lat: "42.03" }))).toBeNull();
+    expect(parsePickedCoords(fd({ geo_lat: "42.03", geo_lng: "" }))).toBeNull();
+    expect(parsePickedCoords(fd({ geo_lat: "abc", geo_lng: "-88" }))).toBeNull();
+    expect(parsePickedCoords(fd({ geo_lat: "91", geo_lng: "-88" }))).toBeNull();
+    expect(parsePickedCoords(fd({ geo_lat: "42", geo_lng: "-181" }))).toBeNull();
   });
 });

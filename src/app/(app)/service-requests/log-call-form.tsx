@@ -6,6 +6,7 @@ import { ProjectStatusPill } from "@/components/status";
 import { ageText, warrantyFor } from "@/lib/project-row";
 import { dayKey, fmtDay } from "@/lib/time";
 import { PROJECT_TYPE_LABEL, type ProjectPick, type SRChannel } from "@/lib/types";
+import { AddressFields, type AddressFieldsHandle } from "@/components/address-autocomplete";
 import { CustomerPicker, type CustomerHit } from "@/components/customer-picker";
 import { SubmitButton } from "@/components/submit-button";
 import { createTicket, customerPrefill, type CustomerPrefill } from "./actions";
@@ -21,6 +22,7 @@ export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: stri
   const [cust, setCust] = useState<CustomerPrefill | null>(null);
   const [projectId, setProjectId] = useState<string>(v.project_id ?? "");
   const formRef = useRef<HTMLFormElement>(null);
+  const addressRef = useRef<AddressFieldsHandle>(null);
 
   useEffect(() => {
     if (v.customer_id && !cust) customerPrefill(v.customer_id).then((c) => {
@@ -39,8 +41,9 @@ export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: stri
     const c = await customerPrefill(h.id);
     if (!c) return;
     setCust(c);
+    addressRef.current?.applyIfEmpty({ address: c.site_address, city: c.site_city, state: c.site_state, zip: c.site_zip });
     const f = formRef.current;
-    if (f) for (const k of ["site_address", "site_city", "site_state", "site_zip", "contact_name", "contact_phone", "contact_email"] as const) {
+    if (f) for (const k of ["contact_name", "contact_phone", "contact_email"] as const) {
       const el = f.elements.namedItem(k) as HTMLInputElement | null;
       if (el && !el.value) el.value = c[k];
     }
@@ -76,11 +79,13 @@ export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: stri
           noMatchHint={<>No customers match. <Link href="/customers/new" className="font-semibold text-brand">Add a customer</Link> first.</>}
         />
       </div>
-      <div className="grid gap-3 sm:grid-cols-[2fr_1.2fr_.6fr_.9fr]">
-        <label className="label">Site address<input className="input" name="site_address" defaultValue={v.site_address} placeholder="Street" /></label>
-        <label className="label">City<input className="input" name="site_city" defaultValue={v.site_city} /></label>
-        <label className="label">State<input className="input" name="site_state" defaultValue={v.site_state} maxLength={2} /></label>
-        <label className="label">Zip<input className="input" name="site_zip" defaultValue={v.site_zip} /></label>
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+        <AddressFields
+          ref={addressRef}
+          defaults={{ address: v.site_address, city: v.site_city, state: v.site_state || "IL", zip: v.site_zip }}
+          names={{ address: "site_address", city: "site_city", state: "site_state", zip: "site_zip" }}
+          streetLabel="Site address"
+        />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="label">{channel === "email" ? "Who wrote" : "Who called"}<input className="input" name="contact_name" defaultValue={v.contact_name} placeholder="Name, role" /></label>

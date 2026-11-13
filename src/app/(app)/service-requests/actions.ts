@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
+import { parsePickedCoords } from "@/lib/geocode/parse";
 import { geocodeServiceRequestById } from "@/lib/geocode/run";
 import { findConflicts, getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDay, fmtRange, parseHHMM, validDay, zonedToUtc } from "@/lib/time";
@@ -90,6 +91,15 @@ export async function createTicket(_: TicketFormState, fd: FormData): Promise<Ti
     }
   } catch (e) { return { error: (e as Error).message, values }; }
   await geocodeServiceRequestById(id);
+  const picked = parsePickedCoords(fd);
+  if (picked) {
+    const row = await repo.getServiceRequest(id).catch(() => null);
+    if (row && row.geocode_status !== "matched") {
+      await repo.setServiceRequestGeocode(id, {
+        lat: picked.lat, lng: picked.lng, geocoded_at: new Date().toISOString(), geocode_status: "matched",
+      }).catch(() => {});
+    }
+  }
   refresh(id);
   redirect(`/service-requests/${id}?ok=${encodeURIComponent(`${ticketNo(number)} created. Nothing was sent to the customer.`)}`);
 }
