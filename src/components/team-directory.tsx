@@ -5,6 +5,7 @@ import { Icon } from "@/components/icons";
 import { Avatar, RolePill } from "@/components/ui";
 import { AvatarEditor } from "@/components/avatar-editor";
 import { SubmitButton } from "@/components/submit-button";
+import { sortMembers, type TeamSortKey } from "@/lib/team-sort";
 import { ROLE_LABEL, ROLES, type TeamMember } from "@/lib/types";
 import {
   adminSetPassword,
@@ -25,11 +26,8 @@ const STORAGE_KEY = "rr-team-view";
 const STATUS = { active: "bg-green-100 text-green-800", invited: "bg-accent-50 text-amber-700", inactive: "bg-red-50 text-red-800" } as const;
 const STATUS_LABEL = { active: "Active", invited: "Invited", inactive: "Suspended" } as const;
 const ROLE_HELP = { admin: "Everything, including team and roles", manager: "Customers, scheduling, approvals", sales: "Pipeline, leads, and their own deals", tech: "Only their assigned visits" } as const;
-const ROLE_ORDER = { admin: 0, manager: 1, sales: 2, tech: 3 } as const;
-const STATUS_ORDER = { active: 0, invited: 1, inactive: 2 } as const;
-
 type ViewMode = "cards" | "list";
-type SortKey = "name" | "role" | "status";
+type SortKey = TeamSortKey;
 
 function MemberFields({ m }: { m?: TeamMember }) {
   return (
@@ -128,17 +126,6 @@ function ManagePanel({ m, meEmail }: { m: TeamMember; meEmail: string }) {
       </div>
     </details>
   );
-}
-
-function sortMembers(team: TeamMember[], key: SortKey, dir: "asc" | "desc") {
-  const mul = dir === "asc" ? 1 : -1;
-  return [...team].sort((a, b) => {
-    let cmp = 0;
-    if (key === "name") cmp = (a.full_name || a.email).localeCompare(b.full_name || b.email, undefined, { sensitivity: "base" });
-    else if (key === "role") cmp = (ROLE_ORDER[a.role ?? "tech"] - ROLE_ORDER[b.role ?? "tech"]) || (a.full_name || a.email).localeCompare(b.full_name || b.email);
-    else cmp = (STATUS_ORDER[a.status] - STATUS_ORDER[b.status]) || (a.full_name || a.email).localeCompare(b.full_name || b.email);
-    return cmp * mul;
-  });
 }
 
 function readStoredView(): ViewMode {

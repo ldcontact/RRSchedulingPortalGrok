@@ -10,11 +10,12 @@ import { addDays, dayKey, fmtDay, fmtMinutes, fmtTime, minutesOfDay } from "@/li
 import type { JobView, Person } from "@/lib/types";
 import { moveJob } from "../jobs/actions";
 import { DispatchMap } from "@/components/fleet/dispatch-map";
+import { SCHEDULE_UNASSIGNED_ID, scheduleBoardRows, sortSchedulePeople, sortScheduleVisits } from "@/lib/schedule-sort";
 
 export type View = "day" | "week" | "month";
 type Row = Person & { role: string };
 const DAY_START = 6 * 60, DAY_END = 20 * 60, SNAP = 30;
-const UNASSIGNED = "__none";
+const UNASSIGNED = SCHEDULE_UNASSIGNED_ID;
 
 export function ScheduleBoard(props: { view: View; date: string; start: string; days: number; tech: string; today: string; staff: boolean; people: Row[]; rows: Row[]; jobs: JobView[]; conflicted: string[]; fleet?: boolean }) {
   const { view, date, start, days, tech, today, staff, people, rows, jobs, fleet } = props;
@@ -36,8 +37,12 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
     : view === "week" ? `${fmtDay(start, { month: "short", day: "numeric" })} – ${fmtDay(addDays(start, 6), { month: "short", day: "numeric", year: "numeric" })}`
     : fmtDay(date, { month: "long", year: "numeric" });
   const unassigned = jobs.filter((j) => !j.assignees.length);
-  const boardRows: Row[] = [...rows, ...(staff && unassigned.length ? [{ id: UNASSIGNED, full_name: "Unassigned", color: "#94a3b8", role: "" }] : [])];
-  const jobsFor = (rowId: string, day?: string) => jobs.filter((j) => (rowId === UNASSIGNED ? !j.assignees.length : j.assignees.some((a) => a.id === rowId)) && (!day || dayKey(j.starts_at) === day));
+  const boardRows: Row[] = scheduleBoardRows(rows, {
+    includeUnassigned: !!(staff && unassigned.length),
+    unassigned: { id: UNASSIGNED, full_name: "Unassigned", color: "#94a3b8", role: "" },
+  });
+  const peopleSorted = sortSchedulePeople(people);
+  const jobsFor = (rowId: string, day?: string) => sortScheduleVisits(jobs.filter((j) => (rowId === UNASSIGNED ? !j.assignees.length : j.assignees.some((a) => a.id === rowId)) && (!day || dayKey(j.starts_at) === day)));
   const draggable = (j: JobView) => staff && j.status !== "approved" && j.status !== "cancelled";
 
   async function drop(e: DragEvent, target: { day: string; row?: string; startMin?: number }) {
@@ -93,7 +98,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
   const agenda = (
     <div className="flex flex-col gap-3" data-testid="agenda">
       {dayList.filter((d) => view !== "month" || d.slice(0, 7) === date.slice(0, 7)).map((d) => {
-        const list = jobs.filter((j) => dayKey(j.starts_at) === d);
+        const list = sortScheduleVisits(jobs.filter((j) => dayKey(j.starts_at) === d));
         if (!list.length && d !== today) return null;
         return (
           <div key={d}>
@@ -142,7 +147,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
         {staff && (
           <select className="input ml-auto !w-auto min-w-0 !py-1.5" aria-label="Filter by tech" value={tech} onChange={(e) => router.push(q({ tech: e.target.value }))}>
             <option value="">Everyone</option>
-            {people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            {peopleSorted.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
           </select>
         )}
       </div>
@@ -217,7 +222,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
           <div className="grid grid-cols-7">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => <div key={d} className="border-b border-line bg-canvas/60 p-2 text-center text-xs font-semibold text-muted">{d}</div>)}
             {dayList.map((d) => {
-              const list = jobs.filter((j) => dayKey(j.starts_at) === d);
+              const list = sortScheduleVisits(jobs.filter((j) => dayKey(j.starts_at) === d));
               const key = `m|${d}`;
               return (
                 <div key={d} {...dropProps(key, { day: d })} className={`flex min-h-[112px] flex-col gap-1 border-b border-l border-line p-1.5 ${d.slice(0, 7) !== date.slice(0, 7) ? "bg-canvas/50" : ""} ${over === key ? "bg-brand-50 outline-2 outline-brand" : ""}`}>

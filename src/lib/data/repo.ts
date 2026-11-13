@@ -5,6 +5,7 @@ import type {
   FleetVehicleRow, GeocodeFields, Task, TaskCommentView, TaskInput, TaskPage, TaskPageFilter, TaskPatch, TaskView,
   WorkspaceSearchResults,
 } from "@/lib/types";
+import { compareDisplayName } from "@/lib/sort-names";
 
 /**
  * Data access used by pages and server actions. Two implementations:
@@ -196,8 +197,9 @@ export function mergeTeam(
       sms_stopped_at: null,
     });
   }
-  const order = { admin: 0, manager: 1, sales: 2, tech: 3 } as const;
-  return [...byEmail.values()].sort((a, b) => (order[a.role ?? "tech"] - order[b.role ?? "tech"]) || a.full_name.localeCompare(b.full_name));
+  return [...byEmail.values()].sort((a, b) =>
+    compareDisplayName(a.full_name || a.email, b.full_name || b.email) || a.email.localeCompare(b.email),
+  );
 }
 
 /**

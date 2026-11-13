@@ -15,6 +15,15 @@ const inviteBase = {
   accepted_at: null,
 };
 
+function profileBase(id: string, email: string, full_name: string, role: Profile["role"]): Profile {
+  return {
+    id, email, full_name, phone: null, title: null, color: "#0891b2", role, active: true,
+    avatar_source: "none", avatar_path: null, google_avatar_url: null,
+    fleet_access: false, can_delete: false,
+    sms_notify_assignment: false, sms_notify_same_day: false, sms_notify_morning: false, sms_stopped_at: null,
+  };
+}
+
 describe("mergeTeam invite permission flags", () => {
   it("copies fleet_access and can_delete from an invite with no profile", () => {
     const team = mergeTeam([], [{ ...inviteBase, fleet_access: true, can_delete: true }]);
@@ -58,5 +67,22 @@ describe("mergeTeam invite permission flags", () => {
     expect(team[0].profile_id).toBe("u-mariusz");
     expect(team[0].fleet_access).toBe(false);
     expect(team[0].can_delete).toBe(true);
+  });
+});
+
+describe("mergeTeam name order", () => {
+  it("sorts active and invited members A–Z by display name, case-insensitively", () => {
+    const team = mergeTeam(
+      [
+        { ...profileBase("u-zoe", "zoe@example.com", "zoe hart", "admin") },
+        { ...profileBase("u-ann", "ann@example.com", "Ann Cole", "tech") },
+      ],
+      [
+        { ...inviteBase, email: "sam.ortiz@example.com", full_name: "Sam Ortiz", role: "tech" },
+        { ...inviteBase, email: "bob@example.com", full_name: "BOB LEE", role: "sales" },
+      ],
+    );
+    expect(team.map((m) => m.full_name)).toEqual(["Ann Cole", "BOB LEE", "Sam Ortiz", "zoe hart"]);
+    expect(team.map((m) => m.status)).toEqual(["active", "invited", "invited", "active"]);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent } from "react";
 import { highlightChunks } from "@/lib/highlight-match";
 import {
   ADDRESS_SUGGEST_MIN_CHARS,
@@ -24,7 +24,34 @@ function Highlight({ text, query }: { text: string; query: string }) {
 
 type Defaults = { address?: string; city?: string; state?: string; zip?: string };
 
-export function AddressFields({ defaults }: { defaults: Defaults }) {
+export type AddressFieldNames = {
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  geo_lat?: string;
+  geo_lng?: string;
+};
+
+export type AddressFieldsHandle = {
+  /** Fill any still-empty fields (and an untouched default State) from a selected customer. */
+  applyIfEmpty: (p: Defaults) => void;
+};
+
+/** Same address autocomplete used on New customer and New deal. Field names default to address/city/state/zip/geo_lat/geo_lng. */
+export const AddressFields = forwardRef<AddressFieldsHandle, {
+  defaults: Defaults;
+  names?: AddressFieldNames;
+  streetLabel?: string;
+}>(function AddressFields({ defaults, names, streetLabel = "Street address" }, ref) {
+  const n = {
+    address: names?.address ?? "address",
+    city: names?.city ?? "city",
+    state: names?.state ?? "state",
+    zip: names?.zip ?? "zip",
+    geo_lat: names?.geo_lat ?? "geo_lat",
+    geo_lng: names?.geo_lng ?? "geo_lng",
+  };
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -41,8 +68,18 @@ export function AddressFields({ defaults }: { defaults: Defaults }) {
   const [searching, setSearching] = useState(false);
   const [degraded, setDegraded] = useState(false);
   const [active, setActive] = useState(0);
+  const stateTouched = useRef(false);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  useImperativeHandle(ref, () => ({
+    applyIfEmpty(p) {
+      setStreet((s) => s || p.address || "");
+      setCity((c) => c || p.city || "");
+      setZip((z) => z || p.zip || "");
+      if (p.state && !stateTouched.current) setState(p.state);
+    },
+  }));
 
   useEffect(() => {
     const onPtr = (e: PointerEvent) => {
@@ -63,7 +100,7 @@ export function AddressFields({ defaults }: { defaults: Defaults }) {
       : s.street;
     setStreet(line);
     if (s.city) setCity(s.city);
-    if (s.state) setState(s.state);
+    if (s.state) { setState(s.state); stateTouched.current = true; }
     if (s.zip) setZip(s.zip);
     if (s.lat != null && s.lng != null) {
       setLat(String(s.lat));
@@ -87,7 +124,7 @@ export function AddressFields({ defaults }: { defaults: Defaults }) {
           if (!item) return;
           if (item.zip) setZip(item.zip);
           if (item.city && !s.city) setCity(item.city);
-          if (item.state && !s.state) setState(item.state);
+          if (item.state && !s.state) { setState(item.state); stateTouched.current = true; }
           if (item.lat != null && item.lng != null) {
             setLat(String(item.lat));
             setLng(String(item.lng));
@@ -165,11 +202,11 @@ export function AddressFields({ defaults }: { defaults: Defaults }) {
     <>
       <div ref={rootRef} className="relative min-w-0 sm:col-span-2">
         <label className="label">
-          Street address
+          {streetLabel}
           <input
             ref={inputRef}
             className="input"
-            name="address"
+            name={n.address}
             value={street}
             onChange={(e) => onStreet(e.target.value)}
             onKeyDown={onKeyDown}
@@ -226,17 +263,17 @@ export function AddressFields({ defaults }: { defaults: Defaults }) {
       </div>
       <div className="grid min-w-0 grid-cols-[1fr_80px_110px] gap-3 sm:col-span-2">
         <label className="label min-w-0">City
-          <input className="input min-w-0" name="city" value={city} onChange={(e) => { setCity(e.target.value); clearCoords(); }} placeholder="Schaumburg" data-testid="address-city" />
+          <input className="input min-w-0" name={n.city} value={city} onChange={(e) => { setCity(e.target.value); clearCoords(); }} placeholder="Schaumburg" data-testid="address-city" />
         </label>
         <label className="label">State
-          <input className="input" name="state" maxLength={2} value={state} onChange={(e) => { setState(e.target.value.toUpperCase()); clearCoords(); }} data-testid="address-state" />
+          <input className="input" name={n.state} maxLength={2} value={state} onChange={(e) => { setState(e.target.value.toUpperCase()); stateTouched.current = true; clearCoords(); }} data-testid="address-state" />
         </label>
         <label className="label">ZIP
-          <input className="input" name="zip" inputMode="numeric" value={zip} onChange={(e) => { setZip(e.target.value); clearCoords(); }} data-testid="address-zip" />
+          <input className="input" name={n.zip} inputMode="numeric" value={zip} onChange={(e) => { setZip(e.target.value); clearCoords(); }} data-testid="address-zip" />
         </label>
       </div>
-      <input type="hidden" name="geo_lat" value={lat} />
-      <input type="hidden" name="geo_lng" value={lng} />
+      <input type="hidden" name={n.geo_lat} value={lat} />
+      <input type="hidden" name={n.geo_lng} value={lng} />
     </>
   );
-}
+});
