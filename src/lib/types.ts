@@ -287,7 +287,7 @@ export type ServiceRequestInput = Pick<ServiceRequest, "customer_id" | "project_
 };
 export type ServiceRequestPatch = Partial<Pick<ServiceRequest, "project_id" | "status" | "billable" | "assignee_id" | "converted_project_id" | "resolved_at" | "resolved_by" | "resolved_job_id" | "priority" | "summary" | "description">>;
 export const ticketNo = (n: number) => `SR-${n}`;
-export type SREventKind = "created" | "note" | "status" | "linked" | "unlinked" | "assigned" | "billable" | "scheduled" | "converted" | "resolved" | "closed" | "reopened" | "price";
+export type SREventKind = "created" | "note" | "status" | "linked" | "unlinked" | "assigned" | "billable" | "scheduled" | "converted" | "resolved" | "closed" | "reopened" | "emailed" | "price";
 export type SREvent = { id: string; request_id: string; kind: SREventKind; body: string; actor_id: string | null; actor_name: string; actor_color: string; actor_avatar_url?: string | null; created_at: string; edited_at?: string | null };
 /** status: one status, "open" (new+triaged+scheduled, the default), or "all". */
 export type SRPageFilter = {

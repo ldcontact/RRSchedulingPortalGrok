@@ -225,6 +225,20 @@ describe("buildRfc2822Message / toBase64Url", () => {
     expect(raw).toContain("References: <root@x.com>");
     expect(raw).toContain("Date: ");
   });
+
+  it("adds a Cc header when recipients are provided", () => {
+    const raw = buildRfc2822Message({
+      from: "A <a@x.com>",
+      to: ["b@x.com"],
+      cc: ["c@x.com", "d@x.com"],
+      subject: "Hi",
+      text: "Hello",
+    });
+    expect(raw).toContain("To: b@x.com");
+    expect(raw).toContain("Cc: c@x.com, d@x.com");
+    const plain = buildRfc2822Message({ from: "A <a@x.com>", to: ["b@x.com"], subject: "Hi", text: "Hello" });
+    expect(plain).not.toContain("Cc:");
+  });
 });
 
 describe("sanitizeGmailError", () => {

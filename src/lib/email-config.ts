@@ -40,6 +40,7 @@ export type EmailTransport = "gmail-api" | "smtp" | "none";
 
 export type SendEmailInput = {
   to: string | string[];
+  cc?: string | string[];
   subject: string;
   text: string;
   html?: string;
@@ -270,6 +271,7 @@ export function rfc2822Date(d = new Date()): string {
 export function buildRfc2822Message(input: {
   from: string;
   to: string[];
+  cc?: string[];
   subject: string;
   text: string;
   html?: string;
@@ -285,6 +287,7 @@ export function buildRfc2822Message(input: {
     `Subject: ${input.subject}`,
     `Date: ${rfc2822Date(input.date)}`,
   ];
+  if (input.cc?.length) headers.push(`Cc: ${input.cc.join(", ")}`);
   if (input.messageId) headers.push(`Message-ID: ${input.messageId}`);
   if (input.inReplyTo) headers.push(`In-Reply-To: ${input.inReplyTo}`);
   if (input.references || input.inReplyTo) headers.push(`References: ${input.references || input.inReplyTo}`);
