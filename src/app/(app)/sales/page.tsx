@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@/components/ui";
 import { requireSales } from "@/lib/auth";
 import { PIPELINE_DEFS } from "@/lib/sales/catalog";
 import { dashboardStats } from "@/lib/sales/dashboard";
@@ -17,33 +16,34 @@ export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
   const view = (typeof sp.view === "string" && VIEWS.includes(sp.view as SalesView) ? sp.view : "table") as SalesView;
   const pipeline = typeof sp.pipeline === "string" && PIPELINE_DEFS.some((p) => p.slug === sp.pipeline) ? sp.pipeline : "single_family_whe";
   const q = typeof sp.q === "string" ? sp.q : "";
+  const ownerFilter = typeof sp.owner === "string" ? sp.owner : "";
+  const priorityFilter = typeof sp.priority === "string" ? sp.priority : "";
   const repo = await getSalesRepo();
-  const [deals, inbox, alerts, owners] = await Promise.all([
-    repo.listDeals({ pipeline, q }),
+  const [allDeals, inbox, alerts, directory] = await Promise.all([
+    repo.listDeals({ q }),
     repo.listInbox(),
     repo.listAlerts(),
-    repo.ownerNames(),
+    repo.ownerDirectory(),
   ]);
-  const allForDash = await repo.listDeals({ pipeline });
-  const dashboard = dashboardStats(allForDash, owners, pipeline);
-  const pipeName = PIPELINE_DEFS.find((p) => p.slug === pipeline)?.name ?? "Sales";
+  const owners = Object.fromEntries(Object.entries(directory).map(([id, o]) => [id, o.name]));
+  const ownerColors = Object.fromEntries(Object.entries(directory).map(([id, o]) => [id, o.color]));
+  const deals = allDeals.filter((d) => d.pipeline_slug === pipeline);
+  const dashboard = dashboardStats(deals, owners, pipeline);
   return (
-    <>
-      <PageHeader
-        title="Sales"
-        sub={`${deals.length} deal${deals.length === 1 ? "" : "s"} in ${pipeName}. Outgoing customer messages stay as drafts until a rep sends them.`}
-      />
-      <SalesWorkspace
-        view={view}
-        pipeline={pipeline}
-        deals={deals}
-        inbox={inbox}
-        alerts={alerts}
-        owners={owners}
-        dashboard={dashboard}
-        canDelete={canDeleteSalesRecord(user)}
-        query={q}
-      />
-    </>
+    <SalesWorkspace
+      view={view}
+      pipeline={pipeline}
+      deals={deals}
+      allDeals={allDeals}
+      inbox={inbox}
+      alerts={alerts}
+      owners={owners}
+      ownerColors={ownerColors}
+      dashboard={dashboard}
+      canDelete={canDeleteSalesRecord(user)}
+      query={q}
+      ownerFilter={ownerFilter}
+      priorityFilter={priorityFilter}
+    />
   );
 }

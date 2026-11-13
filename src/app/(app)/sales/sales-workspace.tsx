@@ -3,7 +3,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { SalesMap } from "@/components/sales/sales-map";
-import { PIPELINE_DEFS, stageBySlug, type PipelineSlug } from "@/lib/sales/catalog";
+import { SalesPipelineTable } from "@/components/sales/sales-pipeline-table";
+import { PIPELINE_DEFS, stageBySlug } from "@/lib/sales/catalog";
+import { avgDaysOpen, pipelineCounts as countByPipeline } from "@/lib/sales/pipeline-table";
 import { dealLengthDays, type SalesAlert, type SalesDeal, type SalesInboxItem } from "@/lib/sales/types";
 import type { FunnelRow, RepRow, StageTimeRow } from "@/lib/sales/dashboard";
 
@@ -12,14 +14,14 @@ import { acceptInboxAction, dismissInboxAction, markAlertReadAction, moveDealSta
 
 export type SalesView = "table" | "kanban" | "calendar" | "aging" | "map" | "inbox" | "dashboard";
 
-const VIEWS: { id: SalesView; label: string; short?: string; icon: string; mobile?: boolean }[] = [
-  { id: "table", label: "Table", icon: "list", mobile: true },
+const VIEWS: { id: SalesView; label: string; short?: string; icon: string }[] = [
+  { id: "table", label: "Table", icon: "list" },
   { id: "kanban", label: "Kanban", icon: "kanban" },
   { id: "calendar", label: "Calendar", icon: "calendar" },
   { id: "aging", label: "Aging", icon: "clock" },
-  { id: "map", label: "Map", icon: "map", mobile: true },
-  { id: "inbox", label: "Inbox", icon: "mail", mobile: true },
-  { id: "dashboard", label: "Dashboard", short: "Dash", icon: "funnel", mobile: true },
+  { id: "map", label: "Map", icon: "map" },
+  { id: "inbox", label: "Inbox", icon: "mail" },
+  { id: "dashboard", label: "Dashboard", short: "Dash", icon: "funnel" },
 ];
 
 function money(n: number) {
@@ -41,30 +43,55 @@ function Pri({ p }: { p: string }) {
   return <span className={`pill ${tone}`}>{p}</span>;
 }
 
+
+const PIPE_SHORT: Record<string, string> = {
+  single_family_whe: "Single Family WHE",
+  multifamily_whe: "Multifamily",
+  led_lighting: "LED",
+  hvac: "HVAC",
+};
+
 export function SalesWorkspace(props: {
   view: SalesView;
   pipeline: string;
   deals: SalesDeal[];
+  allDeals: SalesDeal[];
   inbox: SalesInboxItem[];
   alerts: SalesAlert[];
   owners: Record<string, string>;
+  ownerColors?: Record<string, string>;
   dashboard: Dashboard;
   canDelete: boolean;
   query: string;
+  ownerFilter: string;
+  priorityFilter: string;
 }) {
   const router = useRouter();
-  const go = (next: Partial<{ view: string; pipeline: string; q: string }>) => {
+  const go = (next: Partial<{ view: string; pipeline: string; q: string; owner: string; priority: string }>) => {
     const sp = new URLSearchParams();
     const view = next.view ?? props.view;
     const pipeline = next.pipeline ?? props.pipeline;
     const q = next.q ?? props.query;
+    const owner = next.owner ?? props.ownerFilter;
+    const priority = next.priority ?? props.priorityFilter;
     if (view !== "table") sp.set("view", view);
     if (pipeline !== "single_family_whe") sp.set("pipeline", pipeline);
     if (q) sp.set("q", q);
+    if (owner) sp.set("owner", owner);
+    if (priority) sp.set("priority", priority);
     router.push(`/sales${sp.toString() ? `?${sp}` : ""}`);
   };
-  const deals = props.deals;
   const pipe = PIPELINE_DEFS.find((p) => p.slug === props.pipeline);
+  const deals = props.deals.filter((d) => {
+    if (props.ownerFilter && (d.owner_id ?? "") !== props.ownerFilter) return false;
+    if (props.priorityFilter && d.priority !== props.priorityFilter) return false;
+    return true;
+  });
+  const counts = countByPipeline(props.allDeals, PIPELINE_DEFS.map((p) => p.slug));
+  const avg = avgDaysOpen(deals);
+  const ownerOptions = [...new Set(props.allDeals.filter((d) => d.pipeline_slug === props.pipeline && d.owner_id).map((d) => d.owner_id as string))]
+    .map((id) => [id, props.owners[id] ?? "Unknown"] as const)
+    .sort((a, b) => a[1].localeCompare(b[1]));
 
   return (
     <div>
@@ -82,76 +109,92 @@ export function SalesWorkspace(props: {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <label className="sr-only" htmlFor="sales-pipeline">Pipeline</label>
-        <select id="sales-pipeline" className="input w-auto min-w-[12rem]" value={props.pipeline} onChange={(e) => go({ pipeline: e.target.value })}>
-          {PIPELINE_DEFS.map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}
-        </select>
-        <form className="flex min-w-0 flex-1 gap-2" onSubmit={(e) => { e.preventDefault(); go({ q: new FormData(e.currentTarget).get("q") as string }); }}>
-          <input className="input" name="q" defaultValue={props.query} placeholder="Search deals" />
-          <button className="btn">Search</button>
-        </form>
-        <Link href="/sales/automations" className="btn hidden sm:inline-flex"><Icon name="flag" />Automations</Link>
+      <div className="mb-4">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-[22px] font-semibold tracking-tight">Sales</h1>
+          <Link href="/sales/deals/new" className="btn btn-primary shrink-0" data-testid="sales-new-deal">
+            <Icon name="plus" />
+            <span className="md:hidden">New</span>
+            <span className="hidden md:inline">New deal</span>
+          </Link>
+        </div>
+        <div className="mt-0.5 text-muted">
+          {pipe?.name ?? "Sales"} · {deals.length} deal{deals.length === 1 ? "" : "s"}{deals.length ? ` · avg ${avg} days open` : ""}
+        </div>
       </div>
 
-      <div className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-line bg-white p-1">
-        {VIEWS.map((v) => {
-          const hide = !v.mobile ? "hidden md:inline-flex" : "inline-flex";
-          const active = props.view === v.id;
-          const count = v.id === "inbox" && props.inbox.length ? props.inbox.length : undefined;
+      <div className="mb-3.5 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Program">
+        {PIPELINE_DEFS.map((p) => {
+          const on = p.slug === props.pipeline;
+          const n = counts[p.slug] ?? 0;
           return (
-            <button key={v.id} type="button" onClick={() => go({ view: v.id })} className={`${hide} items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold ${active ? "bg-brand-50 text-brand" : "text-muted hover:bg-canvas"}`}>
-              <Icon name={v.icon} className="size-4" /><span className="md:hidden">{v.short ?? v.label}</span><span className="hidden md:inline">{v.label}</span>
-              {count ? <span className="min-w-5 rounded-full bg-accent px-1.5 text-center text-[11px] font-bold text-[#3b2600]">{count}</span> : null}
+            <button
+              key={p.slug}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => go({ pipeline: p.slug })}
+              className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-semibold ${on ? "border-brand bg-brand-50 text-brand-700" : "border-line bg-white text-ink"}`}
+              data-testid={`sales-pipeline-${p.slug}`}
+            >
+              <span className="hidden sm:inline">{p.name}</span>
+              <span className="sm:hidden">{PIPE_SHORT[p.slug] ?? p.name}</span>
+              <span className={`rounded-full px-1.5 text-[11.5px] font-bold ${on ? "bg-white text-brand-700" : "bg-canvas text-muted"}`}>{n}</span>
             </button>
           );
         })}
       </div>
 
-      {props.view === "table" && <Table deals={deals} owners={props.owners} />}
+      <div className="mb-3.5 flex gap-0 overflow-x-auto border-b border-line">
+        {VIEWS.map((v) => {
+          const active = props.view === v.id;
+          const count = v.id === "inbox" && props.inbox.length ? props.inbox.length : undefined;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => go({ view: v.id })}
+              className={`inline-flex shrink-0 items-center gap-1.5 px-3.5 py-2 text-[13.5px] font-semibold ${active ? "border-b-2 border-brand text-ink" : "border-b-2 border-transparent text-muted hover:text-ink"}`}
+            >
+              <span>{v.label}</span>
+              {count ? <span className="min-w-5 rounded-full bg-accent px-1.5 text-center text-[11px] font-bold text-[#3b2600]">{count}</span> : null}
+            </button>
+          );
+        })}
+        <Link href="/sales/automations" className="inline-flex shrink-0 items-center px-3.5 py-2 text-[13.5px] font-semibold text-muted hover:text-ink">Automations</Link>
+      </div>
+
+      <div className="mb-3.5 flex flex-wrap items-center gap-2">
+        <form className="w-full md:max-w-xs" onSubmit={(e) => { e.preventDefault(); go({ q: String(new FormData(e.currentTarget).get("q") ?? "") }); }}>
+          <label className="sr-only" htmlFor="sales-search">Search deals</label>
+          <span className="flex w-full items-center gap-2 rounded-lg border border-[#d5dbd4] bg-white px-2.5 py-1.5 text-[13px] text-muted">
+            <Icon name="search" className="size-4 shrink-0" />
+            <input id="sales-search" className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted" name="q" defaultValue={props.query} placeholder="Search deals, customers, addresses" />
+          </span>
+        </form>
+        <div className="flex flex-wrap items-center gap-2 md:ml-auto">
+          <label className="sr-only" htmlFor="sales-owner">Owner</label>
+          <select id="sales-owner" className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-[13px] font-semibold" value={props.ownerFilter} onChange={(e) => go({ owner: e.target.value })}>
+            <option value="">Owner: All</option>
+            {ownerOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="sales-priority">Priority</label>
+          <select id="sales-priority" className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-[13px] font-semibold" value={props.priorityFilter} onChange={(e) => go({ priority: e.target.value })}>
+            <option value="">Priority: All</option>
+            <option value="High">Priority: High</option>
+            <option value="Medium">Priority: Medium</option>
+            <option value="Low">Priority: Low</option>
+          </select>
+        </div>
+      </div>
+
+      {props.view === "table" && <SalesPipelineTable deals={deals} stages={pipe?.stages ?? []} owners={props.owners} ownerColors={props.ownerColors} />}
       {props.view === "kanban" && <Kanban deals={deals} stages={pipe?.stages ?? []} owners={props.owners} />}
       {props.view === "calendar" && <Calendar deals={deals} />}
       {props.view === "aging" && <Aging deals={deals} owners={props.owners} />}
       {props.view === "map" && <SalesMap deals={deals} />}
       {props.view === "inbox" && <Inbox items={props.inbox} />}
       {props.view === "dashboard" && <Dash d={props.dashboard} />}
-    </div>
-  );
-}
-
-function Table({ deals, owners }: { deals: SalesDeal[]; owners: Record<string, string> }) {
-  return (
-    <div className="card overflow-x-auto">
-      <table className="w-full min-w-[720px] text-left text-[13px]">
-        <thead className="border-b border-line bg-canvas text-[11.5px] font-bold uppercase tracking-wide text-muted">
-          <tr>
-            <th className="sticky left-0 bg-canvas px-3 py-2">Deal</th>
-            <th className="px-3 py-2">Stage</th>
-            <th className="px-3 py-2">Owner</th>
-            <th className="px-3 py-2">Priority</th>
-            <th className="px-3 py-2">Assess.</th>
-            <th className="px-3 py-2">Length</th>
-            <th className="px-3 py-2 text-right">Value</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {deals.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-muted">No deals in this pipeline yet. LED Lighting and HVAC start empty on purpose.</td></tr>}
-          {deals.map((d) => (
-            <tr key={d.id} className="hover:bg-[#fafbf9]">
-              <td className="sticky left-0 bg-white px-3 py-2">
-                <Link href={`/sales/deals/${d.id}`} className="font-semibold text-ink hover:text-brand">{d.title}</Link>
-                <div className="text-xs text-muted">{d.contact_name}{d.city ? ` · ${d.city}` : ""}</div>
-              </td>
-              <td className="px-3 py-2"><StagePill pipeline={d.pipeline_slug} stage={d.stage_slug} /></td>
-              <td className="px-3 py-2">{d.owner_id ? owners[d.owner_id] ?? "—" : "Unassigned"}</td>
-              <td className="px-3 py-2"><Pri p={d.priority} /></td>
-              <td className="px-3 py-2">{fmtDay(d.assessment_date)}</td>
-              <td className="px-3 py-2">{dealLengthDays(d)}d</td>
-              <td className="px-3 py-2 text-right font-medium">{d.value ? money(d.value) : "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

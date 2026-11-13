@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSales } from "@/lib/auth";
+import { pipelineBySlug } from "@/lib/sales/catalog";
 import { getSalesRepo } from "@/lib/sales/repo";
 import { canDeleteSalesRecord } from "@/lib/sales/permissions";
 
@@ -132,4 +133,31 @@ export async function markAlertReadAction(id: string) {
   await requireSales();
   await (await getSalesRepo()).markAlertRead(id);
   pathFor();
+}
+
+export async function createDealAction(_prev: { error?: string } | undefined, fd: FormData) {
+  const user = await requireSales();
+  const title = String(fd.get("title") ?? "").trim();
+  const pipeline = String(fd.get("pipeline_slug") ?? "single_family_whe");
+  const pipe = pipelineBySlug(pipeline);
+  if (!title) return { error: "Enter an address or deal name." };
+  if (!pipe) return { error: "Pick a valid program." };
+  const contact_name = String(fd.get("contact_name") ?? "").trim() || null;
+  const contact_phone = String(fd.get("contact_phone") ?? "").trim() || null;
+  const city = String(fd.get("city") ?? "").trim() || null;
+  const deal = await (await getSalesRepo()).createDeal({
+    title,
+    pipeline_slug: pipe.slug,
+    stage_slug: pipe.stages[0]?.slug ?? "potential_lead",
+    address: title,
+    city,
+    state: "IL",
+    contact_name,
+    contact_phone,
+    owner_id: user.id,
+    priority: "Medium",
+    source: "manual",
+  });
+  pathFor(deal.id);
+  redirect(`/sales/deals/${deal.id}`);
 }

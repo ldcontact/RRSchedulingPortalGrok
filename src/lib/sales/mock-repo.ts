@@ -526,13 +526,22 @@ export function mockSalesRepo(): SalesRepo {
       void uid;
       return { imported, skipped };
     },
-    async ownerNames() {
-      const names: Record<string, string> = { "u-sales": "Maya Chen", "u-sales2": "Jordan Hale", "u-admin": "Luke Dlugosz", "u-manager": "Maria Santos" };
+    async ownerDirectory() {
+      const dir: Record<string, { name: string; color: string }> = {
+        "u-sales": { name: "Maya Chen", color: "#7c3aed" },
+        "u-sales2": { name: "Jordan Hale", color: "#047857" },
+        "u-admin": { name: "Luke Dlugosz", color: "#0f766e" },
+        "u-manager": { name: "Maria Santos", color: "#c2410c" },
+      };
       try {
         const { mockProfiles } = await import("@/lib/data/mock-repo");
-        for (const p of mockProfiles()) names[p.id] = p.full_name;
+        for (const p of mockProfiles()) dir[p.id] = { name: p.full_name, color: p.color || dir[p.id]?.color || "#0f766e" };
       } catch { /* keep defaults */ }
-      return names;
+      return dir;
+    },
+    async ownerNames() {
+      const dir = await this.ownerDirectory();
+      return Object.fromEntries(Object.entries(dir).map(([id, o]) => [id, o.name]));
     },
   };
 }

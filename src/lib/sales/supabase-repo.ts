@@ -301,12 +301,19 @@ export function supabaseSalesRepo(): SalesRepo {
       }
       return { imported, skipped };
     },
-    async ownerNames() {
+    async ownerDirectory() {
       const c = await sb();
-      const { data } = await c.from("profiles").select("id, full_name");
-      const out: Record<string, string> = {};
-      for (const p of data ?? []) out[(p as { id: string }).id] = (p as { full_name: string }).full_name;
+      const { data } = await c.from("profiles").select("id, full_name, color");
+      const out: Record<string, { name: string; color: string }> = {};
+      for (const row of data ?? []) {
+        const p = row as { id: string; full_name: string; color: string | null };
+        out[p.id] = { name: p.full_name, color: p.color || "#0f766e" };
+      }
       return out;
+    },
+    async ownerNames() {
+      const dir = await this.ownerDirectory();
+      return Object.fromEntries(Object.entries(dir).map(([id, o]) => [id, o.name]));
     },
   };
 }

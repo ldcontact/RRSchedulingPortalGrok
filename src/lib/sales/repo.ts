@@ -50,6 +50,7 @@ export type SalesRepo = {
   listOccupiedWindows(fromIso: string, toIso: string): Promise<{ starts_at: string; ends_at: string }[]>;
   importDeals(deals: ImportedDeal[], meta?: { source?: string; board_name?: string }): Promise<{ imported: number; skipped: number }>;
   ownerNames(): Promise<Record<string, string>>;
+  ownerDirectory(): Promise<Record<string, { name: string; color: string }>>;
 };
 
 export async function getSalesRepo(): Promise<SalesRepo> {
