@@ -99,6 +99,10 @@ export interface Repo {
   updateServiceRequest(id: string, patch: ServiceRequestPatch): Promise<void>;
   listServiceRequestEvents(requestId: string): Promise<SREvent[]>;
   addServiceRequestEvent(requestId: string, e: { kind: SREventKind; body: string }): Promise<void>;
+  /** Office-only amounts keyed by request id. Empty for roles that must not see a price (techs). */
+  getServiceRequestPrices(ids: string[]): Promise<Record<string, number>>;
+  /** Set or clear (null) a ticket's service price. RLS / mock who() reject techs. */
+  setServiceRequestPrice(id: string, amount: number | null): Promise<void>;
   /** Bounded project search for the link picker / suggested original project (never unbounded; max 25). */
   findProjects(f: { q?: string; customerId?: string; limit?: number }): Promise<ProjectPick[]>;
 

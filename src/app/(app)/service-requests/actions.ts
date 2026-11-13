@@ -8,6 +8,7 @@ import { findConflicts, getRepo } from "@/lib/data/repo";
 import { dayKey, fmtDay, fmtRange, parseHHMM, validDay, zonedToUtc } from "@/lib/time";
 import { formatAddress } from "@/lib/project-row";
 import { resolveNewTicketAssignee } from "@/lib/tickets";
+import { canSeeServicePrice, parseServicePrice, priceHistoryBody, formatServicePrice } from "@/lib/service-request-price";
 import {
   SR_OPEN, ticketNo, type JobKind, type ProjectPick, type ServiceRequestInput, type SRChannel, type SRPriority, type SRStatus,
 } from "@/lib/types";
@@ -72,6 +73,8 @@ export async function createTicket(_: TicketFormState, fd: FormData): Promise<Ti
   if (!input.customer_id) return { error: "Pick the customer (search by name).", values };
   if (!input.summary) return { error: "Add a short summary, e.g. “Hallway lamp out”.", values };
   if (new Date(input.received_at).getTime() > Date.now() + 5 * 60e3) return { error: "Received time can't be in the future.", values };
+  const price = parseServicePrice(s(fd, "service_price"));
+  if ("error" in price) return { error: price.error, values };
   const repo = await getRepo();
   const explicit = s(fd, "assignee_id");
   const staffPeople = explicit
@@ -88,6 +91,10 @@ export async function createTicket(_: TicketFormState, fd: FormData): Promise<Ti
     if (input.project_id) {
       const p = await repo.getProject(input.project_id);
       await repo.addServiceRequestEvent(id, { kind: "linked", body: `Matched to original project “${p?.name ?? "project"}”.` });
+    }
+    if ("amount" in price) {
+      await repo.setServiceRequestPrice(id, price.amount);
+      await repo.addServiceRequestEvent(id, { kind: "price", body: priceHistoryBody(null, price.amount) });
     }
   } catch (e) { return { error: (e as Error).message, values }; }
   await geocodeServiceRequestById(id);
@@ -199,6 +206,22 @@ export async function convertTicket(id: string) {
   } catch (e) { go(id, (e as Error).message, "error"); }
   refresh(id); revalidatePath("/projects");
   redirect(`/projects/${projectId}?ok=${encodeURIComponent(`Created from ${ticketNo(sr.number)}. Fill in the scope, value and rebate.`)}`);
+}
+
+// ---------------------------------------------------------------- service price (office only; never shown to techs)
+export async function setServiceRequestPrice(id: string, fd: FormData) {
+  const { user, repo } = await load(id);
+  if (!canSeeServicePrice(user.role)) go(id, "You can't edit the service price.", "error");
+  const clear = s(fd, "clear") === "1";
+  const parsed = clear ? ({ empty: true } as const) : parseServicePrice(s(fd, "service_price"));
+  if ("error" in parsed) go(id, parsed.error, "error");
+  const current = (await repo.getServiceRequestPrices([id]))[id] ?? null;
+  const next = "amount" in parsed ? parsed.amount : null;
+  if (current === next || (current == null && next == null)) go(id, "No change.");
+  if (next == null && s(fd, "confirm") !== "1") go(id, "Confirm to clear the service price.", "error");
+  await repo.setServiceRequestPrice(id, next);
+  await repo.addServiceRequestEvent(id, { kind: "price", body: priceHistoryBody(current, next) });
+  go(id, next == null ? "Service price cleared." : `Service price set to ${formatServicePrice(next)}.`);
 }
 
 // ---------------------------------------------------------------- schedule a warranty / service visit

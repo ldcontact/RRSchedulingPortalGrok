@@ -16,6 +16,7 @@ import { resolveAvatarUrl } from "@/lib/avatar";
 import { authorColor, authorLabel } from "@/lib/author";
 import { addDays, dayKey, todayKey, zonedToUtc } from "@/lib/time";
 import { applyTicketVisits } from "@/lib/tickets";
+import { canSeeServicePrice, visibleServiceRequestEvents } from "@/lib/service-request-price";
 import { SAMPLE_DEFAULT_MAP } from "@/lib/geotab/sample";
 import { hasFleetAccess } from "@/lib/geotab/access";
 import { customerDeleteBlockers, hasDeleteAccess } from "@/lib/delete-access";
@@ -39,7 +40,8 @@ type NoteRow = Omit<Note, "author_name" | "author_color">;
 type MessageRow = Omit<Message, "sender_name" | "sender_color">;
 type P2 = { projects: Project[]; milestones: Milestone[]; jobs: Job[]; assignments: { job_id: string; profile_id: string }[]; photos: PhotoRow[]; notes: NoteRow[]; messages: MessageRow[]; photo_requirements: PhotoRequirement[]; project_files: ProjectFileRow[] };
 type SREventRow = Omit<SREvent, "actor_name" | "actor_color">;
-type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[] };
+type ServiceRequestPriceRow = { service_request_id: string; amount: number; updated_at: string; updated_by: string | null };
+type SR = { service_requests: ServiceRequest[]; sr_events: SREventRow[]; service_request_pricing: ServiceRequestPriceRow[] };
 type Tasks = { tasks: Task[]; task_comments: TaskComment[] };
 type MockProfile = Profile & { deleted_at?: string | null };
 type AuditRow = { id: string; actor_id: string; action: string; target_email: string | null; target_profile_id: string | null; detail: Record<string, unknown>; created_at: string };
@@ -151,7 +153,7 @@ function seed(): DB {
     ...SAMPLE_DEFAULT_MAP.map((m) => ({ ...m, invite_email: null })),
     { geotab_device_id: "gt-v5", label: null, profile_id: null, invite_email: "sam.ortiz@gmail.com" },
   ];
-  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], tasks: [], task_comments: [], team_sms_outbox: [], team_sms_events: [] } as DB;
+  const db = { profiles, invites, customers, contacts, admin_audit: [], fleet_vehicles, ...seedPhase2(), service_requests: [], sr_events: [], service_request_pricing: [], tasks: [], task_comments: [], team_sms_outbox: [], team_sms_events: [] } as DB;
   seedServiceRequests(db);
   seedTasks(db);
   seedTeamTexting(db);
@@ -455,6 +457,7 @@ function seedServiceRequests(db: DB) {
     ev("sr2", "created", "Logged from a phone call.", "u-manager", at(-1, 16, 22)),
     ev("sr2", "assigned", "Assigned to Maria Santos.", "u-manager", at(-1, 16, 25)),
     ev("sr2", "note", "Unit is past its 1-year warranty. Quote a service call if it's not a quick fix.", "u-manager", at(-1, 16, 30)),
+    ev("sr2", "price", "Service price set to $285.00.", "u-manager", at(-1, 16, 31)),
     ev("sr3", "created", "Logged from a phone call.", "u-admin", at(0, 8, 2)),
     ev("sr4", "created", "Logged from a phone call.", "u-admin", at(-2, 11, 6)),
     ev("sr4", "scheduled", `Warranty visit “Warranty — exit fixture batteries” scheduled for ${fmtShort(at(1, 9))} with Carlos Mendez.`, "u-admin", at(-2, 11, 20)),
@@ -463,6 +466,17 @@ function seedServiceRequests(db: DB) {
     ev("sr6", "created", "Logged from another channel.", "u-admin", at(-6, 10)),
     ev("sr6", "closed", "Closed: new work, passed to sales.", "u-admin", at(-5, 9)),
   );
+  seedServiceRequestPrices(db, at);
+}
+function seedServiceRequestPrices(db: DB, at?: (dayOffset: number, h: number, m?: number) => string) {
+  if (!db.service_request_pricing) db.service_request_pricing = [];
+  if (db.service_requests.some((r) => r.id === "sr2") && !db.service_request_pricing.some((p) => p.service_request_id === "sr2")) {
+    const when = at ? at(-1, 16, 31) : now();
+    db.service_request_pricing.push({ service_request_id: "sr2", amount: 285, updated_at: when, updated_by: "u-manager" });
+    if (!db.sr_events.some((e) => e.request_id === "sr2" && e.kind === "price")) {
+      db.sr_events.push({ id: randomUUID(), request_id: "sr2", kind: "price", body: "Service price set to $285.00.", actor_id: "u-manager", created_at: when });
+    }
+  }
 }
 const fmtShort = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: process.env.NEXT_PUBLIC_TZ || "America/Chicago", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -543,7 +557,8 @@ function load(): DB {
     if (!p.hcp_job_number && hcpSeed[p.id]) { p.hcp_job_number = hcpSeed[p.id]; hcpTouched = true; }
   }
   if (hcpTouched) save(db);
-  if (!db.service_requests) { db.service_requests = []; db.sr_events = []; seedServiceRequests(db); save(db); } // upgrade an older mock DB
+  if (!db.service_requests) { db.service_requests = []; db.sr_events = []; db.service_request_pricing = []; seedServiceRequests(db); save(db); } // upgrade an older mock DB
+  if (!db.service_request_pricing) { db.service_request_pricing = []; seedServiceRequestPrices(db); save(db); }
   if (db.tasks?.some((t) => !Array.isArray((t as Task & { assignee_id?: string }).assignee_ids))) {
     db.tasks = db.tasks.map((t) => {
       const raw = t as Task & { assignee_id?: string | null };
@@ -1462,15 +1477,37 @@ export const mockRepo: Repo = {
     }
   },
   async listServiceRequestEvents(requestId) {
-    const w = await who(); if (!w.staff) return [];
+    const w = await who(); if (!w.staff && !canSeeServicePrice(w.role)) return [];
     const db = load();
-    return db.sr_events.filter((e) => e.request_id === requestId).sort((a, b) => a.created_at.localeCompare(b.created_at))
+    const rows = db.sr_events.filter((e) => e.request_id === requestId).sort((a, b) => a.created_at.localeCompare(b.created_at))
       .map((e) => ({ ...e, actor_name: e.actor_id ? labelOf(db, e.actor_id) : "System", actor_color: colorOf(db, e.actor_id) }));
+    return visibleServiceRequestEvents(rows, w.role);
   },
   async addServiceRequestEvent(requestId, e) {
     const w = await who(); requireStaffMock(w);
     if (e.kind === "note" && !e.body.trim()) throw new Error("note is empty");
     mutate((db) => { db.sr_events.push({ id: randomUUID(), request_id: requestId, kind: e.kind, body: e.body, actor_id: w.uid, created_at: now() }); });
+  },
+  async getServiceRequestPrices(ids) {
+    const w = await who();
+    if (!canSeeServicePrice(w.role) || !ids.length) return {};
+    const want = new Set(ids);
+    const out: Record<string, number> = {};
+    for (const row of load().service_request_pricing) {
+      if (want.has(row.service_request_id)) out[row.service_request_id] = row.amount;
+    }
+    return out;
+  },
+  async setServiceRequestPrice(id, amount) {
+    const w = await who();
+    if (!canSeeServicePrice(w.role)) throw new Error("permission denied (mock RLS)");
+    if (!load().service_requests.some((r) => r.id === id)) throw new Error("Service request not found or not allowed");
+    mutate((db) => {
+      db.service_request_pricing = db.service_request_pricing.filter((p) => p.service_request_id !== id);
+      if (amount != null) {
+        db.service_request_pricing.push({ service_request_id: id, amount, updated_at: now(), updated_by: w.uid || null });
+      }
+    });
   },
   async findProjects(f) {
     requireStaffMock(await who());
@@ -1612,6 +1649,7 @@ export const mockRepo: Repo = {
     mutate((db) => {
       for (const j of db.jobs) if (j.service_request_id === id) j.service_request_id = null;
       db.sr_events = db.sr_events.filter((e) => e.request_id !== id);
+      db.service_request_pricing = db.service_request_pricing.filter((p) => p.service_request_id !== id);
       for (const task of db.tasks) if (task.service_request_id === id) task.service_request_id = null;
       db.service_requests = db.service_requests.filter((r) => r.id !== id);
     });

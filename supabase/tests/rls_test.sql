@@ -353,6 +353,19 @@ select pg_temp.check('authenticated cannot execute private.sync_service_request'
 reset role;
 select pg_temp.check('anon has no access to tickets', not has_table_privilege('anon', 'public.service_requests', 'select') and not has_table_privilege('anon', 'public.service_request_list', 'select'));
 
+-- ---- service request price (separate table; techs must not read the amount)
+select pg_temp.check('anon has no access to service pricing', not has_table_privilege('anon', 'public.service_request_pricing', 'select'));
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager
+insert into service_request_pricing (service_request_id, amount) values ('50000000-0000-0000-0000-000000000001', 285.00);
+insert into service_request_events (request_id, kind, body) values ('50000000-0000-0000-0000-000000000001','price','Service price set to $285.00.');
+select pg_temp.check('manager can set a service price', (select amount from service_request_pricing where service_request_id='50000000-0000-0000-0000-000000000001')=285.00);
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000e'); -- tech on that ticket's visit
+select pg_temp.check('tech cannot read the service price even on their ticket', (select count(*) from service_request_pricing)=0);
+select pg_temp.fails('tech cannot write a service price', $$insert into service_request_pricing (service_request_id, amount) values ('50000000-0000-0000-0000-000000000001', 1)$$);
+select pg_temp.check('tech still cannot read price history', (select count(*) from service_request_events where kind='price')=0);
+reset role;
+
 -- ---- search side tables (customer_search / project_search)
 select pg_temp.as_user(null);
 insert into contacts (customer_id, name, phone, email) values ('10000000-0000-0000-0000-000000000001','Priya Nair','+1 (847) 555-0174','priya@lakeview.example');
