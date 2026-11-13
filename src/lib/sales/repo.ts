@@ -19,6 +19,8 @@ export type LeadInput = {
   raw?: Record<string, unknown> | null;
 };
 
+export type SalesOwner = { name: string; color: string; avatar_url: string | null };
+
 export type SalesRepo = {
   listDeals(f?: DealFilter): Promise<SalesDeal[]>;
   getDeal(id: string): Promise<SalesDeal | null>;
@@ -50,7 +52,7 @@ export type SalesRepo = {
   listOccupiedWindows(fromIso: string, toIso: string): Promise<{ starts_at: string; ends_at: string }[]>;
   importDeals(deals: ImportedDeal[], meta?: { source?: string; board_name?: string }): Promise<{ imported: number; skipped: number }>;
   ownerNames(): Promise<Record<string, string>>;
-  ownerDirectory(): Promise<Record<string, { name: string; color: string }>>;
+  ownerDirectory(): Promise<Record<string, SalesOwner>>;
 };
 
 export async function getSalesRepo(): Promise<SalesRepo> {

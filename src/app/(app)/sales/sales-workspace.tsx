@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
+import { Avatar } from "@/components/ui";
 import { useOptionalNavProgress } from "@/components/nav-progress";
 import { PendingLink } from "@/components/pending-link";
 import { SalesMap } from "@/components/sales/sales-map";
@@ -62,6 +63,7 @@ export function SalesWorkspace(props: {
   alerts: SalesAlert[];
   owners: Record<string, string>;
   ownerColors?: Record<string, string>;
+  ownerAvatars?: Record<string, string | null>;
   dashboard: Dashboard;
   canDelete: boolean;
   query: string;
@@ -195,10 +197,10 @@ export function SalesWorkspace(props: {
         </div>
       </div>
 
-      {props.view === "table" && <SalesPipelineTable deals={deals} stages={pipe?.stages ?? []} owners={props.owners} ownerColors={props.ownerColors} />}
-      {props.view === "kanban" && <Kanban deals={deals} stages={pipe?.stages ?? []} owners={props.owners} />}
+      {props.view === "table" && <SalesPipelineTable deals={deals} stages={pipe?.stages ?? []} owners={props.owners} ownerColors={props.ownerColors} ownerAvatars={props.ownerAvatars} />}
+      {props.view === "kanban" && <Kanban deals={deals} stages={pipe?.stages ?? []} owners={props.owners} ownerColors={props.ownerColors} ownerAvatars={props.ownerAvatars} />}
       {props.view === "calendar" && <Calendar deals={deals} />}
-      {props.view === "aging" && <Aging deals={deals} owners={props.owners} />}
+      {props.view === "aging" && <Aging deals={deals} owners={props.owners} ownerColors={props.ownerColors} ownerAvatars={props.ownerAvatars} />}
       {props.view === "map" && <SalesMap deals={deals} />}
       {props.view === "inbox" && <Inbox items={props.inbox} />}
       {props.view === "dashboard" && <Dash d={props.dashboard} />}
@@ -206,7 +208,7 @@ export function SalesWorkspace(props: {
   );
 }
 
-function Kanban({ deals, stages, owners }: { deals: SalesDeal[]; stages: { slug: string; name: string; bg: string; color: string }[]; owners: Record<string, string> }) {
+function Kanban({ deals, stages, owners, ownerColors = {}, ownerAvatars = {} }: { deals: SalesDeal[]; stages: { slug: string; name: string; bg: string; color: string }[]; owners: Record<string, string>; ownerColors?: Record<string, string>; ownerAvatars?: Record<string, string | null> }) {
   return (
     <div className="flex gap-3 overflow-x-auto pb-2">
       {stages.map((s) => {
@@ -221,7 +223,10 @@ function Kanban({ deals, stages, owners }: { deals: SalesDeal[]; stages: { slug:
               {cols.map((d) => (
                 <div key={d.id} className="card p-3">
                   <Link href={`/sales/deals/${d.id}`} className="font-semibold hover:text-brand">{d.title}</Link>
-                  <div className="mt-1 text-xs text-muted">{d.contact_name} · {owners[d.owner_id ?? ""] ?? "Unassigned"}</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                    {d.owner_id ? <Avatar name={owners[d.owner_id] ?? "Unknown"} color={ownerColors[d.owner_id] ?? "#0f766e"} size="sm" src={ownerAvatars[d.owner_id]} /> : null}
+                    <span>{d.contact_name} · {owners[d.owner_id ?? ""] ?? "Unassigned"}</span>
+                  </div>
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <Pri p={d.priority} />
                     <form action={moveDealStage.bind(null, d.id, "contacted_comed")} className="hidden" />
@@ -256,7 +261,7 @@ function Calendar({ deals }: { deals: SalesDeal[] }) {
   );
 }
 
-function Aging({ deals, owners }: { deals: SalesDeal[]; owners: Record<string, string> }) {
+function Aging({ deals, owners, ownerColors = {}, ownerAvatars = {} }: { deals: SalesDeal[]; owners: Record<string, string>; ownerColors?: Record<string, string>; ownerAvatars?: Record<string, string | null> }) {
   const rows = [...deals].sort((a, b) => dealLengthDays(b) - dealLengthDays(a));
   return (
     <div className="card divide-y divide-line">
@@ -271,7 +276,10 @@ function Aging({ deals, owners }: { deals: SalesDeal[]; owners: Record<string, s
             </div>
             <div className="w-48 min-w-0">
               <div className="truncate font-semibold">{d.title}</div>
-              <div className="truncate text-xs text-muted">{owners[d.owner_id ?? ""] ?? "Unassigned"}</div>
+              <div className="flex items-center gap-1.5 truncate text-xs text-muted">
+                {d.owner_id ? <Avatar name={owners[d.owner_id] ?? "Unknown"} color={ownerColors[d.owner_id] ?? "#0f766e"} size="sm" src={ownerAvatars[d.owner_id]} /> : null}
+                <span className="truncate">{owners[d.owner_id ?? ""] ?? "Unassigned"}</span>
+              </div>
             </div>
             <StagePill pipeline={d.pipeline_slug} stage={d.stage_slug} />
           </Link>

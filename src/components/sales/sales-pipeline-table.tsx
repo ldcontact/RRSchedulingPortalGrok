@@ -37,11 +37,13 @@ export function SalesPipelineTable({
   stages,
   owners,
   ownerColors = {},
+  ownerAvatars = {},
 }: {
   deals: SalesDeal[];
   stages: StageDef[];
   owners: Record<string, string>;
   ownerColors?: Record<string, string>;
+  ownerAvatars?: Record<string, string | null>;
 }) {
   const groups = useMemo(() => groupDealsByStage(deals, stages), [deals, stages]);
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
@@ -117,7 +119,7 @@ export function SalesPipelineTable({
                         </td>
                         <td className="px-1.5 py-2">
                           <span className="inline-flex max-w-full items-center gap-1.5 font-semibold">
-                            {d.owner_id ? <Avatar name={name} color={ownerColors[d.owner_id] ?? "#0f766e"} size="sm" /> : null}
+                            {d.owner_id ? <Avatar name={name} color={ownerColors[d.owner_id] ?? "#0f766e"} size="sm" src={ownerAvatars[d.owner_id]} /> : null}
                             <span className="min-w-0 truncate">{name}</span>
                           </span>
                         </td>
@@ -185,7 +187,7 @@ export function SalesPipelineTable({
                     <div className="text-[12.5px] text-muted">{[dealCustomerName(d) || null, d.city].filter(Boolean).join(" · ")}</div>
                     <div className="mt-1.5 flex items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
-                        {d.owner_id ? <Avatar name={name} color={ownerColors[d.owner_id] ?? "#0f766e"} size="sm" /> : null}
+                        {d.owner_id ? <Avatar name={name} color={ownerColors[d.owner_id] ?? "#0f766e"} size="sm" src={ownerAvatars[d.owner_id]} /> : null}
                         {name.split(" ")[0]}
                       </span>
                       <span className="flex items-center gap-2">

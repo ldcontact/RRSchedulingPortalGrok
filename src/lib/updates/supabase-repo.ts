@@ -4,6 +4,7 @@ import type { SessionUser } from "@/lib/types";
 import { nestUpdateThreads } from "./thread";
 import { parseMentionIds } from "./mentions";
 import type { UpdatesRepo, PostUpdateInput } from "./repo";
+import { resolveAvatarUrl } from "@/lib/avatar";
 import type { MentionableUser, TeamUpdate, TeamUpdateAsset, TeamUpdateNotification, TeamUpdateThread } from "./types";
 
 type Row = {
@@ -23,7 +24,7 @@ type Row = {
   team_update_mentions?: { profile_id: string }[] | null;
 };
 
-function asUpdate(row: Row, colors: Record<string, string>, signed: Record<string, string>): TeamUpdate {
+function asUpdate(row: Row, authors: Record<string, { color: string; avatar_url: string | null }>, signed: Record<string, string>): TeamUpdate {
   const assets = (row.team_update_assets ?? []).map((a) => ({
     ...a,
     url: a.storage_path ? signed[a.storage_path] ?? a.url ?? null : a.url ?? null,
@@ -37,7 +38,8 @@ function asUpdate(row: Row, colors: Record<string, string>, signed: Record<strin
     author_id: row.author_id,
     author_name: row.author_name,
     author_email: row.author_email,
-    author_color: row.author_id ? colors[row.author_id] ?? null : null,
+    author_color: row.author_id ? authors[row.author_id]?.color ?? null : null,
+    author_avatar_url: row.author_id ? authors[row.author_id]?.avatar_url ?? null : null,
     body: row.body,
     created_at: row.created_at,
     edited_at: row.edited_at,
@@ -58,12 +60,26 @@ async function signedUrls(c: Awaited<ReturnType<typeof createClient>>, paths: st
   return out;
 }
 
-async function colorsOf(c: Awaited<ReturnType<typeof createClient>>, ids: string[]) {
+async function authorsOf(c: Awaited<ReturnType<typeof createClient>>, ids: string[]) {
   const unique = [...new Set(ids.filter(Boolean))];
-  if (!unique.length) return {} as Record<string, string>;
-  const { data } = await c.from("profiles").select("id, color").in("id", unique);
-  const out: Record<string, string> = {};
-  for (const p of data ?? []) out[p.id] = p.color;
+  const out: Record<string, { color: string; avatar_url: string | null }> = {};
+  if (!unique.length) return out;
+  const { data } = await c.from("profiles").select("id, color, avatar_source, avatar_path, google_avatar_url").in("id", unique);
+  const rows = data ?? [];
+  const uploadPaths = rows.filter((r) => r.avatar_source === "upload" && r.avatar_path).map((r) => r.avatar_path as string);
+  const signedAvatars = new Map<string, string>();
+  if (uploadPaths.length) {
+    const { data: urls } = await c.storage.from("avatars").createSignedUrls([...new Set(uploadPaths)], 3600);
+    for (const u of urls ?? []) {
+      if (u.path && u.signedUrl) signedAvatars.set(u.path, u.signedUrl);
+    }
+  }
+  for (const p of rows) {
+    out[p.id] = {
+      color: p.color,
+      avatar_url: resolveAvatarUrl(p, p.avatar_path ? signedAvatars.get(p.avatar_path) ?? null : null),
+    };
+  }
   return out;
 }
 
@@ -77,8 +93,8 @@ async function loadThreads(col: "deal_id" | "project_id", id: string): Promise<T
   if (error) throw error;
   const rows = (data ?? []) as Row[];
   const signed = await signedUrls(c, rows.flatMap((r) => (r.team_update_assets ?? []).map((a) => a.storage_path || "")));
-  const colors = await colorsOf(c, rows.map((r) => r.author_id || ""));
-  return nestUpdateThreads(rows.map((r) => asUpdate(r, colors, signed)));
+  const authors = await authorsOf(c, rows.map((r) => r.author_id || ""));
+  return nestUpdateThreads(rows.map((r) => asUpdate(r, authors, signed)));
 }
 
 export function supabaseUpdatesRepo(): UpdatesRepo {
@@ -96,8 +112,8 @@ export function supabaseUpdatesRepo(): UpdatesRepo {
       if (!data) return null;
       const row = data as Row;
       const signed = await signedUrls(c, (row.team_update_assets ?? []).map((a) => a.storage_path || ""));
-      const colors = await colorsOf(c, [row.author_id || ""]);
-      return asUpdate(row, colors, signed);
+      const authors = await authorsOf(c, [row.author_id || ""]);
+      return asUpdate(row, authors, signed);
     },
     async post(user: SessionUser, input: PostUpdateInput) {
       const c = await createClient();
@@ -181,18 +197,28 @@ export function supabaseUpdatesRepo(): UpdatesRepo {
       const c = await createClient();
       const { data, error } = await c
         .from("profiles")
-        .select("id, full_name, email, color, role")
+        .select("id, full_name, email, color, role, avatar_source, avatar_path, google_avatar_url")
         .in("role", ["admin", "manager", "sales", "tech"])
         .eq("active", true)
         .is("deleted_at", null)
         .order("full_name");
       if (error) throw error;
-      return (data ?? []).map((p) => ({
+      const rows = data ?? [];
+      const uploadPaths = rows.filter((r) => r.avatar_source === "upload" && r.avatar_path).map((r) => r.avatar_path as string);
+      const signedAvatars = new Map<string, string>();
+      if (uploadPaths.length) {
+        const { data: urls } = await c.storage.from("avatars").createSignedUrls([...new Set(uploadPaths)], 3600);
+        for (const u of urls ?? []) {
+          if (u.path && u.signedUrl) signedAvatars.set(u.path, u.signedUrl);
+        }
+      }
+      return rows.map((p) => ({
         id: p.id,
         name: p.full_name,
         email: p.email,
         color: p.color,
         role: p.role as MentionableUser["role"],
+        avatar_url: resolveAvatarUrl(p, p.avatar_path ? signedAvatars.get(p.avatar_path) ?? null : null),
       }));
     },
     async importMonday() {

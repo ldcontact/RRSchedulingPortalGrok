@@ -27,6 +27,7 @@ export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
   ]);
   const owners = Object.fromEntries(Object.entries(directory).map(([id, o]) => [id, o.name]));
   const ownerColors = Object.fromEntries(Object.entries(directory).map(([id, o]) => [id, o.color]));
+  const ownerAvatars = Object.fromEntries(Object.entries(directory).map(([id, o]) => [id, o.avatar_url]));
   const deals = allDeals.filter((d) => d.pipeline_slug === pipeline);
   const dashboard = dashboardStats(deals, owners, pipeline);
   return (
@@ -39,6 +40,7 @@ export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
       alerts={alerts}
       owners={owners}
       ownerColors={ownerColors}
+      ownerAvatars={ownerAvatars}
       dashboard={dashboard}
       canDelete={canDeleteSalesRecord(user)}
       query={q}

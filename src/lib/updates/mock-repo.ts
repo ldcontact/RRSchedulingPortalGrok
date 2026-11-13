@@ -17,14 +17,20 @@ import {
   newUpdateId,
 } from "./mock-store";
 import type { UpdatesRepo, PostUpdateInput } from "./repo";
+import { resolveAvatarUrl } from "@/lib/avatar";
+import type { AvatarSource } from "@/lib/types";
 import type { ImportedMondayUpdate, MentionableUser, TeamUpdate, TeamUpdateNotification } from "./types";
 
 const STAFF = new Set(["admin", "manager", "sales", "tech"]);
 
+function mockAvatarUrl(p: { avatar_source?: AvatarSource | null; avatar_path?: string | null; google_avatar_url?: string | null }) {
+  return resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null);
+}
+
 function mentionable(): MentionableUser[] {
   return mockProfiles()
     .filter((p) => p.role && STAFF.has(p.role) && p.active && !p.deleted_at)
-    .map((p) => ({ id: p.id, name: p.full_name, email: p.email, color: p.color, role: p.role as MentionableUser["role"] }));
+    .map((p) => ({ id: p.id, name: p.full_name, email: p.email, color: p.color, role: p.role as MentionableUser["role"], avatar_url: mockAvatarUrl(p) }));
 }
 
 function profileByEmail(email: string | null): { id: string; color: string } | null {
@@ -43,9 +49,11 @@ function colorOf(authorId: string | null): string | null {
 }
 
 function hydrate(row: TeamUpdate): TeamUpdate {
+  const author = row.author_id ? mockProfiles().find((p) => p.id === row.author_id) : undefined;
   return {
     ...row,
     author_color: row.author_color ?? colorOf(row.author_id),
+    author_avatar_url: row.author_avatar_url ?? (author ? mockAvatarUrl(author) : null),
     assets: (row.assets ?? []).map((a) => ({ ...a, url: mockAssetUrl(a) })),
   };
 }

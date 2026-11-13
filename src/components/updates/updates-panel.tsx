@@ -88,7 +88,7 @@ function Post({
   return (
     <article id={`update-${row.id}`} className={isReply ? "scroll-mt-20" : "scroll-mt-24"} data-testid={isReply ? "update-reply" : "update-post"}>
       <div className="flex items-start gap-2.5">
-        <Avatar name={row.author_name} color={row.author_color ?? "#64748b"} />
+        <Avatar name={row.author_name} color={row.author_color ?? "#64748b"} src={row.author_avatar_url} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="font-semibold">{row.author_name}</span>

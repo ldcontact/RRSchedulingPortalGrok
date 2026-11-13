@@ -9,9 +9,10 @@ import { signProposal } from "./proposals";
 import { sendSms, smsEnabled } from "./sms";
 import { loadSales, mutateSales, newId, visibleCustomerIds, type SalesDB } from "./mock-store";
 import type { ImportedDeal } from "./import-monday";
-import type { LeadInput, SalesRepo } from "./repo";
+import type { LeadInput, SalesOwner, SalesRepo } from "./repo";
 import type { SalesActivity, SalesAutomation, SalesDeal, SalesInboxItem, SalesProposal } from "./types";
-import type { Role } from "@/lib/types";
+import type { AvatarSource, Role } from "@/lib/types";
+import { resolveAvatarUrl } from "@/lib/avatar";
 
 async function actor() {
   const uid = (await cookies()).get("rr_mock_uid")?.value ?? "";
@@ -529,15 +530,19 @@ export function mockSalesRepo(): SalesRepo {
       return { imported, skipped };
     },
     async ownerDirectory() {
-      const dir: Record<string, { name: string; color: string }> = {
-        "u-sales": { name: "Maya Chen", color: "#7c3aed" },
-        "u-sales2": { name: "Jordan Hale", color: "#047857" },
-        "u-admin": { name: "Luke Dlugosz", color: "#0f766e" },
-        "u-manager": { name: "Maria Santos", color: "#c2410c" },
+      const avatar = (p: { avatar_source?: AvatarSource | null; avatar_path?: string | null; google_avatar_url?: string | null }) =>
+        resolveAvatarUrl(p, p.avatar_source === "upload" && p.avatar_path ? `/api/mock-photo/${p.avatar_path}` : null);
+      const dir: Record<string, SalesOwner> = {
+        "u-sales": { name: "Maya Chen", color: "#7c3aed", avatar_url: null },
+        "u-sales2": { name: "Jordan Hale", color: "#047857", avatar_url: null },
+        "u-admin": { name: "Luke Dlugosz", color: "#0f766e", avatar_url: null },
+        "u-manager": { name: "Maria Santos", color: "#c2410c", avatar_url: null },
       };
       try {
         const { mockProfiles } = await import("@/lib/data/mock-repo");
-        for (const p of mockProfiles()) dir[p.id] = { name: p.full_name, color: p.color || dir[p.id]?.color || "#0f766e" };
+        for (const p of mockProfiles()) {
+          dir[p.id] = { name: p.full_name, color: p.color || dir[p.id]?.color || "#0f766e", avatar_url: avatar(p) };
+        }
       } catch { /* keep defaults */ }
       return dir;
     },

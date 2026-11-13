@@ -21,6 +21,7 @@ export type TeamUpdate = {
   author_name: string;
   author_email: string | null;
   author_color?: string | null;
+  author_avatar_url?: string | null;
   body: string;
   created_at: string;
   edited_at: string | null;
@@ -37,6 +38,7 @@ export type MentionableUser = {
   email: string;
   color: string;
   role: "admin" | "manager" | "sales" | "tech";
+  avatar_url?: string | null;
 };
 
 export type TeamUpdateNotification = {

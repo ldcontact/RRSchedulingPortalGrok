@@ -121,7 +121,7 @@ export function MentionComposer({
                 className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-canvas ${i === picker.index ? "bg-brand-50" : ""}`}
                 onMouseDown={(e) => { e.preventDefault(); pick(u); }}
               >
-                <Avatar name={u.name} color={u.color} />
+                <Avatar name={u.name} color={u.color} src={u.avatar_url} />
                 <span className="min-w-0 flex-1 truncate font-medium">{u.name}</span>
                 <span className="truncate text-xs text-muted">{u.email}</span>
               </button>

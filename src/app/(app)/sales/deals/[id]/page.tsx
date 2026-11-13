@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
-import { Banner, PageHeader } from "@/components/ui";
+import { Avatar, Banner, PageHeader } from "@/components/ui";
 import { requireSales } from "@/lib/auth";
 import { summarizeDeal } from "@/lib/sales/ai";
 import { pipelineBySlug, stageBySlug } from "@/lib/sales/catalog";
@@ -29,10 +29,10 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
   const deal = await repo.getDeal(id);
   if (!deal) notFound();
   const updatesRepo = await getUpdatesRepo();
-  const [activities, proposals, owners, threads, mentionable] = await Promise.all([
+  const [activities, proposals, directory, threads, mentionable] = await Promise.all([
     repo.listActivities(deal.id),
     repo.listProposals(deal.id),
-    repo.ownerNames(),
+    repo.ownerDirectory(),
     updatesRepo.listForDeal(deal.id),
     updatesRepo.mentionableUsers(),
   ]);
@@ -173,7 +173,20 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
           <div className="card p-4 text-sm">
             <div className="mb-2 font-semibold">Details</div>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
-              <dt className="text-muted">Owner</dt><dd>{deal.owner_id ? owners[deal.owner_id] ?? deal.owner_id : "Unassigned"}</dd>
+              <dt className="text-muted">Owner</dt>
+              <dd className="inline-flex min-w-0 items-center gap-1.5">
+                {deal.owner_id ? (
+                  <>
+                    <Avatar
+                      name={directory[deal.owner_id]?.name ?? deal.owner_id}
+                      color={directory[deal.owner_id]?.color ?? "#0f766e"}
+                      size="sm"
+                      src={directory[deal.owner_id]?.avatar_url}
+                    />
+                    <span className="truncate">{directory[deal.owner_id]?.name ?? deal.owner_id}</span>
+                  </>
+                ) : "Unassigned"}
+              </dd>
               <dt className="text-muted">Priority</dt><dd>{deal.priority}</dd>
               <dt className="text-muted">Source</dt><dd>{deal.source.replaceAll("_", " ")}</dd>
               <dt className="text-muted">Value</dt><dd>{deal.value ? money(deal.value) : "—"}</dd>

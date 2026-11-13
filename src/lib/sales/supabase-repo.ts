@@ -2,13 +2,15 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SalesActivity, SalesAlert, SalesAutomation, SalesDeal, SalesInboxItem, SalesProposal, SalesProposalItem } from "./types";
-import type { LeadInput, SalesRepo } from "./repo";
+import type { LeadInput, SalesOwner, SalesRepo } from "./repo";
 import { planConvert } from "./convert";
 import { signProposal } from "./proposals";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "./sms";
 import { bookingToken } from "./booking";
 import { coordsForDeal } from "./geocode-deal";
+import { resolveAvatarUrl } from "@/lib/avatar";
+import type { AvatarSource } from "@/lib/types";
 
 type DealRow = SalesDeal;
 function asDeal(row: DealRow): SalesDeal { return row; }
@@ -319,11 +321,24 @@ export function supabaseSalesRepo(): SalesRepo {
     },
     async ownerDirectory() {
       const c = await sb();
-      const { data } = await c.from("profiles").select("id, full_name, color");
-      const out: Record<string, { name: string; color: string }> = {};
-      for (const row of data ?? []) {
-        const p = row as { id: string; full_name: string; color: string | null };
-        out[p.id] = { name: p.full_name, color: p.color || "#0f766e" };
+      const { data } = await c.from("profiles").select("id, full_name, color, avatar_source, avatar_path, google_avatar_url");
+      const rows = (data ?? []) as { id: string; full_name: string; color: string | null; avatar_source?: AvatarSource | null; avatar_path?: string | null; google_avatar_url?: string | null }[];
+      const uploadPaths = rows.filter((r) => (r.avatar_source ?? "none") === "upload" && r.avatar_path).map((r) => r.avatar_path!);
+      const unique = [...new Set(uploadPaths)];
+      const signed = new Map<string, string>();
+      if (unique.length) {
+        const { data: urls } = await c.storage.from("avatars").createSignedUrls(unique, 3600);
+        for (const u of urls ?? []) {
+          if (u.path && u.signedUrl) signed.set(u.path, u.signedUrl);
+        }
+      }
+      const out: Record<string, SalesOwner> = {};
+      for (const row of rows) {
+        out[row.id] = {
+          name: row.full_name,
+          color: row.color || "#0f766e",
+          avatar_url: resolveAvatarUrl(row, row.avatar_path ? signed.get(row.avatar_path) ?? null : null),
+        };
       }
       return out;
     },
