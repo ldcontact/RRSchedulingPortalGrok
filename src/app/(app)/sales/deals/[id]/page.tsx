@@ -11,7 +11,7 @@ import { canDeleteSalesRecord } from "@/lib/sales/permissions";
 import { getSalesRepo } from "@/lib/sales/repo";
 import { smsEnabled } from "@/lib/sales/sms";
 import { dealLengthDays } from "@/lib/sales/types";
-import { convertDealAction, createBookingLinkAction, deleteDealAction, draftMessage, moveDealStage, saveDealNote, sendDraftAction, sendProposalAction } from "../../actions";
+import { convertDealAction, createBookingLinkAction, deleteDealAction, draftMessage, moveDealStage, saveAiFollowUpDraft, saveDealNote, sendDraftAction, sendProposalAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Deal" };
 
@@ -26,12 +26,12 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
   const repo = await getSalesRepo();
   const deal = await repo.getDeal(id);
   if (!deal) notFound();
-  const [activities, proposals, owners, brief] = await Promise.all([
+  const [activities, proposals, owners] = await Promise.all([
     repo.listActivities(deal.id),
     repo.listProposals(deal.id),
     repo.ownerNames(),
-    summarizeDeal(deal),
   ]);
+  const brief = await summarizeDeal(deal, activities);
   const pipe = pipelineBySlug(deal.pipeline_slug);
   const stages = pipe?.stages ?? [];
   const canDelete = canDeleteSalesRecord(user);
@@ -68,11 +68,21 @@ export default async function DealPage({ params, searchParams }: PageProps<"/sal
               <span className="pill bg-canvas text-muted">{brief.disabled ? "Disabled" : brief.provider}</span>
             </div>
             {brief.disabled ? (
-              <p className="text-sm text-muted">{brief.reason ?? "AI summaries stay off until Luke approves a provider. No keys have been added."}</p>
+              <p className="text-sm text-muted">{brief.reason ?? "AI summaries are unavailable in this environment."}</p>
             ) : (
               <>
                 <p className="text-sm">{brief.result.summary}</p>
                 <div className="mt-3 rounded-lg bg-brand-50 px-3 py-2 text-sm font-medium text-brand-900">Next: {brief.result.nextStep}</div>
+                <div className="mt-3 rounded-lg border border-dashed border-line p-3">
+                  <div className="text-xs font-semibold uppercase text-muted">Suggested follow-up (draft only — not sent)</div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm">{brief.result.followUp.body}</p>
+                  <form action={saveAiFollowUpDraft.bind(null, deal.id)} className="mt-2">
+                    <input type="hidden" name="channel" value={brief.result.followUp.channel} />
+                    <input type="hidden" name="body" value={brief.result.followUp.body} />
+                    <input type="hidden" name="to" value={(brief.result.followUp.channel === "sms" ? deal.contact_phone : deal.contact_email) ?? ""} />
+                    <button className="btn">Save {brief.result.followUp.channel.toUpperCase()} draft</button>
+                  </form>
+                </div>
               </>
             )}
           </div>

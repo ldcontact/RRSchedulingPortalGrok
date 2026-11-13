@@ -17,6 +17,7 @@
     "@modelcontextprotocol/server": "^2.4.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
+    "ai": "^7.0.171",
     "google-auth-library": "^11.3.4",
     "leaflet": "^1.9.4",
     "mcp-handler": "^2.3.1",

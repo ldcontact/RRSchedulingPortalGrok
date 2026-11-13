@@ -42,6 +42,21 @@ export async function draftMessage(dealId: string, fd: FormData) {
   pathFor(dealId);
 }
 
+export async function saveAiFollowUpDraft(dealId: string, fd: FormData) {
+  const user = await requireSales();
+  const channel = String(fd.get("channel") ?? "sms") === "email" ? "email" : "sms";
+  const body = String(fd.get("body") ?? "").trim();
+  const to = String(fd.get("to") ?? "").trim() || null;
+  if (!body) return;
+  await (await getSalesRepo()).addActivity({
+    deal_id: dealId, inbox_id: null, kind: channel, direction: "outbound", status: "draft",
+    subject: channel === "email" ? "Follow-up from Retrofit Rebates" : null,
+    body, to_address: to, from_address: user.email, author_id: user.id,
+    meta: { source: "ai", auto_sent: false },
+  });
+  pathFor(dealId);
+}
+
 export async function sendDraftAction(activityId: string, dealId: string) {
   await requireSales();
   await (await getSalesRepo()).sendDraft(activityId);
