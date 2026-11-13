@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useMemo, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/components/icons";
 import { Modal } from "@/components/modal";
 import { Banner, Avatar } from "@/components/ui";
@@ -15,7 +16,12 @@ import {
   lengthTone,
   PREVIEW_ROWS,
 } from "@/lib/sales/pipeline-table";
-import { moveStageConfirmText } from "@/lib/sales/pipeline-table-drag";
+import {
+  formatDealValue,
+  ghostPointerOffset,
+  moveStageConfirmText,
+  type StageDragGhost,
+} from "@/lib/sales/pipeline-table-drag";
 import { dealLengthDays, type SalesDeal } from "@/lib/sales/types";
 import { usePipelineStageDrag } from "./use-pipeline-stage-drag";
 
@@ -35,13 +41,19 @@ function Length({ days }: { days: number }) {
   return <span className={`font-semibold tabular-nums ${hot ? "text-[#b45309]" : ""}`}>{days}d</span>;
 }
 
+function blockNativeDrag(e: DragEvent) {
+  e.preventDefault();
+}
+
 function DragHandle({ deal, onPointerDown }: { deal: SalesDeal; onPointerDown: (deal: SalesDeal, e: ReactPointerEvent) => void }) {
   return (
     <button
       type="button"
+      draggable={false}
       className="inline-flex shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted hover:text-ink active:cursor-grabbing"
       aria-label={`Drag ${dealHeadline(deal)} to another stage`}
       data-testid={`sales-deal-handle-${deal.id}`}
+      onDragStart={blockNativeDrag}
       onPointerDown={(e) => onPointerDown(deal, e)}
     >
       <Icon name="grip" className="size-3.5" />
@@ -89,6 +101,81 @@ function MoveToStageMenu({
   );
 }
 
+function DealDragGhost({
+  ghost,
+  deal,
+  stage,
+  ownerName,
+  ownerColor,
+  ownerAvatar,
+  bindEl,
+}: {
+  ghost: StageDragGhost;
+  deal: SalesDeal | undefined;
+  stage: StageDef | undefined;
+  ownerName: string;
+  ownerColor: string;
+  ownerAvatar?: string | null;
+  bindEl: (el: HTMLDivElement | null) => void;
+}) {
+  const value = formatDealValue(deal?.value ?? 0);
+  const off = ghostPointerOffset(ghost.width);
+  const node = (
+    <div
+      ref={bindEl}
+      data-testid="sales-deal-drag-ghost"
+      className="pointer-events-none fixed z-[80] flex items-center gap-2.5 rounded-lg border border-line bg-white px-3 py-2 shadow-[0_12px_28px_rgba(16,24,20,.2)]"
+      style={{
+        left: ghost.x - off.x,
+        top: ghost.y - off.y,
+        width: ghost.width,
+        maxWidth: "min(520px, calc(100vw - 24px))",
+        transform: "rotate(-1.5deg)",
+        willChange: "left, top",
+      }}
+    >
+      <Icon name="grip" className="size-3.5 shrink-0 text-muted" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-semibold text-ink">{ghost.headline}</div>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11.5px] font-semibold text-muted">
+          {deal?.owner_id ? <Avatar name={ownerName} color={ownerColor} size="sm" src={ownerAvatar} /> : null}
+          <span className="truncate">{ownerName}</span>
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        {stage ? (
+          <span
+            className="inline-flex max-w-[148px] items-center gap-1 truncate rounded-full px-2 py-0.5 text-[10.5px] font-bold"
+            style={{ background: stage.bg, color: stage.color }}
+          >
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: stage.color }} />
+            <span className="truncate">{stage.name}</span>
+          </span>
+        ) : null}
+        {value ? <span className="text-[12px] font-bold tabular-nums text-ink">{value}</span> : null}
+      </div>
+    </div>
+  );
+  if (typeof document === "undefined") return node;
+  return createPortal(node, document.body);
+}
+
+function InsertLine({ slug, mobile = false }: { slug: string; mobile?: boolean }) {
+  return mobile ? (
+    <div className="relative mb-1 h-0" data-testid={`sales-stage-insert-mobile-${slug}`}>
+      <div className="absolute inset-x-2 -top-px h-[3px] rounded-full bg-brand" />
+    </div>
+  ) : (
+    <tr data-testid={`sales-stage-insert-${slug}`}>
+      <td colSpan={10} className="p-0">
+        <div className="relative h-0">
+          <div className="absolute inset-x-2 -top-px h-[3px] rounded-full bg-brand" />
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export function SalesPipelineTable({
   deals,
   stages,
@@ -121,8 +208,12 @@ export function SalesPipelineTable({
       ? {
           onPointerDown: (e: ReactPointerEvent) => drag.onPointerDown(d, e),
           onClickCapture: drag.onRowClickCapture,
+          onDragStart: blockNativeDrag,
         }
       : {};
+
+  const ghostDeal = drag.ghost ? drag.localDeals.find((d) => d.id === drag.ghost!.dealId) : undefined;
+  const ghostStage = ghostDeal ? stages.find((s) => s.slug === ghostDeal.stage_slug) : undefined;
 
   return (
     <>
@@ -133,8 +224,12 @@ export function SalesPipelineTable({
       )}
 
       {/* Desktop / tablet grouped table */}
-      <div className={`hidden overflow-x-auto rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(16,24,20,.05)] md:block ${drag.draggingId ? "select-none" : ""}`} data-testid="sales-pipeline-table">
-        <table className="w-full table-fixed border-separate border-spacing-0 text-[13px]">
+      <div
+        className="hidden overflow-x-auto rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(16,24,20,.05)] md:block"
+        data-testid="sales-pipeline-table"
+        onDragStart={blockNativeDrag}
+      >
+        <table className="w-full table-fixed border-separate border-spacing-0 text-[13px]" draggable={false}>
           <colgroup>
             <col className="w-[18%]" />
             <col className="w-[14%]" />
@@ -180,7 +275,8 @@ export function SalesPipelineTable({
                 key={g.stage.slug}
                 data-stage-drop={g.stage.slug}
                 data-testid={`sales-stage-drop-${g.stage.slug}`}
-                className={dropping ? "bg-brand-50/70 outline outline-2 outline-offset-[-2px] outline-brand" : undefined}
+                data-dropping={dropping ? "true" : undefined}
+                className={dropping ? "bg-brand-50/60" : undefined}
               >
                 <StageTableGroup
                   stage={g.stage}
@@ -191,6 +287,7 @@ export function SalesPipelineTable({
                   hidden={hidden}
                   onShowMore={() => setShowAll((s) => ({ ...s, [g.stage.slug]: true }))}
                   dropping={dropping}
+                  insertLine={dropping ? <InsertLine slug={g.stage.slug} /> : null}
                 >
                   {visible.map((d) => {
                     const name = ownerName(d.owner_id);
@@ -199,11 +296,13 @@ export function SalesPipelineTable({
                     return (
                       <tr
                         key={d.id}
-                        className={`hover:bg-[#fafbf9] ${drag.enabled ? "cursor-grab active:cursor-grabbing" : ""} ${isDrag ? "opacity-40" : ""}`}
+                        draggable={false}
+                        className={`hover:bg-[#fafbf9] ${drag.enabled ? "cursor-grab active:cursor-grabbing" : ""} ${isDrag ? "opacity-35" : ""}`}
                         data-testid={`sales-deal-row-${d.id}`}
+                        data-dragging={isDrag ? "true" : undefined}
                         {...rowPointer(d)}
                       >
-                        <td className="sticky left-0 z-10 bg-white px-2 py-2 shadow-[1px_0_0_var(--color-line)]">
+                        <td className={`sticky left-0 z-10 px-2 py-2 shadow-[1px_0_0_var(--color-line)] ${isDrag ? "bg-[#f3f4f2]" : "bg-white"}`}>
                           <div className="flex items-start gap-1">
                             {drag.enabled ? <DragHandle deal={d} onPointerDown={drag.onHandlePointerDown} /> : null}
                             <div className="min-w-0 flex-1">
@@ -245,7 +344,7 @@ export function SalesPipelineTable({
       </div>
 
       {/* Mobile 390 grouped cards */}
-      <div className={`flex flex-col gap-3 md:hidden ${drag.draggingId ? "select-none" : ""}`} data-testid="sales-pipeline-cards">
+      <div className="flex flex-col gap-3 md:hidden" data-testid="sales-pipeline-cards" onDragStart={blockNativeDrag}>
         {deals.length === 0 && drag.localDeals.length === 0 && <div className="rounded-xl border border-dashed border-line px-3 py-8 text-center text-sm text-muted">No deals in this pipeline yet.</div>}
         {groups.map((g) => {
           const expanded = isExpanded(g.stage.slug);
@@ -258,12 +357,13 @@ export function SalesPipelineTable({
               key={g.stage.slug}
               data-stage-drop={g.stage.slug}
               data-testid={`sales-stage-drop-mobile-${g.stage.slug}`}
-              className={`rounded-xl ${dropping ? "bg-brand-50 outline outline-2 outline-brand" : ""}`}
+              data-dropping={dropping ? "true" : undefined}
+              className={`rounded-xl ${dropping ? "bg-brand-50" : ""}`}
             >
               <button
                 type="button"
                 onClick={() => toggle(g.stage.slug)}
-                className="mb-2 flex w-full items-center gap-2 text-left"
+                className={`mb-2 flex w-full items-center gap-2 text-left ${dropping ? "rounded-t-xl bg-brand-50 px-1 py-1" : ""}`}
                 aria-expanded={expanded}
                 data-testid={`sales-stage-toggle-${g.stage.slug}`}
               >
@@ -272,6 +372,7 @@ export function SalesPipelineTable({
                 <span className="text-[13.5px] font-bold">{g.stage.name}</span>
                 <span className="text-[12.5px] text-muted">{g.deals.length}{g.deals.length ? ` · avg ${avgDaysOpen(g.deals)}d` : ""}</span>
               </button>
+              {dropping ? <InsertLine slug={g.stage.slug} mobile /> : null}
               {expanded && visible.map((d) => {
                 const name = ownerName(d.owner_id);
                 const days = dealLengthDays(d);
@@ -279,8 +380,10 @@ export function SalesPipelineTable({
                 return (
                   <div
                     key={d.id}
-                    className={`mb-2 flex items-stretch rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(16,24,20,.04)] ${isDrag ? "opacity-40" : ""}`}
+                    draggable={false}
+                    className={`mb-2 flex items-stretch rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(16,24,20,.04)] ${isDrag ? "opacity-35 bg-[#f3f4f2]" : ""}`}
                     data-testid={`sales-deal-card-${d.id}`}
+                    data-dragging={isDrag ? "true" : undefined}
                     {...rowPointer(d)}
                   >
                     {drag.enabled ? (
@@ -326,13 +429,15 @@ export function SalesPipelineTable({
       </div>
 
       {drag.ghost && (
-        <div
-          className="pointer-events-none fixed z-50 max-w-[260px] truncate rounded-lg border border-line bg-white px-3 py-2 text-[13px] font-semibold shadow-lg"
-          style={{ left: drag.ghost.x + 12, top: drag.ghost.y + 12 }}
-          data-testid="sales-deal-drag-ghost"
-        >
-          {drag.ghost.headline}
-        </div>
+        <DealDragGhost
+          ghost={drag.ghost}
+          deal={ghostDeal}
+          stage={ghostStage}
+          ownerName={ownerName(ghostDeal?.owner_id ?? null)}
+          ownerColor={ghostDeal?.owner_id ? ownerColors[ghostDeal.owner_id] ?? "#0f766e" : "#0f766e"}
+          ownerAvatar={ghostDeal?.owner_id ? ownerAvatars[ghostDeal.owner_id] : null}
+          bindEl={drag.bindGhostEl}
+        />
       )}
       <div className="sr-only" aria-live="polite">
         {drag.draggingId ? "Dragging a deal. Drop it on a stage to move it." : drag.pending ? moveStageConfirmText(drag.pending) : ""}
@@ -356,7 +461,7 @@ export function SalesPipelineTable({
 }
 
 function StageTableGroup({
-  stage, count, avg, expanded, onToggle, hidden, onShowMore, dropping, children,
+  stage, count, avg, expanded, onToggle, hidden, onShowMore, dropping, insertLine, children,
 }: {
   stage: StageDef;
   count: number;
@@ -366,6 +471,7 @@ function StageTableGroup({
   hidden: number;
   onShowMore: () => void;
   dropping?: boolean;
+  insertLine?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -388,6 +494,7 @@ function StageTableGroup({
           </button>
         </td>
       </tr>
+      {insertLine}
       {expanded && children}
       {hidden > 0 && (
         <tr>

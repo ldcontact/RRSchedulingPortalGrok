@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { PIPELINE_DEFS } from "./catalog";
 import {
+  AUTO_SCROLL_MAX_PX,
+  applyGhostPosition,
   applyStageMove,
+  autoScrollDelta,
+  capGhostWidth,
+  clampGhostOrigin,
+  formatDealValue,
+  ghostPointerOffset,
+  ghostWidthFromTarget,
+  viewportCappedGhostWidth,
+  GHOST_WIDTH_FALLBACK,
+  GHOST_WIDTH_MAX,
+  GHOST_WIDTH_MIN,
   moveStageConfirmText,
+  nearestScrollContainer,
   pendingStageMove,
+  pointerDistance,
+  shouldCancelLongPress,
+  shouldStartMouseDrag,
   stageSlugFromDropTarget,
 } from "./pipeline-table-drag";
 import { avgDaysOpen, groupDealsByStage } from "./pipeline-table";
@@ -123,5 +139,75 @@ describe("pipeline table stage drag helpers", () => {
     const otherChild = { closest: (sel: string) => (sel === "[data-stage-drop]" ? other : null) } as unknown as Element;
     expect(stageSlugFromDropTarget(otherChild)).toBeNull();
     expect(stageSlugFromDropTarget(null)).toBeNull();
+  });
+});
+
+describe("pipeline stage drag hook helpers", () => {
+  it("formats a deal value for the ghost and hides empty amounts", () => {
+    expect(formatDealValue(2100)).toBe("$2,100");
+    expect(formatDealValue(8600.9)).toBe("$8,601");
+    expect(formatDealValue(0)).toBeNull();
+    expect(formatDealValue(-10)).toBeNull();
+    expect(formatDealValue(Number.NaN)).toBeNull();
+  });
+
+  it("caps the ghost width to a single-row size", () => {
+    expect(capGhostWidth(480)).toBe(480);
+    expect(capGhostWidth(80)).toBe(GHOST_WIDTH_MIN);
+    expect(capGhostWidth(2000)).toBe(GHOST_WIDTH_MAX);
+    expect(capGhostWidth(0)).toBe(GHOST_WIDTH_FALLBACK);
+    expect(capGhostWidth(Number.NaN)).toBe(GHOST_WIDTH_FALLBACK);
+  });
+
+  it("reads ghost width from a row-like target", () => {
+    const row = { getBoundingClientRect: () => ({ width: 410 }) };
+    const handle = { closest: (sel: string) => (sel.includes("sales-deal-row") ? row : null) };
+    expect(ghostWidthFromTarget(handle)).toBe(410);
+    expect(ghostWidthFromTarget(null)).toBe(GHOST_WIDTH_FALLBACK);
+  });
+
+  it("starts a mouse drag after the movement threshold and cancels a long-press after a finger slip", () => {
+    expect(shouldStartMouseDrag(4)).toBe(false);
+    expect(shouldStartMouseDrag(5)).toBe(true);
+    expect(shouldCancelLongPress(10)).toBe(false);
+    expect(shouldCancelLongPress(11)).toBe(true);
+    expect(pointerDistance(0, 0, 3, 4)).toBe(5);
+  });
+
+  it("places the ghost under the pointer and writes pointer coordinates onto the element", () => {
+    const off = ghostPointerOffset(400);
+    expect(off.x).toBeGreaterThan(0);
+    expect(off.y).toBeGreaterThan(0);
+    const el = { style: { left: "", top: "" }, dataset: {} as { x?: string; y?: string } };
+    applyGhostPosition(el, 200, 140, off.x, off.y);
+    expect(el.style.left).toBe(`${200 - off.x}px`);
+    expect(el.style.top).toBe(`${140 - off.y}px`);
+    expect(el.dataset.x).toBe("200");
+    expect(el.dataset.y).toBe("140");
+  });
+
+  it("auto-scrolls up near the top, down near the bottom, and not in the middle", () => {
+    expect(autoScrollDelta(200, 800)).toBe(0);
+    expect(autoScrollDelta(0, 800)).toBe(-AUTO_SCROLL_MAX_PX);
+    expect(autoScrollDelta(800, 800)).toBe(AUTO_SCROLL_MAX_PX);
+    expect(autoScrollDelta(36, 800)).toBeLessThan(0);
+    expect(autoScrollDelta(36, 800)).toBeGreaterThan(-AUTO_SCROLL_MAX_PX);
+    expect(autoScrollDelta(800 - 36, 800)).toBeGreaterThan(0);
+    expect(autoScrollDelta(800 - 36, 800)).toBeLessThan(AUTO_SCROLL_MAX_PX);
+    expect(autoScrollDelta(10, 0)).toBe(0);
+  });
+
+  it("does not treat a non-scrollable ancestor as a scroll container", () => {
+    expect(nearestScrollContainer(null)).toBeNull();
+  });
+
+  it("keeps the ghost on-screen on a narrow phone viewport", () => {
+    expect(viewportCappedGhostWidth(480, 390)).toBe(Math.max(GHOST_WIDTH_MIN, 390 - 24));
+    const off = ghostPointerOffset(366);
+    const box = clampGhostOrigin(300, 400, off.x, off.y, 366, 56, 390, 844);
+    expect(box.left).toBeGreaterThanOrEqual(8);
+    expect(box.left + 366).toBeLessThanOrEqual(390 - 8);
+    expect(box.top).toBeGreaterThanOrEqual(8);
+    expect(box.top + 56).toBeLessThanOrEqual(844 - 8);
   });
 });
