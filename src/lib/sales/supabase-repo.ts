@@ -8,9 +8,24 @@ import { signProposal } from "./proposals";
 import { sendEmail } from "@/lib/email";
 import { sendSms } from "./sms";
 import { bookingToken } from "./booking";
+import { coordsForDeal } from "./geocode-deal";
 
 type DealRow = SalesDeal;
 function asDeal(row: DealRow): SalesDeal { return row; }
+
+async function withDealGeocode(deal: SalesDeal, prev: SalesDeal | null, isNew: boolean): Promise<SalesDeal> {
+  try {
+    const next = await coordsForDeal(deal, prev, isNew, { lat: deal.lat, lng: deal.lng });
+    if (next === "skip" || (next.lat === deal.lat && next.lng === deal.lng)) return deal;
+    const c = await sb();
+    const { data, error } = await c.from("sales_deals").update({ lat: next.lat, lng: next.lng }).eq("id", deal.id).select("*").single();
+    if (error || !data) return deal;
+    return asDeal(data as DealRow);
+  } catch {
+    return deal;
+  }
+}
+
 
 async function sb() {
   return createClient();
@@ -40,13 +55,14 @@ export function supabaseSalesRepo(): SalesRepo {
       const c = await sb();
       const { data, error } = await c.from("sales_deals").insert(input).select("*").single();
       if (error) throw error;
-      return asDeal(data as DealRow);
+      return withDealGeocode(asDeal(data as DealRow), null, true);
     },
     async updateDeal(id, patch) {
       const c = await sb();
+      const prev = (await c.from("sales_deals").select("*").eq("id", id).maybeSingle()).data as DealRow | null;
       const { data, error } = await c.from("sales_deals").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("*").single();
       if (error) throw error;
-      return asDeal(data as DealRow);
+      return withDealGeocode(asDeal(data as DealRow), prev ? asDeal(prev) : null, false);
     },
     async deleteDeal(id) {
       const c = await sb();
