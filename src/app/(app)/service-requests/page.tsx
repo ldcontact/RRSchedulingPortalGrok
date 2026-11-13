@@ -11,9 +11,9 @@ import { getRepo } from "@/lib/data/repo";
 import { formatAddress, ageText } from "@/lib/project-row";
 import { fmtMonthYear, fmtReceived, localInput, ticketAssigneeStack } from "@/lib/tickets";
 import { canSeeServicePrice, formatServicePrice } from "@/lib/service-request-price";
-import { MOCK_MODE } from "@/lib/env";
 import { InvoiceListChip } from "@/components/qbo/invoice-status-pill";
-import { invoiceForRequest } from "@/lib/qbo-mock";
+import { listTicketInvoices } from "@/lib/qbo/list";
+import { todayKey } from "@/lib/time";
 import { PAGE_SIZE, SR_CHANNEL_LABEL, SR_STATUSES, SR_STATUS_LABEL, WARRANTY_LABEL, ticketNo, type Person, type SRChannel, type SRPageFilter, type SRStatus, type WarrantyState } from "@/lib/types";
 import { LogCallForm } from "./log-call-form";
 
@@ -37,7 +37,10 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
     repo.pageServiceRequests({ q, status, channel, warranty, assignee, page: pageParam(sp.page), size: PAGE_SIZE }),
     repo.listAssignable(),
   ]);
-  const prices = canSeeServicePrice(user.role) ? await repo.getServiceRequestPrices(items.map((t) => t.id)) : {};
+  const [prices, invoices] = await Promise.all([
+    canSeeServicePrice(user.role) ? repo.getServiceRequestPrices(items.map((t) => t.id)) : Promise.resolve({} as Record<string, number>),
+    listTicketInvoices(user.role, items.map((t) => t.id), todayKey()),
+  ]);
   const staffPeople = people.filter((p) => p.role === "admin" || p.role === "manager");
   const personById = new Map(people.map((p) => [p.id, p]));
   const keep = { ...(q ? { q } : {}), ...(channel ? { channel } : {}), ...(warranty ? { warranty } : {}), ...(str("assignee") ? { assignee: str("assignee") } : {}) };
@@ -89,7 +92,7 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
             ? [personById.get(t.assignee_id) ?? { id: t.assignee_id, full_name: t.assignee_name ?? "?", color: t.assignee_color ?? "#64748b" }]
             : [];
           const assignees = ticketAssigneeStack(office, t.visit?.techs ?? []);
-          const invoice = MOCK_MODE ? invoiceForRequest(t.id) : null;
+          const invoice = invoices[t.id] ?? null;
           return (
           <Link key={t.id} href={`/service-requests/${t.id}`} data-testid="ticket-row"
             className="block min-w-0 px-4 py-3 hover:bg-[#fafbf9] sm:px-5">

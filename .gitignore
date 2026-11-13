@@ -48,3 +48,5 @@ supabase/.temp/
 # local visual fixtures
 tmp-shots/
 .mock-updates.json
+.mock-qbo.json
+.mock-qbo-intuit.json

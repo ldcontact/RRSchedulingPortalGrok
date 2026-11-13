@@ -37,6 +37,6 @@ export function priceHistoryBody(prev: number | null, next: number | null): stri
 
 /** Drop price history from a ticket timeline when the viewer must not see the amount. */
 export function visibleServiceRequestEvents<T extends Pick<SREvent, "kind">>(events: T[], role: Role | null | undefined): T[] {
-  if (canSeeServicePrice(role)) return events;
-  return events.filter((e) => e.kind !== "price");
+  const invoices = role === "admin" || role === "manager"; // QuickBooks invoice history: admins and managers only
+  return events.filter((e) => (e.kind !== "price" || canSeeServicePrice(role)) && (e.kind !== "invoice" || invoices));
 }

@@ -1,4 +1,4 @@
-import { QBO_INVOICE_STATUS_LABEL, QBO_INVOICE_STATUS_TONE, QBO_LIST_CHIP, type QboInvoice, type QboInvoiceStatus } from "@/lib/qbo-mock";
+import { QBO_INVOICE_STATUS_LABEL, QBO_INVOICE_STATUS_TONE, invoiceListChipText, type InvoiceView, type QboInvoiceStatus } from "@/lib/qbo/status";
 
 export function InvoiceStatusPill({ status, className = "" }: { status: QboInvoiceStatus; className?: string }) {
   return (
@@ -9,10 +9,10 @@ export function InvoiceStatusPill({ status, className = "" }: { status: QboInvoi
   );
 }
 
-export function InvoiceListChip({ invoice }: { invoice: QboInvoice }) {
+export function InvoiceListChip({ invoice }: { invoice: Pick<InvoiceView, "status" | "number"> }) {
   return (
     <span className={`pill ${QBO_INVOICE_STATUS_TONE[invoice.status]}`} data-testid="invoice-chip" title={QBO_INVOICE_STATUS_LABEL[invoice.status]}>
-      {QBO_LIST_CHIP[invoice.status](invoice.number)}
+      {invoiceListChipText(invoice.status, invoice.number)}
     </span>
   );
 }
