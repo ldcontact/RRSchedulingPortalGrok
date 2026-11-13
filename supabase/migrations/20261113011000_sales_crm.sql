@@ -442,3 +442,18 @@ end;
 $$;
 
 -- Called by the public /sign/[token] route via the service role (or a future limited grant).
+
+
+grant select, insert, update, delete on
+  public.sales_pipelines,
+  public.sales_stages,
+  public.sales_deals,
+  public.sales_inbox,
+  public.sales_activities,
+  public.sales_automations,
+  public.sales_alerts,
+  public.sales_proposals,
+  public.sales_proposal_items,
+  public.sales_proposal_events,
+  public.sales_import_batches
+  to authenticated, service_role;

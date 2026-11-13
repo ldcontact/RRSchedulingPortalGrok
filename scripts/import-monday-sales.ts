@@ -44,12 +44,11 @@ async function main() {
     process.exit(2);
   }
 
-  let board: MondayBoardSnapshot;
   if (source === "monday") {
     console.error("Live Monday pull is not wired in this script. Export a board snapshot and use --source=file. (Read-only; this tool never writes to Monday.)");
     process.exit(2);
   }
-  board = JSON.parse(readFileSync(file, "utf8")) as MondayBoardSnapshot;
+  const board = JSON.parse(readFileSync(file, "utf8")) as MondayBoardSnapshot;
   const { deals, skipped } = mapMondayBoard(board);
   console.log(`Mapped ${deals.length} deals, skipped ${skipped.length}.`);
   for (const s of skipped) console.log(`  skip ${s.id} ${s.name}: ${s.error}`);

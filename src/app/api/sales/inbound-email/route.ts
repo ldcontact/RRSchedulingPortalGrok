@@ -5,10 +5,12 @@ import { checkWebhookSecret, webhookSecretConfigured } from "@/lib/sales/webhook
 
 /** Ingest a forwarded or parsed inbound email. Protected by the webhook secret when configured. */
 export async function POST(req: Request) {
-  if (webhookSecretConfigured()) {
-    const provided = req.headers.get("x-rr-webhook-secret");
-    if (!checkWebhookSecret(provided)) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  // Same rule as /api/sales/leads/webhook: if the secret is unset, refuse rather than accept unauthenticated leads.
+  if (!webhookSecretConfigured()) {
+    return NextResponse.json({ error: "Webhook is not configured." }, { status: 503 });
   }
+  const provided = req.headers.get("x-rr-webhook-secret");
+  if (!checkWebhookSecret(provided)) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   const ct = req.headers.get("content-type") ?? "";
   let text = "";
   if (ct.includes("application/json")) {

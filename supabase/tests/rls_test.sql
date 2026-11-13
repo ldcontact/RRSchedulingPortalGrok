@@ -702,3 +702,30 @@ select pg_temp.check('photos still has separate staff and tech_read policies',
   exists (select 1 from pg_policies where tablename = 'photos' and policyname = 'photos_staff')
   and exists (select 1 from pg_policies where tablename = 'photos' and policyname = 'photos_tech_read'));
 reset role;
+
+-- ---- Sales CRM
+reset role;
+insert into public.invites (email, role, full_name) values ('ronan@example.com','sales','Ronan Sales');
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-000000000021','ronan@example.com', now());
+insert into public.sales_deals (id, pipeline_slug, stage_slug, title, owner_id, source, monday_item_id, monday_board_id)
+values ('50000000-0000-0000-0000-000000000001','single_family_whe','potential_lead','Test WHE deal','00000000-0000-0000-0000-000000000021','manual',null,null);
+
+select pg_temp.as_user('00000000-0000-0000-0000-000000000021');
+select pg_temp.check('sales can read sales pipelines', (select count(*) from sales_pipelines) >= 2);
+select pg_temp.check('sales can see the whole pipeline', (select count(*) from sales_deals) = 1);
+select pg_temp.check('sales cannot delete a deal', not exists (
+  select 1 from sales_deals where id='50000000-0000-0000-0000-000000000001' and private.can_delete()
+));
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d'); -- Emily tech
+select pg_temp.check('tech cannot read sales deals', (select count(*) from sales_deals)=0);
+select pg_temp.check('tech cannot read sales pipelines', (select count(*) from sales_pipelines)=0);
+reset role;
+
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b'); -- Maria manager
+select pg_temp.check('manager can read sales deals', (select count(*) from sales_deals)=1);
+reset role;
+
+select pg_temp.check('authenticated has table grants on sales_deals', has_table_privilege('authenticated', 'public.sales_deals', 'select'));
+select pg_temp.check('anon has no access to sales_deals', not has_table_privilege('anon', 'public.sales_deals', 'select'));
