@@ -729,3 +729,25 @@ reset role;
 
 select pg_temp.check('authenticated has table grants on sales_deals', has_table_privilege('authenticated', 'public.sales_deals', 'select'));
 select pg_temp.check('anon has no access to sales_deals', not has_table_privilege('anon', 'public.sales_deals', 'select'));
+
+-- Net prod state after the sales table-policy hotfix and the revoked RPC grants.
+reset role;
+select pg_temp.check('no sales SELECT policies on customers, projects, or jobs',
+  not exists (
+    select 1 from pg_policies
+    where policyname in ('sales_customers_read','sales_projects_read','sales_jobs_read')
+  ));
+select pg_temp.check('anon cannot execute ingest_sales_lead',
+  not has_function_privilege('anon', 'public.ingest_sales_lead(text, text, text, text, text, text, text, text, text, text, jsonb)', 'execute'));
+select pg_temp.check('anon cannot execute sign_sales_proposal',
+  not has_function_privilege('anon', 'public.sign_sales_proposal(text, text, boolean, text)', 'execute'));
+select pg_temp.check('anon cannot execute convert_sales_deal',
+  not has_function_privilege('anon', 'public.convert_sales_deal(uuid, timestamptz, timestamptz)', 'execute'));
+select pg_temp.check('authenticated can execute convert_sales_deal',
+  has_function_privilege('authenticated', 'public.convert_sales_deal(uuid, timestamptz, timestamptz)', 'execute'));
+select pg_temp.check('authenticated cannot execute ingest_sales_lead',
+  not has_function_privilege('authenticated', 'public.ingest_sales_lead(text, text, text, text, text, text, text, text, text, text, jsonb)', 'execute'));
+select pg_temp.check('service_role can execute ingest, sign, and convert',
+  has_function_privilege('service_role', 'public.ingest_sales_lead(text, text, text, text, text, text, text, text, text, text, jsonb)', 'execute')
+  and has_function_privilege('service_role', 'public.sign_sales_proposal(text, text, boolean, text)', 'execute')
+  and has_function_privilege('service_role', 'public.convert_sales_deal(uuid, timestamptz, timestamptz)', 'execute'));
