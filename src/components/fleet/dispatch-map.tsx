@@ -6,6 +6,7 @@ import { SampleBadge } from "./sample-badge";
 import { vehicleStatusDotStyle } from "./map-icons";
 import { driverLabel, vehicleTitle } from "./status";
 import { useFleetLocations } from "./use-fleet-locations";
+import { sortScheduleCrewVehicles } from "@/lib/schedule-sort";
 
 /** Day-view live map on the schedule board. */
 export function DispatchMap() {
@@ -23,7 +24,7 @@ export function DispatchMap() {
         <div className="divide-y divide-line border-t border-line md:border-t-0 md:border-l">
           {error && <div className="px-4 py-3 text-sm text-amber-800">{error}</div>}
           {!data?.vehicles.length && !loading && <div className="p-4 text-sm text-muted">No vehicles to show.</div>}
-          {(data?.vehicles ?? []).filter((v) => v.profile || v.nearestVisit).slice(0, 8).map((v) => (
+          {sortScheduleCrewVehicles((data?.vehicles ?? []).filter((v) => v.profile || v.nearestVisit)).slice(0, 8).map((v) => (
             <div key={v.id} className="flex min-w-0 items-center gap-2.5 px-4 py-2.5">
               {v.profile ? <Avatar name={v.profile.full_name} color={v.profile.color} size="sm" src={v.profile.avatar_url} /> : <span className="size-7 shrink-0 rounded-full bg-slate-200" />}
               <span className="size-2.5 shrink-0 rounded-full" style={vehicleStatusDotStyle(v.status)} data-testid="fleet-status-dot" data-status={v.status} />
