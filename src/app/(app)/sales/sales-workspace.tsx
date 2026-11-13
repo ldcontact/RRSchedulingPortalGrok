@@ -197,7 +197,7 @@ export function SalesWorkspace(props: {
         </div>
       </div>
 
-      {props.view === "table" && <SalesPipelineTable deals={deals} stages={pipe?.stages ?? []} owners={props.owners} ownerColors={props.ownerColors} ownerAvatars={props.ownerAvatars} />}
+      {props.view === "table" && <SalesPipelineTable deals={deals} stages={pipe?.stages ?? []} owners={props.owners} ownerColors={props.ownerColors} ownerAvatars={props.ownerAvatars} onMoveStage={async (id, stage) => { await moveDealStage(id, stage); router.refresh(); }} />}
       {props.view === "kanban" && <Kanban deals={deals} stages={pipe?.stages ?? []} owners={props.owners} ownerColors={props.ownerColors} ownerAvatars={props.ownerAvatars} />}
       {props.view === "calendar" && <Calendar deals={deals} />}
       {props.view === "aging" && <Aging deals={deals} owners={props.owners} ownerColors={props.ownerColors} ownerAvatars={props.ownerAvatars} />}
