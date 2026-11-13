@@ -951,6 +951,32 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
     async addServiceRequestEvent(requestId, e) {
       fail((await (await db()).from("service_request_events").insert({ request_id: requestId, kind: e.kind, body: e.body })).error);
     },
+    async getServiceRequestPrices(ids) {
+      if (!ids.length) return {};
+      const { data, error } = await (await db()).from("service_request_pricing").select("service_request_id, amount").in("service_request_id", ids);
+      fail(error);
+      const out: Record<string, number> = {};
+      for (const row of data ?? []) {
+        const n = Number(row.amount);
+        if (Number.isFinite(n)) out[row.service_request_id as string] = n;
+      }
+      return out;
+    },
+    async setServiceRequestPrice(id, amount) {
+      const s = await db();
+      const { data: { user } } = await s.auth.getUser();
+      if (amount == null) {
+        fail((await s.from("service_request_pricing").delete().eq("service_request_id", id)).error);
+        return;
+      }
+      fail((await s.from("service_request_pricing").upsert({
+        service_request_id: id,
+        amount,
+        currency: "USD",
+        updated_by: user?.id ?? null,
+        updated_at: new Date().toISOString(),
+      })).error);
+    },
     async findProjects(f) {
       const s = await db();
       const limit = Math.min(Math.max(1, f.limit ?? 10), MAX_PICKS);

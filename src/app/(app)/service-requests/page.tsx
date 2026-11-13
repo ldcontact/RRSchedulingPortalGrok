@@ -10,6 +10,7 @@ import { requireRole } from "@/lib/auth";
 import { getRepo } from "@/lib/data/repo";
 import { formatAddress, ageText } from "@/lib/project-row";
 import { fmtMonthYear, fmtReceived, localInput, ticketAssigneeStack } from "@/lib/tickets";
+import { canSeeServicePrice, formatServicePrice } from "@/lib/service-request-price";
 import { PAGE_SIZE, SR_CHANNEL_LABEL, SR_STATUSES, SR_STATUS_LABEL, WARRANTY_LABEL, ticketNo, type Person, type SRChannel, type SRPageFilter, type SRStatus, type WarrantyState } from "@/lib/types";
 import { LogCallForm } from "./log-call-form";
 
@@ -33,6 +34,7 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
     repo.pageServiceRequests({ q, status, channel, warranty, assignee, page: pageParam(sp.page), size: PAGE_SIZE }),
     repo.listAssignable(),
   ]);
+  const prices = canSeeServicePrice(user.role) ? await repo.getServiceRequestPrices(items.map((t) => t.id)) : {};
   const staffPeople = people.filter((p) => p.role === "admin" || p.role === "manager");
   const personById = new Map(people.map((p) => [p.id, p]));
   const keep = { ...(q ? { q } : {}), ...(channel ? { channel } : {}), ...(warranty ? { warranty } : {}), ...(str("assignee") ? { assignee: str("assignee") } : {}) };
@@ -110,6 +112,7 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
                       ? <AvatarStack people={assignees} max={3} />
                       : <span className="sr-only">Unassigned</span>}
                   </div>
+                  {prices[t.id] != null && <span className="pill bg-brand-50 text-[#134e4a]" data-testid="ticket-price">{formatServicePrice(prices[t.id])}</span>}
                   <WarrantyPill state={t.warranty_state} className="xl:min-w-[8rem] xl:justify-center" />
                   <SRStatusPill status={t.status} className="xl:min-w-[6.25rem] xl:justify-center" />
                 </div>

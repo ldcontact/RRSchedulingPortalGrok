@@ -2,18 +2,26 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { StageDef } from "@/lib/sales/catalog";
 import {
+  applyGhostPosition,
   applyStageMove,
-  LONG_PRESS_CANCEL_PX,
+  autoScrollDelta,
+  ghostPointerOffset,
+  ghostWidthFromTarget,
   LONG_PRESS_MS,
-  MOUSE_DRAG_THRESHOLD_PX,
+  nearestScrollContainer,
+  viewportCappedGhostWidth,
   pendingStageMove,
+  pointerDistance,
+  shouldCancelLongPress,
+  shouldStartMouseDrag,
   stageSlugFromDropTarget,
   type PendingStageMove,
+  type StageDragGhost,
 } from "@/lib/sales/pipeline-table-drag";
 import { dealHeadline } from "@/lib/sales/pipeline-table";
 import type { SalesDeal } from "@/lib/sales/types";
 
-export type StageDragGhost = { x: number; y: number; headline: string };
+export type { StageDragGhost };
 
 type Press = {
   deal: SalesDeal;
@@ -22,6 +30,7 @@ type Press = {
   startY: number;
   immediate: boolean;
   pointerType: string;
+  width: number;
 };
 
 export function usePipelineStageDrag({
@@ -54,6 +63,10 @@ export function usePipelineStageDrag({
   const pendingRef = useRef<PendingStageMove | null>(null);
   const savingRef = useRef(false);
   const snapshotRef = useRef(snapshot);
+  const ghostElRef = useRef<HTMLDivElement | null>(null);
+  const pointerRef = useRef({ x: 0, y: 0 });
+  const widthRef = useRef(360);
+  const animRef = useRef<number | null>(null);
   const enabled = typeof onMoveStage === "function";
 
   useEffect(() => {
@@ -69,16 +82,78 @@ export function usePipelineStageDrag({
     }
   };
 
+  const stopAnim = () => {
+    if (animRef.current != null) {
+      window.cancelAnimationFrame(animRef.current);
+      animRef.current = null;
+    }
+  };
+
+  const paintGhost = useCallback((x: number, y: number) => {
+    const el = ghostElRef.current;
+    if (!el) return;
+    const width = viewportCappedGhostWidth(widthRef.current, window.innerWidth);
+    const off = ghostPointerOffset(width);
+    const height = el.getBoundingClientRect().height || 56;
+    applyGhostPosition(el, x, y, off.x, off.y, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      ghostWidth: width,
+      ghostHeight: height,
+    });
+  }, []);
+
+  const bindGhostEl = useCallback((el: HTMLDivElement | null) => {
+    ghostElRef.current = el;
+    if (el) paintGhost(pointerRef.current.x, pointerRef.current.y);
+  }, [paintGhost]);
+
   const startDrag = useCallback((press: Press, x: number, y: number) => {
     draggingRef.current = true;
     suppressClickRef.current = true;
+    pointerRef.current = { x, y };
+    const width = typeof window !== "undefined" ? viewportCappedGhostWidth(press.width, window.innerWidth) : press.width;
+    widthRef.current = width;
     setDraggingId(press.deal.id);
-    setGhost({ x, y, headline: dealHeadline(press.deal) });
+    setGhost({
+      dealId: press.deal.id,
+      headline: dealHeadline(press.deal),
+      width,
+      x,
+      y,
+    });
     setError(null);
   }, []);
 
+  useEffect(() => {
+    if (!draggingId) return;
+    let frame = 0;
+    const tick = () => {
+      frame = window.requestAnimationFrame(tick);
+      animRef.current = frame;
+      const { x, y } = pointerRef.current;
+      paintGhost(x, y);
+      const dy = autoScrollDelta(y, window.innerHeight);
+      if (dy) {
+        const hit = document.elementFromPoint(x, y);
+        const box = nearestScrollContainer(hit);
+        if (box) box.scrollBy(0, dy);
+        else window.scrollBy(0, dy);
+      }
+      const slug = stageSlugFromDropTarget(document.elementFromPoint(x, y));
+      setOverSlug((cur) => (cur === slug ? cur : slug));
+    };
+    frame = window.requestAnimationFrame(tick);
+    animRef.current = frame;
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (animRef.current === frame) animRef.current = null;
+    };
+  }, [draggingId, paintGhost]);
+
   const endPress = useCallback(() => {
     clearTimer();
+    stopAnim();
     pressRef.current = null;
     draggingRef.current = false;
     setDraggingId(null);
@@ -137,8 +212,10 @@ export function usePipelineStageDrag({
       startY: e.clientY,
       immediate,
       pointerType: e.pointerType,
+      width: ghostWidthFromTarget(e.currentTarget as HTMLElement),
     };
     pressRef.current = press;
+    pointerRef.current = { x: e.clientX, y: e.clientY };
     try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
     if (immediate) {
       e.preventDefault();
@@ -165,24 +242,20 @@ export function usePipelineStageDrag({
     const onMove = (e: PointerEvent) => {
       const press = pressRef.current;
       if (!press || press.pointerId !== e.pointerId) return;
-      const dx = e.clientX - press.startX;
-      const dy = e.clientY - press.startY;
-      const dist = Math.hypot(dx, dy);
+      const dist = pointerDistance(press.startX, press.startY, e.clientX, e.clientY);
       if (!draggingRef.current) {
-        if (press.pointerType !== "mouse" && dist > LONG_PRESS_CANCEL_PX) {
+        if (press.pointerType !== "mouse" && shouldCancelLongPress(dist)) {
           clearTimer();
           pressRef.current = null;
           return;
         }
-        if (press.pointerType === "mouse" && dist >= MOUSE_DRAG_THRESHOLD_PX) {
+        if (press.pointerType === "mouse" && shouldStartMouseDrag(dist)) {
           startDrag(press, e.clientX, e.clientY);
         }
         return;
       }
       e.preventDefault();
-      setGhost({ x: e.clientX, y: e.clientY, headline: dealHeadline(press.deal) });
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      setOverSlug(stageSlugFromDropTarget(el));
+      pointerRef.current = { x: e.clientX, y: e.clientY };
     };
 
     const onUp = (e: PointerEvent) => {
@@ -190,7 +263,8 @@ export function usePipelineStageDrag({
       if (!press || press.pointerId !== e.pointerId) return;
       const wasDragging = draggingRef.current;
       const deal = press.deal;
-      const slug = wasDragging ? stageSlugFromDropTarget(document.elementFromPoint(e.clientX, e.clientY)) : null;
+      const { x, y } = pointerRef.current;
+      const slug = wasDragging ? stageSlugFromDropTarget(document.elementFromPoint(x, y)) : null;
       endPress();
       if (wasDragging && slug) requestMove(deal, slug);
       if (wasDragging) {
@@ -213,17 +287,45 @@ export function usePipelineStageDrag({
       }
     };
 
+    const onTouchMove = (e: TouchEvent) => {
+      if (draggingRef.current) e.preventDefault();
+    };
+
     window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("touchmove", onTouchMove);
+      stopAnim();
     };
   }, [enabled, endPress, requestMove, startDrag]);
+
+  useEffect(() => {
+    if (!draggingId) return;
+    const body = document.body;
+    const prevUserSelect = body.style.userSelect;
+    const prevTouchAction = body.style.touchAction;
+    const prevCursor = body.style.cursor;
+    body.style.userSelect = "none";
+    body.style.touchAction = "none";
+    body.style.cursor = "grabbing";
+    body.classList.add("rr-pipeline-dragging");
+    const onSelect = (e: Event) => e.preventDefault();
+    document.addEventListener("selectstart", onSelect);
+    return () => {
+      body.style.userSelect = prevUserSelect;
+      body.style.touchAction = prevTouchAction;
+      body.style.cursor = prevCursor;
+      body.classList.remove("rr-pipeline-dragging");
+      document.removeEventListener("selectstart", onSelect);
+    };
+  }, [draggingId]);
 
   const onRowClickCapture = useCallback((e: { preventDefault(): void; stopPropagation(): void }) => {
     if (!suppressClickRef.current) return;
@@ -241,6 +343,7 @@ export function usePipelineStageDrag({
     overSlug,
     ghost,
     enabled,
+    bindGhostEl,
     onPointerDown,
     onHandlePointerDown,
     onRowClickCapture,

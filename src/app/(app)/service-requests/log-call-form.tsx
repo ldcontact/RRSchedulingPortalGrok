@@ -92,12 +92,16 @@ export function LogCallForm({ cancelHref, now }: { cancelHref: string; now: stri
         <label className="label">Phone<input className="input" name="contact_phone" defaultValue={v.contact_phone} inputMode="tel" /></label>
         <label className="label">Email<input className="input" name="contact_email" defaultValue={v.contact_email} type="email" /></label>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <label className="label">Received<input className="input" type="datetime-local" name="received_at" defaultValue={v.received_at ?? now} max={now} /></label>
         <label className="label">Priority
           <select className="input" name="priority" defaultValue={v.priority ?? "normal"}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select>
         </label>
+        <label className="label">Service price
+          <input className="input" name="service_price" inputMode="decimal" placeholder="Optional, USD" defaultValue={v.service_price} data-testid="service-price-input" aria-label="Service price" />
+        </label>
       </div>
+      <p className="-mt-2 text-[11.5px] text-muted">Service price is office-only. Field techs never see it.</p>
       <label className="label">Short summary *<input className="input" name="summary" required maxLength={200} defaultValue={v.summary} placeholder="e.g. Exam room 2 fixture flickering" /></label>
       <label className="label">What did they say?<textarea className="input min-h-24 font-normal" name="description" defaultValue={v.description} placeholder="Where, what's wrong, since when, anything they asked for…" /></label>
       {cust && (

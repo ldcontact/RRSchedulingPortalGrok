@@ -16,10 +16,11 @@ import { AssignedTruckCard } from "@/components/fleet/assigned-truck-card";
 import { getRepo } from "@/lib/data/repo";
 import { ageText, formatAddress } from "@/lib/project-row";
 import { fmtDate, fmtReceived, visitDefaults } from "@/lib/tickets";
+import { canSeeServicePrice, formatServicePrice, visibleServiceRequestEvents } from "@/lib/service-request-price";
 import { dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, addDays } from "@/lib/time";
 import { DEFAULT_WARRANTY_MONTHS, PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_OPEN, ticketNo, type SREvent } from "@/lib/types";
 import {
-  addTicketNote, assignTicket, convertTicket, finishTicket, linkProject, markTriaged, reopenTicket, setBillable, unlinkProject,
+  addTicketNote, assignTicket, convertTicket, finishTicket, linkProject, markTriaged, reopenTicket, setBillable, setServiceRequestPrice, unlinkProject,
 } from "../actions";
 import { ScheduleVisitForm } from "./schedule-form";
 import { SendScheduleEmailButton } from "../schedule-email-dialog";
@@ -47,14 +48,18 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
   if (!sr) notFound();
   const pq = str("pq");
   const picking = str("link") === "1" || !!pq;
-  const [events, visits, people, project, picks, creator] = await Promise.all([
+  const showPrice = canSeeServicePrice(user.role);
+  const [events, visits, people, project, picks, creator, prices] = await Promise.all([
     repo.listServiceRequestEvents(id), repo.listJobs({ serviceRequestId: id }), repo.listAssignable(),
     sr.project_id ? repo.getProject(sr.project_id) : Promise.resolve(null),
     picking ? repo.findProjects(pq ? { q: pq, limit: 10 } : { customerId: sr.customer_id, limit: 10 }) : Promise.resolve([]),
     sr.created_by ? repo.getProfile(sr.created_by) : Promise.resolve(null),
+    showPrice ? repo.getServiceRequestPrices([id]) : Promise.resolve({} as Record<string, number>),
   ]);
-  const notes = events.filter((e) => e.kind === "note");
-  const history = events.filter((e) => e.kind !== "note");
+  const visible = visibleServiceRequestEvents(events, user.role);
+  const notes = visible.filter((e) => e.kind === "note");
+  const history = visible.filter((e) => e.kind !== "note");
+  const price = prices[id] ?? null;
   const staffPeople = people.filter((p) => p.role === "admin" || p.role === "manager");
   const techs = people.filter((p) => p.role === "tech");
   const open = SR_OPEN.includes(sr.status);
@@ -186,6 +191,22 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
             </div>
           </div>
 
+          {showPrice && (
+          <div className="card" data-testid="service-price">
+            <div className="card-hd"><h3 className="font-semibold">Service price</h3><span className="text-xs text-muted">Office only · hidden from techs</span></div>
+            <form action={setServiceRequestPrice.bind(null, id)} className="flex flex-col gap-2 p-4">
+              <label className="label">Amount (USD)
+                <input className="input" name="service_price" inputMode="decimal" placeholder="e.g. 185.00" defaultValue={price != null ? price.toFixed(2) : ""} aria-label="Service price" data-testid="service-price-input" />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <SubmitButton className="btn btn-primary" pendingText="Saving…">Save price</SubmitButton>
+                {price != null && <Link href={`${base}?clear-price=1`} scroll={false} className="btn" data-testid="clear-price">Clear</Link>}
+              </div>
+              <p className="text-[11.5px] text-muted">{price != null ? `Currently ${formatServicePrice(price)}. ` : "No price set. "}Field techs never see this amount.</p>
+            </form>
+          </div>
+          )}
+
           <div className="card" data-testid="original-project">
             <div className="card-hd"><h3 className="font-semibold">Original project</h3>{project && <Link href={`/projects/${project.id}`} className="text-xs font-semibold text-brand">Open project</Link>}</div>
             {project ? (
@@ -315,6 +336,19 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
           <ScheduleVisitForm requestId={id} projectName={project.name} projectComplete={project.status === "complete"} cancelHref={base}
             people={techs.length ? techs : people}
             d={{ title: defaults.title, kind: defaults.kind, date: tomorrow, start: "09:00", end: "11:00", instructions: sr.description }} />
+        </Modal>
+      )}
+      {showPrice && str("clear-price") === "1" && (
+        <Modal title="Clear service price" sub="This can’t be undone." closeHref={base}>
+          <form action={setServiceRequestPrice.bind(null, id)} className="flex flex-col gap-4 p-5" data-testid="clear-price-confirm">
+            <input type="hidden" name="clear" value="1" />
+            <input type="hidden" name="confirm" value="1" />
+            <p className="text-sm">Clear the service price{price != null ? <> of <span className="font-semibold">{formatServicePrice(price)}</span></> : ""} on {ticketNo(sr.number)}? Field techs never see this amount, and it will be removed from the ticket.</p>
+            <div className="flex justify-end gap-2 border-t border-line pt-4">
+              <Link href={base} scroll={false} className="btn">Cancel</Link>
+              <SubmitButton className="btn btn-danger" pendingText="Clearing…">Clear price</SubmitButton>
+            </div>
+          </form>
         </Modal>
       )}
       {canDelete && str("delete") === "1" && (
