@@ -70,7 +70,7 @@ during go-live, before the app is deployed.
    - complete the app profile: host domain `rr-scheduling-portal-grokv1.vercel.app`,
      launch URL and disconnect URL `https://rr-scheduling-portal-grokv1.vercel.app/settings/integrations`,
      privacy policy `https://rr-scheduling-portal-grokv1.vercel.app/privacy`,
-     and an end-user license (EULA) URL (we can add a simple `/terms` page first);
+     and end-user license (EULA) `https://rr-scheduling-portal-grokv1.vercel.app/terms`;
    - answer the **app assessment / compliance questionnaire** (internal app used only by your
      company, Accounting scope, tokens encrypted server-side). Review can take a few days.
 2. Add the same redirect URI in the **Production** Keys & credentials.

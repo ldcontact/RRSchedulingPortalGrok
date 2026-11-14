@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { Icon } from "./icons";
 import { Logo } from "./ui";
 
@@ -18,7 +19,14 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         <div className="hidden text-sm text-[#9cc4bd] md:block">Lighting & HVAC retrofits for ComEd small business customers</div>
       </div>
       <div className="relative flex items-start justify-center bg-white p-6 md:items-center md:p-8">
-        <div className="flex w-full max-w-[380px] flex-col gap-5">{children}</div>
+        <div className="flex w-full max-w-[380px] flex-col gap-5">
+          {children}
+          <p className="text-xs text-muted">
+            <Link className="text-brand underline" href="/privacy">Privacy Policy</Link>
+            {" · "}
+            <Link className="text-brand underline" href="/terms">Terms of Use</Link>
+          </p>
+        </div>
       </div>
     </div>
   );

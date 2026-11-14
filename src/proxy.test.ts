@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { isPublicPath } from "./proxy";
 
 describe("isPublicPath", () => {
-  it("allows signed-out visitors to reach the privacy policy and get-started", () => {
+  it("allows signed-out visitors to reach the privacy policy, terms, and get-started", () => {
     expect(isPublicPath("/privacy")).toBe(true);
+    expect(isPublicPath("/terms")).toBe(true);
     expect(isPublicPath("/get-started")).toBe(true);
     expect(isPublicPath("/login")).toBe(true);
   });

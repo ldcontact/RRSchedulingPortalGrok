@@ -39,7 +39,11 @@ export default function PrivacyPage() {
           To request access, correction, or deletion of your information, email luke@retrofitrebates.com or write to
           Retrofit Rebates, Inc., 507 Estes Ave, Schaumburg, IL 60193.
         </p>
-        <p><Link className="text-brand underline" href="/get-started">Back to Get started</Link></p>
+        <p>
+          <Link className="text-brand underline" href="/get-started">Back to Get started</Link>
+          {" · "}
+          <Link className="text-brand underline" href="/terms">Terms of Use</Link>
+        </p>
       </article>
     </main>
   );
