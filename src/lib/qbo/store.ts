@@ -174,7 +174,8 @@ function mockStore(): QboStore {
     async insertInvoice(row) {
       return mutateMock((db) => {
         if (db.invoices.some((i) => i.service_request_id === row.service_request_id && !i.voided_at)) throw new Error("This ticket already has an invoice.");
-        const full = { emailed_at: null, emailed_to: null, ...row, id: randomUUID(), created_at: new Date().toISOString() };
+        const { emailed_at = null, emailed_to = null, ...rest } = row;
+        const full = { ...rest, emailed_at, emailed_to, id: randomUUID(), created_at: new Date().toISOString() };
         db.invoices.push(full);
         return full;
       });

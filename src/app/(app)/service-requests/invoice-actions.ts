@@ -14,7 +14,7 @@ import { canUseQboInvoices } from "@/lib/qbo/permissions";
 import { getQboApi } from "@/lib/qbo/service";
 import { getQboStore } from "@/lib/qbo/store";
 import { invoiceNumberLabel } from "@/lib/qbo/status";
-import type { Customer, Contact, ServiceRequest } from "@/lib/types";
+import type { Customer, Contact, ServiceRequestView } from "@/lib/types";
 
 /*
  * QuickBooks invoices from a service request. Admins and managers only (checked here on the
@@ -39,7 +39,7 @@ async function connected() {
   return c;
 }
 
-async function portalSnapshot(repo: Awaited<ReturnType<typeof getRepo>>, sr: ServiceRequest) {
+async function portalSnapshot(repo: Awaited<ReturnType<typeof getRepo>>, sr: ServiceRequestView) {
   const [cust, contacts] = await Promise.all([repo.getCustomer(sr.customer_id), repo.listContacts(sr.customer_id)]);
   const primary = (contacts as Contact[]).find((c) => c.is_primary) ?? (contacts as Contact[])[0] ?? null;
   return snapshotFromRecords({

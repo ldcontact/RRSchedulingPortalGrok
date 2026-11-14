@@ -22,7 +22,7 @@ export function toQboCustomer(c: QboCustomerEntity): QboCustomer {
   const cityLine = [a.City, [a.CountrySubDivisionCode, a.PostalCode].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   return {
     id: String(c.Id),
-    name: c.DisplayName,
+    name: c.DisplayName ?? "",
     email: c.PrimaryEmailAddr?.Address ?? "",
     address: [a.Line1, cityLine].filter(Boolean).join(", "),
   };
