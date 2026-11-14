@@ -43,7 +43,7 @@ environment **Production**, mark each as **Sensitive**:
 `SUPABASE_SERVICE_ROLE_KEY` is already set and is reused to store the connection server-side.
 Then **redeploy** (Deployments → latest → Redeploy) so the new variables load.
 
-The database migration `supabase/migrations/20261113233500_quickbooks_invoices.sql` is applied
+The database migration `supabase/migrations/20261114000828_quickbooks_invoices.sql` is applied
 during go-live, before the app is deployed.
 
 ## 4. Connect and try it
