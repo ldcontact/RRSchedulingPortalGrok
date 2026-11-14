@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PendingLink } from "@/components/pending-link";
 import { Icon } from "@/components/icons";
-import { Banner, PageHeader } from "@/components/ui";
+import { Banner } from "@/components/ui";
+import { MobileServiceFilters } from "./filters-bar";
 import { AvatarStack, ChannelIcon, SRStatusPill, WarrantyPill } from "@/components/status";
 import { Modal } from "@/components/modal";
 import { Pager, pageParam } from "@/components/pager";
@@ -53,20 +54,40 @@ export default async function ServiceRequestsPage({ searchParams }: PageProps<"/
   const filtered = !!(q || channel || warranty || assignee);
   return (
     <>
-      <PageHeader title="Service requests"
-        sub={`${(counts.open ?? 0).toLocaleString("en-US")} open · ${(counts.new ?? 0).toLocaleString("en-US")} new · tickets stay off the Projects list until they are converted`}
-        actions={<PendingLink href={newHref} scroll={false} className="btn btn-primary" data-testid="new-request"><Icon name="plus" />New request</PendingLink>} />
+      <div className="mb-3 sm:mb-5">
+        <div className="flex items-center justify-between gap-3 sm:items-start">
+          <div className="min-w-0">
+            <h1 className="text-[20px] font-semibold tracking-tight sm:text-[22px]">Service requests</h1>
+            <div className="mt-0.5 text-muted">
+              <span className="truncate sm:hidden">{`${(counts.open ?? 0).toLocaleString("en-US")} open · ${(counts.new ?? 0).toLocaleString("en-US")} new`}</span>
+              <span className="hidden sm:inline">{`${(counts.open ?? 0).toLocaleString("en-US")} open · ${(counts.new ?? 0).toLocaleString("en-US")} new · tickets stay off the Projects list until they are converted`}</span>
+            </div>
+          </div>
+          <PendingLink href={newHref} scroll={false} className="btn btn-primary btn-sm shrink-0 sm:px-3.5 sm:py-2 sm:text-sm" data-testid="new-request">
+            <Icon name="plus" /><span className="sm:hidden">New</span><span className="hidden sm:inline">New request</span>
+          </PendingLink>
+        </div>
+      </div>
       {str("ok") && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{str("ok")}</Banner></div>}
       {error && <div className="mb-3"><Banner tone="error"><Icon name="alert" />{error}</Banner></div>}
-      <div className="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Filter by status">
+      <div className="-mx-3 mb-2 flex gap-1 overflow-x-auto px-3 pb-0.5 sm:mb-3 sm:gap-1.5 sm:pb-1" role="tablist" aria-label="Filter by status">
         {TABS.map((t) => (
           <Link key={t.key} href={href(t.key)} role="tab" aria-selected={status === t.key}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-semibold ${status === t.key ? "border-brand bg-brand text-white" : "border-line bg-white text-muted hover:text-ink"}`}>
+            className={`flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-semibold sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-[13px] ${status === t.key ? "border-brand bg-brand text-white" : "border-line bg-white text-muted hover:text-ink"}`}>
             {t.label}<span className={`rounded-full px-1.5 text-[11px] ${status === t.key ? "bg-white/20" : "bg-canvas"}`}>{(counts[t.key ?? "open"] ?? 0).toLocaleString("en-US")}</span>
           </Link>
         ))}
       </div>
-      <form className="mb-4 flex flex-wrap gap-2" role="search">
+      <MobileServiceFilters
+        status={status}
+        q={q}
+        channel={channel}
+        warranty={warranty}
+        assignee={str("assignee")}
+        staffPeople={staffPeople}
+        clearHref={href(status)}
+      />
+      <form className="mb-4 hidden flex-wrap gap-2 sm:flex" role="search" data-testid="service-filters-desktop">
         {status !== "open" && <input type="hidden" name="status" value={status} />}
         <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border border-line bg-white px-3 sm:basis-auto sm:max-w-sm">
           <Icon name="search" className="size-4 text-muted" />
