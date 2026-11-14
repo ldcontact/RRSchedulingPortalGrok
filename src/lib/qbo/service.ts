@@ -10,7 +10,8 @@ import { getQboStore, type QboConnectionRow, type QboStore } from "./store";
 export type QboState =
   | { kind: "not_configured" }
   | { kind: "disconnected"; config: QboConfig }
-  | { kind: "connected"; config: QboConfig; connection: QboConnectionRow };
+  | { kind: "connected"; config: QboConfig; connection: QboConnectionRow }
+  | { kind: "error"; config: QboConfig; message: string };
 
 export function qboFetch(config: QboConfig): FetchLike {
   if (config.fake) {
@@ -24,9 +25,14 @@ export function qboFetch(config: QboConfig): FetchLike {
 export async function getQboState(store: QboStore = getQboStore()): Promise<QboState> {
   const config = readQboConfig();
   if (!config) return { kind: "not_configured" };
-  const connection = await store.getConnection();
-  if (!connection || connection.environment !== config.environment) return { kind: "disconnected", config };
-  return { kind: "connected", config, connection };
+  try {
+    const connection = await store.getConnection();
+    if (!connection || connection.environment !== config.environment) return { kind: "disconnected", config };
+    return { kind: "connected", config, connection };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Couldn't read the QuickBooks connection.";
+    return { kind: "error", config, message };
+  }
 }
 
 export function sealTokens(config: QboConfig, t: QboTokens) {

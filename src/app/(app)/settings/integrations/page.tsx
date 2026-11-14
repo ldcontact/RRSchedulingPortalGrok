@@ -8,7 +8,7 @@ import { QboMark } from "@/components/qbo/qbo-mark";
 import { requireRole } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/time";
 import type { QboPick, QboTaxOption, QboTerm } from "@/lib/qbo/api";
-import { missingQboEnv } from "@/lib/qbo/config";
+import { qboSetupIssues } from "@/lib/qbo/config";
 import { QboError } from "@/lib/qbo/errors";
 import { canManageQboConnection } from "@/lib/qbo/permissions";
 import { getQboApi, getQboState } from "@/lib/qbo/service";
@@ -24,13 +24,8 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/set
   const ok = str("ok"), error = str("error");
   const base = "/settings/integrations";
   let loadError = "";
-  let state: Awaited<ReturnType<typeof getQboState>>;
-  try {
-    state = await getQboState();
-  } catch (e) {
-    loadError = e instanceof Error ? e.message : "Couldn't read the QuickBooks connection.";
-    state = { kind: "not_configured" };
-  }
+  const state = await getQboState();
+  if (state.kind === "error") loadError = state.message;
   const connected = state.kind === "connected";
   const disconnecting = connected && admin && str("disconnect") === "1";
   let items: QboPick[] = [], terms: QboTerm[] = [], taxes: QboTaxOption[] = [];
@@ -48,7 +43,9 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/set
   const fake = state.kind !== "not_configured" && state.config.fake;
   const pill = connected ? { tone: "bg-green-100 text-green-800", label: "Connected" }
     : state.kind === "disconnected" ? { tone: "bg-slate-100 text-slate-600", label: "Not connected" }
+    : state.kind === "error" ? { tone: "bg-red-100 text-red-800", label: "Can't load" }
     : { tone: "bg-accent-50 text-[#78350f]", label: "Not configured" };
+  const setupIssues = state.kind === "not_configured" ? qboSetupIssues() : state.kind === "error" ? [state.message] : [];
 
   return (
     <>
@@ -119,6 +116,19 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/set
               <p className="text-[11.5px] text-muted sm:ml-auto">Managers can create invoices once connected. Field techs never see invoices or service prices.</p>
             </div>
           </form>
+        ) : state.kind === "error" ? (
+          <div className="flex flex-col gap-3 p-5" data-testid="qbo-load-error">
+            <p className="text-sm">The QuickBooks keys are present, but RR Scheduler couldn&apos;t read the connection. Invoicing stays off until this is fixed.</p>
+            {admin && (
+              <>
+                <p className="text-sm text-muted">What&apos;s wrong:</p>
+                <ul className="list-disc space-y-1 pl-5 font-mono text-[12.5px] text-muted">
+                  {setupIssues.map((k) => <li key={k}>{k}</li>)}
+                </ul>
+                <p className="text-[11.5px] text-muted">Step-by-step guide: docs/quickbooks-setup.md in the repository.</p>
+              </>
+            )}
+          </div>
         ) : state.kind === "disconnected" ? (
           <div className="flex flex-col gap-4 p-5">
             <p className="text-sm">
@@ -145,10 +155,12 @@ export default async function IntegrationsPage({ searchParams }: PageProps<"/set
             <p className="text-sm">QuickBooks isn&apos;t set up on the server yet, so invoicing is turned off. Nothing is connected and no invoices can be created.</p>
             {admin && (
               <>
-                <p className="text-sm text-muted">An admin adds the Intuit app keys in Vercel (Production environment), then redeploys. Missing:</p>
-                <ul className="list-disc space-y-1 pl-5 font-mono text-[12.5px] text-muted">
-                  {missingQboEnv().map((k) => <li key={k}>{k}</li>)}
-                </ul>
+                <p className="text-sm text-muted">An admin adds the Intuit app keys in Vercel (Production environment), then redeploys. What&apos;s wrong:</p>
+                {setupIssues.length > 0 && (
+                  <ul className="list-disc space-y-1 pl-5 font-mono text-[12.5px] text-muted">
+                    {setupIssues.map((k) => <li key={k}>{k}</li>)}
+                  </ul>
+                )}
                 <p className="text-[11.5px] text-muted">Step-by-step guide: docs/quickbooks-setup.md in the repository.</p>
               </>
             )}

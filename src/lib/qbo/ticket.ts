@@ -29,7 +29,9 @@ export async function loadTicketInvoice(opts: {
 }): Promise<TicketInvoiceData | null> {
   if (!canUseQboInvoices(opts.role)) return null;
   const state = await getQboState().catch(() => ({ kind: "not_configured" as const }));
-  if (state.kind === "not_configured") return { state: "not_configured", sandbox: true, invoice: null };
+  if (state.kind === "not_configured" || state.kind === "error") {
+    return { state: "not_configured", sandbox: state.kind === "error" ? state.config.environment === "sandbox" : true, invoice: null, createError: state.kind === "error" ? state.message : undefined };
+  }
   const sandbox = state.config.environment === "sandbox";
   const store = getQboStore();
   const row = await store.getActiveInvoice(opts.sr.id).catch(() => null);

@@ -13,6 +13,8 @@
  * Intuit server (src/lib/qbo/fake.ts) is used so the screens can be exercised without
  * any Intuit account. Set RR_QBO_FAKE=0 to see the "Not configured" state instead.
  */
+import { parseEncKey } from "./crypto";
+
 export type QboEnvironment = "sandbox" | "production";
 
 export const QBO_SCOPE = "com.intuit.quickbooks.accounting";
@@ -56,10 +58,26 @@ export function readQboConfig(env: Env = process.env): QboConfig | null {
     };
   }
   if (!clientId || !clientSecret || !encKey) return null;
+  try { parseEncKey(encKey); } catch { return null; }
   return { clientId, clientSecret, environment, redirectUri, encKey, fake: false };
 }
 
-/** Which env vars are missing, for the "Not configured" card (names only, never values). */
+/** Human-readable setup problems for the Settings card. Names and format only, never values. */
+export function qboSetupIssues(env: Env = process.env): string[] {
+  const issues: string[] = [];
+  if (!(env.QBO_CLIENT_ID ?? "").trim()) issues.push("QBO_CLIENT_ID is missing");
+  if (!(env.QBO_CLIENT_SECRET ?? "").trim()) issues.push("QBO_CLIENT_SECRET is missing");
+  const enc = (env.QBO_TOKEN_ENC_KEY ?? "").trim();
+  if (!enc) issues.push("QBO_TOKEN_ENC_KEY is missing");
+  else {
+    try { parseEncKey(enc); } catch {
+      issues.push("QBO_TOKEN_ENC_KEY must be 32 bytes (base64, typically 44 characters, or 64 hex characters)");
+    }
+  }
+  return issues;
+}
+
+/** Which required env vars are empty, for tests and callers that only need names. */
 export function missingQboEnv(env: Env = process.env): string[] {
   return ["QBO_CLIENT_ID", "QBO_CLIENT_SECRET", "QBO_TOKEN_ENC_KEY"].filter((k) => !(env[k] ?? "").trim());
 }

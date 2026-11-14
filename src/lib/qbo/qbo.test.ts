@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { QboApi } from "./api";
-import { INTUIT_AUTHORIZE_URL, INTUIT_REVOKE_URL, INTUIT_TOKEN_URL, QBO_DEFAULT_REDIRECT_URI, qboInvoiceAppUrl, readQboConfig, type QboConfig } from "./config";
+import { INTUIT_AUTHORIZE_URL, INTUIT_REVOKE_URL, INTUIT_TOKEN_URL, QBO_DEFAULT_REDIRECT_URI, qboInvoiceAppUrl, qboSetupIssues, readQboConfig, type QboConfig } from "./config";
 import { completeConnection, disconnectQbo, stateMatches } from "./connect";
 import { decryptToken, encryptToken } from "./crypto";
 import { QboAuthError, QboError } from "./errors";
@@ -11,8 +11,9 @@ import { buildInvoicePayload, estimateTotals, validateInvoiceDraft } from "./inv
 import { createInvoiceForTicket, invoiceView, refreshInvoice, suggestCustomer, voidInvoiceForTicket } from "./invoices";
 import { accessTokenExpiring, buildAuthorizeUrl, exchangeCode, refreshTokens, revokeToken } from "./oauth";
 import { canManageQboConnection, canUseQboInvoices } from "./permissions";
-import { tokenProvider } from "./service";
+import { getQboState, tokenProvider } from "./service";
 import { deriveInvoiceStatus, invoiceListChipText } from "./status";
+import { explainQboStoreError } from "./store";
 import { TEST_KEY, memoryStore, scriptedFetch } from "./test-helpers";
 import { visibleServiceRequestEvents } from "@/lib/service-request-price";
 
@@ -71,6 +72,54 @@ describe("config", () => {
   it("links invoices to the right QuickBooks app", () => {
     expect(qboInvoiceAppUrl("sandbox", "145")).toBe("https://app.sandbox.qbo.intuit.com/app/invoice?txnId=145");
     expect(qboInvoiceAppUrl("production", "145")).toBe("https://app.qbo.intuit.com/app/invoice?txnId=145");
+  });
+  it("lists the actual setup problem, including a bad encryption key, and is empty when keys are valid", () => {
+    expect(qboSetupIssues({})).toEqual([
+      "QBO_CLIENT_ID is missing",
+      "QBO_CLIENT_SECRET is missing",
+      "QBO_TOKEN_ENC_KEY is missing",
+    ]);
+    const present = { QBO_CLIENT_ID: "a", QBO_CLIENT_SECRET: "b", QBO_TOKEN_ENC_KEY: "too-short" };
+    expect(readQboConfig(present)).toBeNull();
+    expect(qboSetupIssues(present)).toEqual([
+      "QBO_TOKEN_ENC_KEY must be 32 bytes (base64, typically 44 characters, or 64 hex characters)",
+    ]);
+    // 32 random bytes as standard base64 (44 chars with padding) — same format as
+    // PowerShell [Convert]::ToBase64String((1..32|%{Get-Random -Max 256}))
+    const psKey = Buffer.from(Array.from({ length: 32 }, (_, i) => i + 1)).toString("base64");
+    expect(psKey).toHaveLength(44);
+    expect(qboSetupIssues({ QBO_CLIENT_ID: "a", QBO_CLIENT_SECRET: "b", QBO_TOKEN_ENC_KEY: psKey })).toEqual([]);
+    expect(readQboConfig({ QBO_CLIENT_ID: "a", QBO_CLIENT_SECRET: "b", QBO_TOKEN_ENC_KEY: psKey })).not.toBeNull();
+  });
+});
+
+describe("store errors", () => {
+  it("explains an Invalid API key as a rejected SUPABASE_SERVICE_ROLE_KEY without leaking values", () => {
+    const msg = explainQboStoreError("Invalid API key");
+    expect(msg).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(msg).toContain("Invalid API key");
+    expect(msg).toContain("tsvjugacbiqkjqazixlv");
+    expect(msg.toLowerCase()).not.toContain("eyj");
+  });
+  it("returns an error state (not not_configured) when the connection store fails", async () => {
+    const env = { QBO_CLIENT_ID: "a", QBO_CLIENT_SECRET: "b", QBO_TOKEN_ENC_KEY: TEST_KEY };
+    const prev = { ...process.env };
+    Object.assign(process.env, env);
+    try {
+      const { store } = memoryStore();
+      store.getConnection = async () => { throw new Error(explainQboStoreError("Invalid API key")); };
+      const state = await getQboState(store);
+      expect(state.kind).toBe("error");
+      if (state.kind === "error") {
+        expect(state.message).toContain("SUPABASE_SERVICE_ROLE_KEY");
+        expect(qboSetupIssues(env)).toEqual([]);
+      }
+    } finally {
+      for (const k of Object.keys(env)) {
+        if (prev[k] === undefined) delete process.env[k];
+        else process.env[k] = prev[k];
+      }
+    }
   });
 });
 

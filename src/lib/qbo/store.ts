@@ -73,11 +73,23 @@ export interface QboStore {
   updateInvoice(id: string, patch: Partial<ServiceRequestInvoiceRow>): Promise<void>;
 }
 
+/** Turn a store/Supabase error into a setup message (never includes secret values). */
+export function explainQboStoreError(message: string): string {
+  const m = (message ?? "").trim() || "Couldn't read the QuickBooks connection.";
+  if (/invalid api key/i.test(m)) {
+    return "SUPABASE_SERVICE_ROLE_KEY was rejected by Supabase (Invalid API key). Paste the current service_role or secret key from project tsvjugacbiqkjqazixlv into Vercel as a Production Sensitive variable, then redeploy.";
+  }
+  if (/legacy api keys are disabled/i.test(m)) {
+    return "Supabase legacy API keys are disabled. Set SUPABASE_SERVICE_ROLE_KEY to a current secret key (sb_secret_…) from project tsvjugacbiqkjqazixlv, then redeploy.";
+  }
+  return m;
+}
+
 // ---------------------------------------------------------------- Supabase (service role)
 function supabaseStore(): QboStore {
   const admin = createAdminClient();
   if (!admin) throw new Error("QuickBooks needs SUPABASE_SERVICE_ROLE_KEY on the server.");
-  const fail = (e: { message: string } | null) => { if (e) throw new Error(e.message); };
+  const fail = (e: { message: string } | null) => { if (e) throw new Error(explainQboStoreError(e.message)); };
   return {
     async getConnection() {
       const { data, error } = await admin.from("qbo_connections").select("*").eq("id", true).maybeSingle();

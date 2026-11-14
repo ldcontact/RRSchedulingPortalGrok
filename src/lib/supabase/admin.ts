@@ -8,7 +8,8 @@ import { SUPABASE_URL } from "@/lib/env";
  * Returns null when SUPABASE_SERVICE_ROLE_KEY isn't set.
  */
 export function createAdminClient() {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
-  if (!SUPABASE_URL || !key) return null;
-  return createClient(SUPABASE_URL, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY ?? "").trim();
+  const url = SUPABASE_URL.trim();
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
