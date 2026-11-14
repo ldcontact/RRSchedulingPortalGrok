@@ -4,11 +4,13 @@ import { AvatarStack, JobKindBadge, JobStatusPill } from "./status";
 import { dayKey, fmtDay, fmtRange } from "@/lib/time";
 import type { JobView } from "@/lib/types";
 import { VisitDurationLine } from "./visit-duration-line";
+import { startedByCaption } from "@/lib/started-by";
 
 /** Full My Jobs visit card (Overdue, Today, and Coming up share this). */
 export function TechJobCard({ j, overdue = false, overdueCaption }: { j: JobView; overdue?: boolean; overdueCaption?: string }) {
   const cta = j.status === "scheduled" ? "Open & start" : j.status === "in_progress" ? "Continue" : "View";
   const accent = overdue ? "border-l-4 border-l-red-600" : j.kind !== "install" ? "border-l-4 border-l-amber-500" : "";
+  const startedBy = j.status === "in_progress" ? startedByCaption(j.started_by, j.assignees) : null;
   return (
     <Link href={`/jobs/${j.id}`} className={`card block p-4 active:bg-[#fafbf9] ${accent}`} data-kind={j.kind} data-overdue={overdue ? "true" : undefined}>
       <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
@@ -22,6 +24,9 @@ export function TechJobCard({ j, overdue = false, overdueCaption }: { j: JobView
         </span>
       </div>
       <VisitDurationLine className="mt-1" status={j.status} startedAt={j.started_at} completedAt={j.completed_at} endsAt={j.ends_at} />
+      {startedBy && (
+        <div className="mt-0.5 text-[13px] text-muted">{startedBy}</div>
+      )}
       <div className="mt-1 text-[16px] font-semibold">{j.title}</div>
       <div className="text-sm text-muted">{j.customer_name}</div>
       {j.address && (

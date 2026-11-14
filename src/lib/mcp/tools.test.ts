@@ -11,7 +11,7 @@ const user = (id: string, role: Role | null): SessionUser => ({ id, email: `${ro
 
 const job = (over: Partial<JobView> = {}): JobView => ({
   id: JOB, project_id: PROJECT, title: "Install LEDs", starts_at: "2026-11-10T14:00:00.000Z", ends_at: "2026-11-10T16:00:00.000Z", status: "scheduled",
-  instructions: "Use the back door", started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null,
+  instructions: "Use the back door", started_at: null, started_by: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null,
   project_name: "Lakeview LEDs", project_type: "lighting", customer_id: CUSTOMER, customer_name: "Lakeview Dental", address: "1 Main St Chicago, IL 60601",
   assignees: [{ id: TECH, full_name: "Carlos Tech", color: "#111" }], latitude: null, longitude: null, ...over,
 });

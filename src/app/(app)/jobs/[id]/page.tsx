@@ -49,12 +49,13 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const canDelete = hasDeleteAccess(user);
   const mine = job.assignees.some((a) => a.id === user.id);
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
-  const [project, contacts, visitPhotos, projectPhotos, notes, allRequirements, projectDocs, visitDocs, submittedBy] = await Promise.all([
+  const [project, contacts, visitPhotos, projectPhotos, notes, allRequirements, projectDocs, visitDocs, startedBy, submittedBy] = await Promise.all([
     repo.getProject(job.project_id), repo.listContacts(job.customer_id),
     repo.listPhotos({ jobId: id }), repo.listPhotos({ projectId: job.project_id }), repo.listNotes({ jobId: id }),
     repo.listPhotoRequirements(job.project_id, id),
     repo.listProjectFiles({ projectId: job.project_id, projectOnly: true }),
     repo.listProjectFiles({ projectId: job.project_id, jobId: id }),
+    job.started_by ? repo.getProfile(job.started_by).catch(() => null) : Promise.resolve(null),
     job.completed_by ? repo.getProfile(job.completed_by).catch(() => null) : Promise.resolve(null),
   ]);
   const phases = bucketPhotosByPhase(visitPhotos);
@@ -265,6 +266,12 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
                     <div>
                       <div className="text-xs font-semibold tracking-wide text-muted uppercase">Started</div>
                       <div className="font-semibold">{fmtTime(job.started_at)}</div>
+                    </div>
+                  )}
+                  {startedBy && (
+                    <div>
+                      <div className="text-xs font-semibold tracking-wide text-muted uppercase">Started by</div>
+                      <div className="font-semibold">{startedBy.full_name}</div>
                     </div>
                   )}
                   {job.completed_at && (

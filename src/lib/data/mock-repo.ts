@@ -269,20 +269,20 @@ function seedPhase2(): P2 {
     ...ms("p6", [["Assessment visit", 4, false], ["Proposal", 7, false]]),
   ];
   const jb = (id: string, project_id: string, title: string, d: number, h1: number, h2: number, status: Job["status"], instructions: string | null, extra: Partial<Job> = {}): Job => ({
-    id, project_id, title, starts_at: at(d, h1), ends_at: at(d, h2), status, instructions, started_at: null, completed_at: null, completed_by: null,
+    id, project_id, title, starts_at: at(d, h1), ends_at: at(d, h2), status, instructions, started_at: null, started_by: null, completed_at: null, completed_by: null,
     approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null, ...extra,
   });
   const jobs = [
-    jb("j1", "p1", "Lobby + operatories troffers", -2, 8, 12, "approved", "Front desk opens 8:30. Start in the lobby.", { started_at: at(-2, 8), completed_at: at(-2, 12), completed_by: "u-tech1", approved_at: at(-1, 9), approved_by: "u-manager" }),
+    jb("j1", "p1", "Lobby + operatories troffers", -2, 8, 12, "approved", "Front desk opens 8:30. Start in the lobby.", { started_at: at(-2, 8), started_by: "u-tech1", completed_at: at(-2, 12), completed_by: "u-tech1", approved_at: at(-1, 9), approved_by: "u-manager" }),
     jb("j2", "p1", "Exam rooms + hallway retrofit", 0, 8, 15, "scheduled", "Operatories 3 & 4 after 1pm only. Bring 2 spare sensors."),
     jb("j3", "p2", "High bays – bays 1 & 2", 0, 7, 11, "in_progress", "Lift is in bay 2. Tony on site from 7am.", { started_at: at(0, 7, 5) }),
     jb("j8", "p2", "Bay 4 punch list", 0, 13, 15, "scheduled", "Quick punch list; customer asked for afternoon."),
     jb("j13", "p3", "Thermostat follow-up", 0, 14, 16, "scheduled", "Confirm both new stats are on the 6a–7p schedule."),
     jb("j4", "p2", "High bays bays 3–4 + wall packs", 1, 7, 15, "scheduled", null),
-    jb("j5", "p3", "RTU tune-up + thermostats", -1, 9, 13, "completed", "Roof ladder at rear; lockbox code from Maria.", { started_at: at(-1, 9), completed_at: at(-1, 12, 40), completed_by: "u-tech3" }),
+    jb("j5", "p3", "RTU tune-up + thermostats", -1, 9, 13, "completed", "Roof ladder at rear; lockbox code from Maria.", { started_at: at(-1, 9), started_by: "u-tech3", completed_at: at(-1, 12, 40), completed_by: "u-tech3" }),
     jb("j6", "p4", "Phase A – high bays (day 1)", 2, 7, 16, "scheduled", "Safety glasses + steel toes. Check in at the guard shack."),
     jb("j7", "p4", "Phase A – high bays (day 2)", 3, 7, 16, "scheduled", null),
-    jb("j-glen", "p-glen", "367 Glen Leven ct LED", 18, 8, 12, "in_progress", "Call customer 20 minutes before arrival", { started_at: at(0, 11, 51) }),
+    jb("j-glen", "p-glen", "367 Glen Leven ct LED", 18, 8, 12, "in_progress", "Call customer 20 minutes before arrival", { started_at: at(0, 11, 51), started_by: "u-tech1" }),
   ];
   const as = (job_id: string, ...ids: string[]) => ids.map((profile_id) => ({ job_id, profile_id }));
   const assignments = [...as("j1", "u-tech1", "u-tech2"), ...as("j2", "u-tech1", "u-tech2"), ...as("j3", "u-tech4"), ...as("j8", "u-tech2"), ...as("j4", "u-tech4", "u-tech1"),
@@ -415,7 +415,7 @@ function seedServiceRequests(db: DB) {
     warranty_months: DEFAULT_WARRANTY_MONTHS, created_at: ago(days + 30), updated_at: ago(days),
   });
   const done = (id: string, project_id: string, title: string, d: number, by: string, extra: Partial<Job> = {}): Job => ({
-    id, project_id, title, starts_at: at(d, 7), ends_at: at(d, 15), status: "approved", instructions: null, started_at: at(d, 7), completed_at: at(d, 14, 30), completed_by: by,
+    id, project_id, title, starts_at: at(d, 7), ends_at: at(d, 15), status: "approved", instructions: null, started_at: at(d, 7), started_by: by, completed_at: at(d, 14, 30), completed_by: by,
     approved_at: at(d + 1, 9), approved_by: "u-manager", review_note: null, kind: "install", service_request_id: null, ...extra,
   });
   if (!db.projects.some((p) => p.id === "p7")) {
@@ -448,7 +448,7 @@ function seedServiceRequests(db: DB) {
   if (!db.jobs.some((j) => j.id === "j12")) {
     db.jobs.push({ id: "j12", project_id: "p7", title: "Warranty — exit fixture batteries", starts_at: at(1, 9), ends_at: at(1, 11), status: "scheduled",
       instructions: "Swap the battery packs in the 2 emergency fixtures at the rear exits (same model as the original install). Photo each fixture after a 90-minute test.",
-      started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null, kind: "warranty", service_request_id: "sr4" });
+      started_at: null, started_by: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null, kind: "warranty", service_request_id: "sr4" });
     db.assignments.push({ job_id: "j12", profile_id: "u-tech1" });
   }
   const ev = (request_id: string, kind: SREventRow["kind"], body: string, actor_id: string | null, created_at: string) => ({ id: randomUUID(), request_id, kind, body, actor_id, created_at });
@@ -682,7 +682,7 @@ export function mockCreateConvertedProject(input: import("@/lib/types").ProjectI
     if (visit) {
       const job: Job = {
         id: randomUUID(), project_id: project.id, title: visit.title, starts_at: visit.starts_at, ends_at: visit.ends_at,
-        status: "scheduled", instructions: null, started_at: null, completed_at: null, completed_by: null,
+        status: "scheduled", instructions: null, started_at: null, started_by: null, completed_at: null, completed_by: null,
         approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null,
       };
       db.jobs.push(job);
@@ -703,7 +703,7 @@ export function mockAssignTechToProject(projectId: string, profileId: string) {
       job = {
         id: `j-${projectId}`, project_id: projectId, title: "First visit",
         starts_at: start.toISOString(), ends_at: end.toISOString(), status: "scheduled",
-        instructions: null, started_at: null, completed_at: null, completed_by: null,
+        instructions: null, started_at: null, started_by: null, completed_at: null, completed_by: null,
         approved_at: null, approved_by: null, review_note: null, kind: "install", service_request_id: null,
       };
       db.jobs.push(job);
@@ -1182,7 +1182,7 @@ export const mockRepo: Repo = {
     const id = mutate((db) => {
       const jobId = randomUUID();
       if (input.service_request_id && (input.kind ?? "install") === "install") throw new Error('new row for relation "jobs" violates check constraint "jobs_ticket_visit_kind"');
-      db.jobs.push({ ...input, kind: input.kind ?? "install", service_request_id: input.service_request_id ?? null, id: jobId, status: "scheduled", started_at: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null });
+      db.jobs.push({ ...input, kind: input.kind ?? "install", service_request_id: input.service_request_id ?? null, id: jobId, status: "scheduled", started_at: null, started_by: null, completed_at: null, completed_by: null, approved_at: null, approved_by: null, review_note: null });
       for (const pid of new Set(assignees)) db.assignments.push({ job_id: jobId, profile_id: pid });
       syncProject(db, input.project_id);
       return jobId;
@@ -1228,7 +1228,7 @@ export const mockRepo: Repo = {
           }
           Object.assign(patch, { completed_at: now(), completed_by: w.uid });
         }
-        if (patch.status === "in_progress") Object.assign(patch, { started_at: now() });
+        if (patch.status === "in_progress") Object.assign(patch, { started_at: now(), started_by: w.uid });
       }
       const prev = j.status;
       Object.assign(j, patch);

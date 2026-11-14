@@ -197,7 +197,7 @@ export type JobKind = "install" | "warranty" | "service";
 export const JOB_KIND_LABEL: Record<JobKind, string> = { install: "Install", warranty: "Warranty", service: "Service" };
 export type Job = {
   id: string; project_id: string; title: string; starts_at: string; ends_at: string; status: JobStatus; instructions: string | null;
-  started_at: string | null; completed_at: string | null; completed_by: string | null; approved_at: string | null; approved_by: string | null; review_note: string | null;
+  started_at: string | null; started_by: string | null; completed_at: string | null; completed_by: string | null; approved_at: string | null; approved_by: string | null; review_note: string | null;
   kind: JobKind; service_request_id: string | null;
 };
 export type JobInput = Pick<Job, "project_id" | "title" | "starts_at" | "ends_at" | "instructions"> & { kind?: JobKind; service_request_id?: string | null };

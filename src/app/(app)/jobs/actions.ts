@@ -103,10 +103,10 @@ const attempt = async (job: JobView, fn: () => Promise<void>, okMsg: string) => 
 };
 
 export async function startJob(id: string) {
-  const { repo, job, assigned, staff } = await load(id);
+  const { user, repo, job, assigned, staff } = await load(id);
   if (!assigned && !staff) back(job, "You're not on this visit.", "error");
   if (job.status !== "scheduled") back(job, "This visit has already started.", "error");
-  await attempt(job, () => repo.updateJob(id, { status: "in_progress", ...(staff ? { started_at: new Date().toISOString() } : {}) }), "Job started. Add completion photos and a note when you're done.");
+  await attempt(job, () => repo.updateJob(id, { status: "in_progress", ...(staff ? { started_at: new Date().toISOString(), started_by: user.id } : {}) }), "Job started. Add completion photos and a note when you're done.");
 }
 
 export async function addJobNote(id: string, fd: FormData) {
@@ -161,7 +161,7 @@ export async function cancelJob(id: string) {
 export async function reopenJob(id: string) {
   const { repo, job, staff } = await load(id);
   if (!staff) back(job, "Only managers can reopen visits.", "error");
-  await attempt(job, () => repo.updateJob(id, { status: "scheduled", started_at: null, completed_at: null, approved_at: null, approved_by: null }), "Visit reopened.");
+  await attempt(job, () => repo.updateJob(id, { status: "scheduled", started_at: null, started_by: null, completed_at: null, approved_at: null, approved_by: null }), "Visit reopened.");
 }
 
 
