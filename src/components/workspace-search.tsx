@@ -7,14 +7,18 @@ import { searchWorkspaceAction } from "@/app/(app)/search-actions";
 import { Icon } from "@/components/icons";
 import { useOptionalNavProgress } from "@/components/nav-progress";
 import { highlightChunks } from "@/lib/highlight-match";
-import { emptyWorkspaceSearch, flattenWorkspaceHits, moveActive } from "@/lib/workspace-search";
-import type { WorkspaceSearchHit, WorkspaceSearchResults } from "@/lib/types";
+import { emptyWorkspaceSearch, flattenWorkspaceHits, moveActive, sectionHitOffset, WORKSPACE_SEARCH_SECTIONS } from "@/lib/workspace-search";
+import type { WorkspaceSearchHit, WorkspaceSearchKind, WorkspaceSearchResults } from "@/lib/types";
 
 const DEBOUNCE_MS = 250;
 
-const ICONS: Record<WorkspaceSearchHit["kind"], string> = {
+const ICONS: Record<WorkspaceSearchKind, string> = {
   customer: "users",
   project: "briefcase",
+  visit: "calendar",
+  service_request: "wrench",
+  task: "task",
+  deal: "funnel",
   person: "user",
 };
 
@@ -123,6 +127,7 @@ export function WorkspaceSearch() {
 
   const hits = flattenWorkspaceHits(results);
   const queried = q.trim().length > 0;
+  const sections = WORKSPACE_SEARCH_SECTIONS.filter((s) => results[s.key].total > 0 || results[s.key].items.length > 0);
 
   function onInputKey(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {
@@ -181,7 +186,7 @@ export function WorkspaceSearch() {
               value={q}
               onChange={(e) => onQuery(e.target.value)}
               onKeyDown={onInputKey}
-              placeholder="Search customers, projects, or people…"
+              placeholder="Search customers, projects, visits, tasks, service requests…"
               className="w-full min-w-0 rounded-xl border border-line bg-canvas py-2.5 pr-10 pl-9 text-[15px] text-ink outline-none placeholder:text-muted focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20"
               data-testid="workspace-search-input"
               aria-autocomplete="list"
@@ -203,16 +208,29 @@ export function WorkspaceSearch() {
 
         <div id="workspace-search-results" ref={listRef} className="min-h-[12rem] max-h-[min(24rem,calc(100dvh-14rem))] overflow-y-auto overflow-x-hidden px-2 py-2 sm:px-3" role="listbox">
           {!queried && (
-            <p className="px-3 py-8 text-center text-sm text-muted">Start typing to search customers, projects, and people.</p>
+            <p className="px-3 py-8 text-center text-sm text-muted">Start typing to search customers, projects, visits, tasks, service requests, and more.</p>
           )}
           {queried && searching && hits.length === 0 && (
             <p className="px-3 py-8 text-center text-sm text-muted">Searching…</p>
           )}
-          {queried && (!searching || hits.length > 0) && (
+          {queried && (!searching || hits.length > 0) && hits.length === 0 && (
+            <p className="px-3 py-8 text-center text-sm text-muted">No matching results.</p>
+          )}
+          {queried && (!searching || hits.length > 0) && hits.length > 0 && (
             <>
-              <Section kind="customer" label="Customers" group={results.customers} query={q} active={active} offset={0} onPick={go} />
-              <Section kind="project" label="Projects" group={results.projects} query={q} active={active} offset={results.customers.items.length} onPick={go} />
-              <Section kind="person" label="People" group={results.people} query={q} active={active} offset={results.customers.items.length + results.projects.items.length} onPick={go} />
+              {sections.map((s) => (
+                <Section
+                  key={s.key}
+                  label={s.label}
+                  empty={s.empty}
+                  testId={s.testId}
+                  group={results[s.key]}
+                  query={q}
+                  active={active}
+                  offset={sectionHitOffset(results, s.key)}
+                  onPick={go}
+                />
+              ))}
             </>
           )}
         </div>
@@ -260,19 +278,19 @@ export function WorkspaceSearch() {
 }
 
 function Section({
-  kind, label, group, query, active, offset, onPick,
+  label, empty, testId, group, query, active, offset, onPick,
 }: {
-  kind: WorkspaceSearchHit["kind"];
   label: string;
+  empty: string;
+  testId: string;
   group: WorkspaceSearchResults["customers"];
   query: string;
   active: number;
   offset: number;
   onPick: (h: WorkspaceSearchHit) => void;
 }) {
-  const empty = kind === "customer" ? "No matching customers." : kind === "project" ? "No matching projects." : "No matching people.";
   return (
-    <section className="mb-2 last:mb-0" data-testid={`workspace-search-section-${kind === "person" ? "people" : kind === "customer" ? "customers" : "projects"}`}>
+    <section className="mb-2 last:mb-0" data-testid={`workspace-search-section-${testId}`}>
       <div className="flex items-center gap-2 px-2 pt-2 pb-1">
         <h3 className="text-[11px] font-bold tracking-wide text-muted uppercase">{label}</h3>
         <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[10.5px] font-semibold text-muted tabular-nums">{group.total}</span>
@@ -286,7 +304,7 @@ function Section({
             const on = idx === active;
             const clickable = !!hit.href;
             return (
-              <li key={hit.id} className="min-w-0">
+              <li key={`${hit.kind}-${hit.id}`} className="min-w-0">
                 <button
                   type="button"
                   role="option"

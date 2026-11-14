@@ -13,7 +13,8 @@ import { serviceRequestActorAvatarUrl } from "@/lib/service-request-notes";
 import { authorColor, authorLabel } from "@/lib/author";
 import { applySearch, parseSearch } from "@/lib/search";
 import { PROJECT_HIT_LIMIT, toProjectHit } from "@/lib/project-hit";
-import { customerSubtitle, emptyWorkspaceSearch, personHref, personSubtitle, projectSubtitle, WORKSPACE_SEARCH_LIMIT } from "@/lib/workspace-search";
+import { customerSubtitle, dealSubtitle, emptyWorkspaceSearch, matchesDealSearch, matchesServiceRequestSearch, matchesTaskSearch, matchesVisitSearch, personHref, personSubtitle, projectSubtitle, serviceRequestSubtitle, serviceRequestTitle, sliceGroup, taskSubtitle, ticketNumberFromToken, visitSubtitle, WORKSPACE_SEARCH_LIMIT } from "@/lib/workspace-search";
+import type { ParsedSearch } from "@/lib/search";
 import { applyTicketVisits } from "@/lib/tickets";
 import { addressChanged, emptyGeocode, visitCoords } from "@/lib/geocode/parse";
 import type { TicketVisitCrew } from "@/lib/types";
@@ -162,6 +163,37 @@ const toPick = (r: PickRaw): ProjectPick => ({
 
 /** Supabase client acting as one user (cookie session on the website, bearer token on /api/mcp). */
 export type UserDb = Awaited<ReturnType<typeof createClient>>;
+
+const inList = (ids: string[]) => (ids.length ? `(${ids.join(",")})` : null);
+async function projectIdsMatchingToken(s: UserDb, token: string, cap = 200): Promise<string[]> {
+  const { data, error } = await s.from("project_search").select("project_id").ilike("doc", `%${token}%`).limit(cap);
+  fail(error);
+  return [...new Set(((data ?? []) as { project_id: string }[]).map((r) => r.project_id))];
+}
+async function projectIdsMatchingPhone(s: UserDb, parsed: ParsedSearch, cap = 200): Promise<string[]> {
+  if (!parsed.digits) return [];
+  const { data, error } = await s.from("project_search").select("project_id")
+    .or(`doc.ilike."%${parsed.text}%",digits.ilike."%${parsed.digits}%"`).limit(cap);
+  fail(error);
+  return [...new Set(((data ?? []) as { project_id: string }[]).map((r) => r.project_id))];
+}
+async function jobIdsWithAssigneeToken(s: UserDb, token: string, cap = 200): Promise<string[]> {
+  const { data: profs, error: pe } = await s.from("profiles").select("id").is("deleted_at", null).ilike("full_name", `%${token}%`).limit(50);
+  fail(pe);
+  const ids = ((profs ?? []) as { id: string }[]).map((p) => p.id);
+  if (!ids.length) return [];
+  const { data, error } = await s.from("job_assignments").select("job_id").in("profile_id", ids).limit(cap);
+  fail(error);
+  return [...new Set(((data ?? []) as { job_id: string }[]).map((r) => r.job_id))];
+}
+const SR_SEARCH_COLS = ["summary", "description", "customer_name", "contact_name", "contact_phone", "site_address", "site_city", "site_state", "site_zip", "project_name", "assignee_name"];
+function serviceRequestOrFilter(token: string): string {
+  const parts = SR_SEARCH_COLS.map((c) => `${c}.ilike."%${token}%"`);
+  const num = ticketNumberFromToken(token);
+  if (num) parts.push(`number.eq.${num}`);
+  return parts.join(",");
+}
+const DEAL_SEARCH_COLS = ["title", "contact_name", "contact_phone", "contact_email", "address", "city", "state", "zip"];
 
 /** Default: the signed-in user's cookie session. Pass another factory (e.g. a bearer-token client) to reuse the same logic. */
 
@@ -318,7 +350,10 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const parsed = parseSearch(q);
       if (!parsed) return emptyWorkspaceSearch();
       const s = await db();
-      const [{ data: auth }, custQ, projQ] = await Promise.all([
+      const visitSel = "id, title, starts_at, kind, status, projects(name, customers(name, address, city, state, zip)), job_assignments(profiles(full_name))";
+      const taskSel = "id, title, description, status, due_date, projects(name), customers(name), service_requests(number, summary), task_assignees(profiles(full_name))";
+      const dealSel = "id, title, contact_name, contact_phone, contact_email, address, city, state, zip";
+      const [{ data: auth }, custQ, projQ, visitQ, srQ, taskQ, dealQ] = await Promise.all([
         s.auth.getUser(),
         (async () => {
           let query = s.from("customers").select("id, name, phone, email, address, city, state, zip, customer_search!inner()", { count: "exact" });
@@ -330,9 +365,57 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
           query = applySearch(query, "project_search", parsed);
           return query.order("name").order("id").range(0, WORKSPACE_SEARCH_LIMIT - 1);
         })(),
+        (async () => {
+          let query = s.from("jobs").select(visitSel, { count: "exact" });
+          if (parsed.digits) {
+            const projectIds = await projectIdsMatchingPhone(s, parsed);
+            const parts = [`title.ilike."%${parsed.text}%"`];
+            const list = inList(projectIds);
+            if (list) parts.push(`project_id.in.${list}`);
+            query = query.or(parts.join(","));
+          } else {
+            for (const token of parsed.tokens) {
+              const [projectIds, jobIds] = await Promise.all([projectIdsMatchingToken(s, token), jobIdsWithAssigneeToken(s, token)]);
+              const parts = [`title.ilike."%${token}%"`];
+              const projects = inList(projectIds);
+              const jobs = inList(jobIds);
+              if (projects) parts.push(`project_id.in.${projects}`);
+              if (jobs) parts.push(`id.in.${jobs}`);
+              query = query.or(parts.join(","));
+            }
+          }
+          return query.order("starts_at", { ascending: false }).order("id").range(0, WORKSPACE_SEARCH_LIMIT - 1);
+        })(),
+        (async () => {
+          let query = s.from("service_request_list").select("id, number, summary, description, status, customer_name, contact_name, contact_phone, site_address, site_city, site_state, site_zip, project_name, assignee_name", { count: "exact" });
+          if (parsed.digits) {
+            const parts = [`contact_phone.ilike."%${parsed.text}%"`, `contact_phone.ilike."%${parsed.digits}%"`, serviceRequestOrFilter(parsed.text)];
+            query = query.or(parts.join(","));
+          } else {
+            for (const token of parsed.tokens) query = query.or(serviceRequestOrFilter(token));
+          }
+          return query.order("received_at", { ascending: false }).order("id").range(0, WORKSPACE_SEARCH_LIMIT - 1);
+        })(),
+        (async () => {
+          return s.from("tasks").select(taskSel).order("title").order("id");
+        })(),
+        (async () => {
+          let query = s.from("sales_deals").select(dealSel, { count: "exact" });
+          if (parsed.digits) {
+            query = query.or(DEAL_SEARCH_COLS.map((c) => `${c}.ilike."%${parsed.text}%"`).concat([`contact_phone.ilike."%${parsed.digits}%"`]).join(","));
+          } else {
+            for (const token of parsed.tokens) query = query.or(DEAL_SEARCH_COLS.map((c) => `${c}.ilike."%${token}%"`).join(","));
+          }
+          return query.order("title").order("id").range(0, WORKSPACE_SEARCH_LIMIT - 1);
+        })(),
       ]);
       fail(custQ.error);
       fail(projQ.error);
+      fail(visitQ.error);
+      fail(srQ.error);
+      fail(taskQ.error);
+      // Deals are hidden from techs by RLS; a permission error should not fail the whole search.
+      if (dealQ.error && dealQ.error.code !== "42501" && !/permission denied|row-level security/i.test(dealQ.error.message ?? "")) fail(dealQ.error);
       const uid = auth.user?.id ?? "";
       let peopleQ = s.from("profiles").select("id, full_name, email, role, title, deleted_at", { count: "exact" }).is("deleted_at", null);
       for (const token of parsed.tokens) {
@@ -348,25 +431,92 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       type CustAddr = { name: string; address: string | null; city: string | null; state: string | null; zip: string | null };
       type Proj = { id: string; name: string; hcp_job_number?: string | null; customers: CustAddr | CustAddr[] | null };
       type Pers = { id: string; full_name: string; email: string; role: Role | null; title: string | null };
-      const oneCust = (v: CustAddr | CustAddr[] | null | undefined): CustAddr | null => Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+      type VisitCust = { name: string | null; address: string | null; city: string | null; state: string | null; zip: string | null };
+      type VisitRow = {
+        id: string; title: string; starts_at: string; kind: import("@/lib/types").JobKind; status: import("@/lib/types").JobStatus;
+        projects: { name: string; customers: VisitCust | VisitCust[] | null } | { name: string; customers: VisitCust | VisitCust[] | null }[] | null;
+        job_assignments: { profiles: { full_name: string } | null }[] | null;
+      };
+      type SrRow = {
+        id: string; number: number; summary: string; description: string | null; status: import("@/lib/types").SRStatus;
+        customer_name: string | null; contact_name: string | null; contact_phone: string | null;
+        site_address: string | null; site_city: string | null; site_state: string | null; site_zip: string | null;
+        project_name: string | null; assignee_name: string | null;
+      };
+      type TaskRow = {
+        id: string; title: string; description: string | null; status: import("@/lib/types").TaskStatus;
+        projects: { name: string } | { name: string }[] | null;
+        customers: { name: string } | { name: string }[] | null;
+        service_requests: { number: number; summary: string | null } | { number: number; summary: string | null }[] | null;
+        task_assignees: { profiles: { full_name: string } | null }[] | null;
+      };
+      type DealRow = { id: string; title: string; contact_name: string | null; contact_phone: string | null; contact_email: string | null; address: string | null; city: string | null; state: string | null; zip: string | null };
+      const one = <T,>(v: T | T[] | null | undefined): T | null => Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 
       const customers: WorkspaceSearchHit[] = ((custQ.data ?? []) as Cust[]).map((c) => ({
         id: c.id, kind: "customer", title: c.name, subtitle: customerSubtitle(c), href: `/customers/${c.id}`,
       }));
       const projects: WorkspaceSearchHit[] = ((projQ.data ?? []) as Proj[]).map((row) => {
-        const c = oneCust(row.customers);
+        const c = one(row.customers);
         return {
           id: row.id, kind: "project", title: row.name,
           subtitle: projectSubtitle({ customer_name: c?.name, hcp_job_number: row.hcp_job_number, address: formatAddress(c) }),
           href: `/projects/${row.id}`,
         };
       });
+      const visitRows = ((visitQ.data ?? []) as unknown as VisitRow[]).map((row) => {
+        const project = one(row.projects);
+        const customer = one(project?.customers);
+        const assignee_names = (row.job_assignments ?? []).map((a) => a.profiles?.full_name).filter((n): n is string => !!n);
+        return {
+          row, project_name: project?.name ?? null, customer_name: customer?.name ?? null,
+          address: formatAddress(customer) || customer?.address || null,
+          assignee_names,
+        };
+      }).filter((v) => matchesVisitSearch({
+        title: v.row.title, kind: v.row.kind, status: v.row.status, project_name: v.project_name, customer_name: v.customer_name,
+        address: v.address, assignee_names: v.assignee_names,
+      }, parsed));
+      const visits: WorkspaceSearchHit[] = visitRows.map((v) => ({
+        id: v.row.id, kind: "visit", title: v.row.title,
+        subtitle: visitSubtitle({ kind: v.row.kind, starts_at: v.row.starts_at, customer_name: v.customer_name, address: v.address }),
+        href: `/jobs/${v.row.id}`,
+      }));
+      const srRows = ((srQ.data ?? []) as SrRow[]).filter((row) => matchesServiceRequestSearch(row, parsed));
+      const serviceRequests: WorkspaceSearchHit[] = srRows.map((row) => ({
+        id: row.id, kind: "service_request", title: serviceRequestTitle(row),
+        subtitle: serviceRequestSubtitle(row), href: `/service-requests/${row.id}`,
+      }));
+      const taskRows = ((taskQ.data ?? []) as unknown as TaskRow[]).map((row) => {
+        const project = one(row.projects);
+        const customer = one(row.customers);
+        const sr = one(row.service_requests);
+        const assignee_names = (row.task_assignees ?? []).map((a) => a.profiles?.full_name).filter((n): n is string => !!n);
+        return { row, project_name: project?.name ?? null, customer_name: customer?.name ?? null, assignee_names, service_request_number: sr?.number ?? null, service_request_summary: sr?.summary ?? null };
+      }).filter((t) => matchesTaskSearch({
+        title: t.row.title, description: t.row.description, assignee_names: t.assignee_names,
+        project_name: t.project_name, customer_name: t.customer_name,
+        service_request_number: t.service_request_number, service_request_summary: t.service_request_summary,
+      }, parsed));
+      const tasks: WorkspaceSearchHit[] = sliceGroup(taskRows.map((t) => ({
+        id: t.row.id, kind: "task" as const, title: t.row.title,
+        subtitle: taskSubtitle({ status: t.row.status, assignee_names: t.assignee_names, project_name: t.project_name, customer_name: t.customer_name }),
+        href: `/tasks/${t.row.id}`,
+      }))).items;
+      const dealRows = ((dealQ.error ? [] : (dealQ.data ?? [])) as DealRow[]).filter((d) => matchesDealSearch(d, parsed));
+      const deals: WorkspaceSearchHit[] = dealRows.map((d) => ({
+        id: d.id, kind: "deal", title: d.title, subtitle: dealSubtitle(d), href: `/sales/deals/${d.id}`,
+      }));
       const people: WorkspaceSearchHit[] = ((peopleRes.data ?? []) as Pers[]).map((row) => ({
         id: row.id, kind: "person", title: row.full_name, subtitle: personSubtitle(row), href: personHref({ profileId: row.id, viewerId: uid, staff }),
       }));
       return {
         customers: { items: customers, total: custQ.count ?? customers.length },
         projects: { items: projects, total: projQ.count ?? projects.length },
+        visits: { items: visits, total: visitQ.count ?? visits.length },
+        serviceRequests: { items: serviceRequests, total: srQ.count ?? serviceRequests.length },
+        tasks: { items: tasks, total: taskRows.length },
+        deals: { items: deals, total: dealQ.error ? deals.length : (dealQ.count ?? deals.length) },
         people: { items: people, total: peopleRes.count ?? people.length },
       };
     },

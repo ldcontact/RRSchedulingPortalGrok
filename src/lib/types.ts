@@ -374,9 +374,10 @@ export type TaskPageFilter = {
 export type TaskPage = Paged<TaskView> & { counts: Record<string, number> };
 
 /** One row in the Quick Find modal. */
+export type WorkspaceSearchKind = "customer" | "project" | "visit" | "service_request" | "task" | "deal" | "person";
 export type WorkspaceSearchHit = {
   id: string;
-  kind: "customer" | "project" | "person";
+  kind: WorkspaceSearchKind;
   title: string;
   subtitle: string;
   href: string | null;
@@ -385,5 +386,9 @@ export type WorkspaceSearchGroup = { items: WorkspaceSearchHit[]; total: number 
 export type WorkspaceSearchResults = {
   customers: WorkspaceSearchGroup;
   projects: WorkspaceSearchGroup;
+  visits: WorkspaceSearchGroup;
+  serviceRequests: WorkspaceSearchGroup;
+  tasks: WorkspaceSearchGroup;
+  deals: WorkspaceSearchGroup;
   people: WorkspaceSearchGroup;
 };

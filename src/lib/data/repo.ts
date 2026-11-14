@@ -27,7 +27,7 @@ export interface Repo {
   deleteContact(id: string): Promise<void>;
 
   listTeam(): Promise<TeamMember[]>;
-  /** Quick Find: bounded, RLS-scoped matches across customers, projects, and people. */
+  /** Quick Find: bounded, RLS-scoped matches across customers, projects, visits, service requests, tasks, deals, and people. */
   searchWorkspace(q: string): Promise<WorkspaceSearchResults>;
   getProfile(id: string): Promise<Profile | null>;
   upsertInvite(input: InviteInput): Promise<void>;

@@ -6,7 +6,8 @@ import { randomUUID } from "node:crypto";
 import { mergeTeam, type Repo } from "./repo";
 import { customerSearchFields, matchesSearch, parseSearch, projectSearchFields } from "@/lib/search";
 import { PROJECT_HIT_LIMIT, toProjectHit } from "@/lib/project-hit";
-import { customerSubtitle, emptyWorkspaceSearch, matchesProfile, personHref, personSubtitle, projectSubtitle, WORKSPACE_SEARCH_LIMIT, workspaceQuery } from "@/lib/workspace-search";
+import { canAccessSales, canViewDeal } from "@/lib/sales/permissions";
+import { customerSubtitle, dealSubtitle, emptyWorkspaceSearch, matchesDealSearch, matchesProfile, matchesServiceRequestSearch, matchesTaskSearch, matchesVisitSearch, personHref, personSubtitle, projectSubtitle, serviceRequestSubtitle, serviceRequestTitle, sliceGroup, taskSubtitle, visitSubtitle, workspaceQuery } from "@/lib/workspace-search";
 import type { Contact, Customer, FleetVehicleRow, GeocodeFields, Invite, Job, JobView, Message, Milestone, Note, Photo, PhotoRequirement, Profile, Project, ProjectFile, ProjectPick, ProjectStatus, ServiceRequest, ServiceRequestView, SREvent, SRPageFilter, Task, TaskComment, TaskCommentView, TaskView } from "@/lib/types";
 import { derivePhotoPhase, kindForPhase } from "@/lib/photo-phase";
 import { mimeForFile, projectFileStoragePath, sanitizeFilename, storageExtFor, validateProjectFile } from "@/lib/project-file";
@@ -883,22 +884,52 @@ export const mockRepo: Repo = {
     const projects = db.projects.filter((proj) => w.canProject(proj.id) && (() => { const f = projectSearchFields(proj, custFields(proj.customer_id)); return matchesSearch(f.doc, f.digits, parsed); })());
     const people = db.profiles.filter((prof) => !prof.deleted_at && prof.role && matchesProfile(prof, parsed));
 
+    const visits = db.jobs.filter((j) => w.canJob(j.id)).map((j) => viewJob(db, j)).filter((j) => matchesVisitSearch({
+      title: j.title, kind: j.kind, status: j.status, project_name: j.project_name, customer_name: j.customer_name,
+      address: j.address, assignee_names: j.assignees.map((a) => a.full_name),
+    }, parsed));
+
+    const canSeeSr = (id: string) => w.staff || (w.role === "tech" && db.jobs.some((j) => j.service_request_id === id && w.canJob(j.id)));
+    const serviceRequests = db.service_requests.filter((sr) => canSeeSr(sr.id)).map((sr) => viewSR(db, sr)).filter((sr) => matchesServiceRequestSearch(sr, parsed));
+
+    const tasks = visibleTasks(db, w).map((t) => viewTask(db, t)).filter((t) => matchesTaskSearch({
+      title: t.title, description: t.description, assignee_names: t.assignees.map((a) => a.full_name),
+      project_name: t.project_name, customer_name: t.customer_name,
+      service_request_number: t.service_request_number, service_request_summary: t.service_request_summary,
+    }, parsed));
+
+    let deals: import("@/lib/sales/types").SalesDeal[] = [];
+    if (canAccessSales(w.role)) {
+      try {
+        const sales = await import("@/lib/sales/mock-store");
+        deals = sales.loadSales().deals.filter((d) => canViewDeal({ role: w.role, userId: w.uid, ownerId: d.owner_id }) && matchesDealSearch(d, parsed));
+      } catch { /* sales store not loaded */ }
+    }
+
     return {
-      customers: {
-        total: customers.length,
-        items: customers.slice(0, WORKSPACE_SEARCH_LIMIT).map((c) => ({ id: c.id, kind: "customer" as const, title: c.name, subtitle: customerSubtitle(c), href: `/customers/${c.id}` })),
-      },
-      projects: {
-        total: projects.length,
-        items: projects.slice(0, WORKSPACE_SEARCH_LIMIT).map((proj) => {
-          const c = db.customers.find((x) => x.id === proj.customer_id);
-          return { id: proj.id, kind: "project" as const, title: proj.name, subtitle: projectSubtitle({ customer_name: c?.name, hcp_job_number: proj.hcp_job_number, address: formatAddress(c) }), href: `/projects/${proj.id}` };
-        }),
-      },
-      people: {
-        total: people.length,
-        items: people.slice(0, WORKSPACE_SEARCH_LIMIT).map((prof) => ({ id: prof.id, kind: "person" as const, title: prof.full_name, subtitle: personSubtitle(prof), href: personHref({ profileId: prof.id, viewerId: w.uid, staff: w.staff }) })),
-      },
+      customers: sliceGroup(customers.map((c) => ({ id: c.id, kind: "customer" as const, title: c.name, subtitle: customerSubtitle(c), href: `/customers/${c.id}` }))),
+      projects: sliceGroup(projects.map((proj) => {
+        const c = db.customers.find((x) => x.id === proj.customer_id);
+        return { id: proj.id, kind: "project" as const, title: proj.name, subtitle: projectSubtitle({ customer_name: c?.name, hcp_job_number: proj.hcp_job_number, address: formatAddress(c) }), href: `/projects/${proj.id}` };
+      })),
+      visits: sliceGroup(visits.map((j) => ({
+        id: j.id, kind: "visit" as const, title: j.title,
+        subtitle: visitSubtitle({ kind: j.kind, starts_at: j.starts_at, customer_name: j.customer_name, address: j.address }),
+        href: `/jobs/${j.id}`,
+      }))),
+      serviceRequests: sliceGroup(serviceRequests.map((sr) => ({
+        id: sr.id, kind: "service_request" as const, title: serviceRequestTitle(sr),
+        subtitle: serviceRequestSubtitle(sr), href: `/service-requests/${sr.id}`,
+      }))),
+      tasks: sliceGroup(tasks.map((t) => ({
+        id: t.id, kind: "task" as const, title: t.title,
+        subtitle: taskSubtitle({ status: t.status, assignee_names: t.assignees.map((a) => a.full_name), project_name: t.project_name, customer_name: t.customer_name }),
+        href: `/tasks/${t.id}`,
+      }))),
+      deals: sliceGroup(deals.map((d) => ({
+        id: d.id, kind: "deal" as const, title: d.title, subtitle: dealSubtitle(d), href: `/sales/deals/${d.id}`,
+      }))),
+      people: sliceGroup(people.map((prof) => ({ id: prof.id, kind: "person" as const, title: prof.full_name, subtitle: personSubtitle(prof), href: personHref({ profileId: prof.id, viewerId: w.uid, staff: w.staff }) }))),
     };
   },
   async getProfile(id) { const row = load().profiles.find((p) => p.id === id); return row ? { ...row, fleet_access: !!row.fleet_access, can_delete: !!row.can_delete, ...normalizeTeamSmsPrefs(row) } : null; },
