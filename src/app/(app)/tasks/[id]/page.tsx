@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { PendingLink } from "@/components/pending-link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { Avatar, Banner, PageHeader } from "@/components/ui";
-import { AvatarStack } from "@/components/status";
 import { DeleteConfirmDialog } from "@/components/delete-confirm";
 import { Modal } from "@/components/modal";
 import { SubmitButton } from "@/components/submit-button";
+import { TaskDescription } from "@/components/task-description";
 import { TaskPriorityPill, TaskStatusPill } from "@/components/status";
 import { isStaff, requireMember } from "@/lib/auth";
 import { hasDeleteAccess } from "@/lib/delete-access";
@@ -60,6 +61,18 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
     }
   }
 
+  const links = (
+    [
+      task.customer_id ? { href: `/customers/${task.customer_id}`, label: task.customer_name ?? "Customer", kind: "Customer" } : null,
+      task.project_id ? { href: `/projects/${task.project_id}`, label: task.project_name ?? "Project", kind: "Project" } : null,
+      task.service_request_id ? {
+        href: `/service-requests/${task.service_request_id}`,
+        label: `${task.service_request_number != null ? ticketNo(task.service_request_number) : "Service request"}${task.service_request_summary ? ` · ${task.service_request_summary}` : ""}`,
+        kind: "Ticket",
+      } : null,
+    ] as const
+  ).filter((x): x is { href: string; label: string; kind: string } => !!x);
+
   return (
     <>
       <PageHeader back={{ href: "/tasks", label: "Tasks" }}
@@ -81,47 +94,72 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
       {str("ok") && <div className="mb-3"><Banner tone="ok"><Icon name="check" />{str("ok")}</Banner></div>}
       {str("error") && <div className="mb-3"><Banner tone="error"><Icon name="alert" />{str("error")}</Banner></div>}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <div className="card min-w-0">
-          <div className="card-hd"><h3 className="font-semibold">Details</h3><TaskPriorityPill priority={task.priority} always /></div>
-          <div className="whitespace-pre-wrap p-5 text-sm leading-relaxed">{task.description || <span className="text-muted">No additional details.</span>}</div>
+      <div className="mx-auto w-full max-w-[980px]">
+        <div className={`card mb-4 grid grid-cols-2 overflow-hidden ${task.completed_at ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
+          <MetaCell label="Status" className="border-r border-b md:border-b-0"><TaskStatusPill status={task.status} /></MetaCell>
+          <MetaCell label="Priority" className="border-b md:border-r md:border-b-0">
+            <TaskPriorityPill priority={task.priority} always />
+          </MetaCell>
+          <MetaCell label="Due" className="border-r border-b md:border-b-0">
+            <div className={`text-sm font-semibold ${overdue ? "text-red-800" : ""}`}>
+              {task.due_date ? fmtDay(task.due_date, { weekday: "long", month: "short", day: "numeric" }) : "No due date"}
+            </div>
+          </MetaCell>
+          <MetaCell label="Created" className={task.completed_at ? "border-b md:border-r md:border-b-0" : ""}>
+            <div className="text-sm font-semibold">{task.creator.full_name}</div>
+            <div className="mt-0.5 text-[12.5px] font-medium text-muted">{fmtDateTime(task.created_at)}</div>
+          </MetaCell>
+          {task.completed_at && (
+            <MetaCell label="Completed" className="max-md:col-span-2">
+              <div className="text-sm font-semibold">{fmtDateTime(task.completed_at)}</div>
+            </MetaCell>
+          )}
         </div>
-        <div className="card min-w-0 p-5 text-sm">
-          <dl className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-3 gap-y-2.5">
-            <dt className="text-muted">Assignees</dt>
-            <dd className="min-w-0" data-testid="task-detail-assignees">{task.assignees.length ? <span className="flex flex-col gap-2"><AvatarStack people={task.assignees} max={6} /><span>{task.assignees.map((p) => p.full_name).join(", ")}</span></span> : "Unassigned"}</dd>
-            <dt className="text-muted">Due</dt>
-            <dd className={overdue ? "font-semibold text-red-800" : ""}>{task.due_date ? fmtDay(task.due_date, { weekday: "long", month: "short", day: "numeric" }) : "No due date"}</dd>
-            <dt className="text-muted">Created by</dt>
-            <dd className="min-w-0">{task.creator.full_name}</dd>
-            <dt className="text-muted">Created</dt>
-            <dd>{fmtDateTime(task.created_at)}</dd>
-            {task.completed_at && <><dt className="text-muted">Completed</dt><dd>{fmtDateTime(task.completed_at)}</dd></>}
-            {task.customer_id && <><dt className="text-muted">Customer</dt><dd className="min-w-0"><Link href={`/customers/${task.customer_id}`} className="font-semibold text-brand hover:underline">{task.customer_name ?? "Customer"}</Link></dd></>}
-            {task.project_id && <><dt className="text-muted">Project</dt><dd className="min-w-0"><Link href={`/projects/${task.project_id}`} className="font-semibold text-brand hover:underline">{task.project_name ?? "Project"}</Link></dd></>}
-            {task.service_request_id && <><dt className="text-muted">Ticket</dt><dd className="min-w-0"><Link href={`/service-requests/${task.service_request_id}`} className="font-semibold text-brand hover:underline">{task.service_request_number != null ? ticketNo(task.service_request_number) : "Service request"}{task.service_request_summary ? ` · ${task.service_request_summary}` : ""}</Link></dd></>}
-          </dl>
-        </div>
-      </div>
 
-      <div className="card mt-4" data-testid="task-comments">
-        <div className="card-hd"><h3 className="font-semibold">Comments</h3><span className="text-xs text-muted">{comments.length ? `${comments.length} in the thread` : "Everyone on the task is notified"}</span></div>
-        <ol className="divide-y divide-line">
-          {comments.map((n) => (
-            <li key={n.id} className="flex gap-2.5 px-5 py-3 text-sm">
-              <Avatar name={n.author_name} color={n.author_color} size="sm" src={n.author_avatar_url} />
-              <div className="min-w-0 flex-1">
-                <div className="text-xs text-muted">{n.author_name} · {fmtDateTime(n.created_at)}</div>
-                <div className="whitespace-pre-wrap">{n.body}</div>
-              </div>
-            </li>
-          ))}
-          {!comments.length && <li className="px-5 py-4 text-sm text-muted">No comments yet. Add a note and everyone involved will get an email.</li>}
-        </ol>
-        <form action={addTaskCommentAction.bind(null, task.id)} className="flex gap-2 border-t border-line p-4">
-          <input name="body" required className="input" placeholder="Add a comment…" aria-label="Comment" maxLength={5000} />
-          <SubmitButton className="btn btn-primary">Add comment</SubmitButton>
-        </form>
+        <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="task-detail-assignees">
+          {task.assignees.length ? task.assignees.map((p) => (
+            <span key={p.id} className="inline-flex items-center gap-2 rounded-full border border-line bg-white py-1 pr-3 pl-1 text-[13.5px] font-semibold">
+              <Avatar name={p.full_name} color={p.color} size="sm" src={p.avatar_url} />
+              {p.full_name}
+            </span>
+          )) : <span className="text-sm text-muted">Unassigned</span>}
+        </div>
+
+        {!!links.length && (
+          <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {links.map((l) => (
+              <span key={l.href} className="min-w-0">
+                <span className="text-muted">{l.kind}: </span>
+                <Link href={l.href} className="font-semibold text-brand hover:underline">{l.label}</Link>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="card min-w-0">
+          <div className="card-hd"><h3 className="font-semibold">Details</h3></div>
+          <TaskDescription text={task.description} />
+        </div>
+
+        <div className="card mt-4" data-testid="task-comments">
+          <div className="card-hd"><h3 className="font-semibold">Comments</h3><span className="text-xs text-muted">{comments.length ? `${comments.length} in the thread` : "Everyone on the task is notified"}</span></div>
+          <ol className="divide-y divide-line">
+            {comments.map((n) => (
+              <li key={n.id} className="flex gap-2.5 px-5 py-3 text-sm">
+                <Avatar name={n.author_name} color={n.author_color} size="sm" src={n.author_avatar_url} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-muted">{n.author_name} · {fmtDateTime(n.created_at)}</div>
+                  <div className="whitespace-pre-wrap">{n.body}</div>
+                </div>
+              </li>
+            ))}
+            {!comments.length && <li className="px-5 py-4 text-sm text-muted">No comments yet. Add a note and everyone involved will get an email.</li>}
+          </ol>
+          <form action={addTaskCommentAction.bind(null, task.id)} className="flex gap-2 border-t border-line p-4">
+            <input name="body" required className="input" placeholder="Add a comment…" aria-label="Comment" maxLength={5000} />
+            <SubmitButton className="btn btn-primary">Add comment</SubmitButton>
+          </form>
+        </div>
       </div>
 
       {showEdit && (
@@ -139,5 +177,14 @@ export default async function TaskDetailPage({ params, searchParams }: PageProps
         />
       )}
     </>
+  );
+}
+
+function MetaCell({ label, className = "", children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={`min-w-0 border-line px-4 py-3 ${className}`}>
+      <div className="eyebrow mb-1.5">{label}</div>
+      {children}
+    </div>
   );
 }

@@ -57,6 +57,8 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, updateNotifica
     }
   }
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const taskDetail = /^\/tasks\/[^/]+$/.test(path);
+  const techTaskWide = tech && taskDetail ? "md:max-w-[980px]" : "";
   // Staff bottom nav stays at 6 items (Fleet is desktop-sidebar + "Where's my crew"). Techs with access get Fleet in their shorter nav.
   const bottom: NavItem[] = tech ? items : [...items.filter((i) => i.href !== "/team" && i.href !== "/fleet" && i.href !== "/tasks" && i.href !== "/account"), { href: "/account", label: "More", icon: "user" }];
   const bottomActive = (href: string) => active(href) || (href === "/account" && (path.startsWith("/team") || path.startsWith("/settings")));
@@ -104,9 +106,9 @@ export function AppShell({ user, mock, roleSwitcher, badges = {}, updateNotifica
           {roleSwitcher}
           <span className="hidden text-xs text-muted lg:inline">{ROLE_LABEL[user.role]}</span>
         </header>
-        <main className={`w-full px-3 pt-4 pb-28 md:px-6 md:pt-6 ${tech ? "mx-auto max-w-[680px]" : "max-w-[1320px] md:pb-10"}`}>{children}</main>
+        <main className={`w-full px-3 pt-4 pb-28 md:px-6 md:pt-6 ${tech ? `mx-auto max-w-[680px] ${techTaskWide}` : "max-w-[1320px] md:pb-10"}`}>{children}</main>
       </div>
-      <nav className={`fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-line bg-white px-1 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,.05)] ${tech ? "mx-auto max-w-[680px] rounded-t-2xl border-x" : "md:hidden"}`}>
+      <nav className={`fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-line bg-white px-1 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,.05)] ${tech ? `mx-auto max-w-[680px] ${techTaskWide} rounded-t-2xl border-x` : "md:hidden"}`}>
         {bottom.map((i) => i.soon ? (
           <span key={i.href} className="flex max-w-24 min-w-0 flex-1 flex-col items-center gap-0.5 px-px py-1.5 text-[10px] min-[380px]:text-[11px] font-semibold text-slate-300" title="Coming in phase 2"><Icon name={i.icon} className="size-[22px] shrink-0" /><span className="max-w-full truncate">{i.label}</span></span>
         ) : (

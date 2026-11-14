@@ -520,6 +520,25 @@ function seedTasks(db: DB) {
       status: "done", due_date: addDays(T, -7), assignee_ids: ["u-admin", "u-manager"], created_by: "u-manager",
       project_id: "p1", customer_id: "c1", completed_at: now(-4, 16), created_at: now(-8), updated_at: now(-4, 16),
     }),
+    task("t7", "Create update for new portal", {
+      description: [
+        "1. Schedule open as a default monthly or save it to the profile of the user",
+        "2. Also the filter Everyone should be defaulted to the logged in user and have a filter for the type of the project",
+        "3. Any address box should do the address look up",
+        "4. New project screen",
+        "5. Customer can be selected by typing in the address and it is searchable by address, phone and customer name",
+        "6. When adding the new project for the customer, customer info should be pre filed already based on the parent customer information",
+        "7. New project have to have ability to add attachments",
+        "8. Required photos for project Schuld be set up on the level of the visit not on the level of the project",
+        "9. When service is ready to be billed gets sent for billing queue",
+        "10. Tasks page to handle things",
+        "11. Add warranty for manufacturer",
+        "11. DONE - Delete button for project, schedule, customer",
+        "12. Photo requirement, scope of work pre end post photos has to be added to site visit",
+      ].join("\n"),
+      priority: "high", due_date: T, assignee_ids: ["u-tech1", "u-admin", "u-manager"], created_by: "u-admin",
+      created_at: zonedToUtc(addDays(T, -3), 14 * 60 + 49),
+    }),
   ];
   seedTaskComments(db, now);
 }
