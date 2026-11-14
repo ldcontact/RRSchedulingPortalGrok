@@ -18,7 +18,7 @@ import {
   pickScheduleVisit,
   scheduleEmailHtml,
 } from "@/lib/service-request-email";
-import { canSeeServicePrice, parseServicePrice, priceHistoryBody, formatServicePrice } from "@/lib/service-request-price";
+import { canSeeServicePrice, parseServicePrice, priceHistoryBody, formatServicePrice, sameServicePrice } from "@/lib/service-request-price";
 import {
   canDeleteServiceRequestNote, canEditServiceRequestIssue, canEditServiceRequestNote,
   issueEditedHistoryBody, parseTicketIssue, parseTicketNoteBody,
@@ -232,11 +232,15 @@ export async function setServiceRequestPrice(id: string, fd: FormData) {
   if ("error" in parsed) go(id, parsed.error, "error");
   const current = (await repo.getServiceRequestPrices([id]))[id] ?? null;
   const next = "amount" in parsed ? parsed.amount : null;
-  if (current === next || (current == null && next == null)) go(id, "No change.");
+  if (sameServicePrice(current, next)) go(id, "No change.");
   if (next == null && s(fd, "confirm") !== "1") go(id, "Confirm to clear the service price.", "error");
   await repo.setServiceRequestPrice(id, next);
   await repo.addServiceRequestEvent(id, { kind: "price", body: priceHistoryBody(current, next) });
-  go(id, next == null ? "Service price cleared." : `Service price set to ${formatServicePrice(next)}.`);
+  go(id, next == null
+    ? `Service price cleared (was ${formatServicePrice(current!)}).`
+    : current == null
+      ? `Service price set to ${formatServicePrice(next)}.`
+      : `Service price changed from ${formatServicePrice(current)} to ${formatServicePrice(next)}.`);
 }
 
 // ---------------------------------------------------------------- schedule a warranty / service visit

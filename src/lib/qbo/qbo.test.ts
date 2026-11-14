@@ -7,8 +7,8 @@ import { INTUIT_AUTHORIZE_URL, INTUIT_REVOKE_URL, INTUIT_TOKEN_URL, QBO_DEFAULT_
 import { completeConnection, disconnectQbo, stateMatches } from "./connect";
 import { decryptToken, encryptToken } from "./crypto";
 import { QboAuthError, QboError } from "./errors";
-import { buildInvoicePayload, estimateTotals, validateInvoiceDraft } from "./invoice";
-import { createInvoiceForTicket, invoiceView, refreshInvoice, suggestCustomer, voidInvoiceForTicket } from "./invoices";
+import { buildInvoicePayload, defaultInvoiceLineDescription, estimateTotals, validateInvoiceDraft, withServiceLocationMemo } from "./invoice";
+import { createInvoiceForTicket, fillLinkedCustomer, invoiceEmailedHistory, invoiceView, refreshInvoice, sendInvoiceForTicket, suggestCustomer, voidInvoiceForTicket } from "./invoices";
 import { accessTokenExpiring, buildAuthorizeUrl, exchangeCode, refreshTokens, revokeToken } from "./oauth";
 import { canManageQboConnection, canUseQboInvoices } from "./permissions";
 import { getQboState, tokenProvider } from "./service";
@@ -276,7 +276,12 @@ describe("QuickBooks API client", () => {
     expect(r2).toMatchObject({ existed: false, customer: { id: "201" } });
     const post = fresh.calls.find((c) => c.method === "POST")!;
     expect(post.url.pathname).toBe("/v3/company/123/customer");
-    expect(JSON.parse(post.body)).toEqual({ DisplayName: "New Co", PrimaryEmailAddr: { Address: "a@b.example" }, BillAddr: { Line1: "1 Main", City: "Roselle", CountrySubDivisionCode: "IL", PostalCode: "60172" } });
+    expect(JSON.parse(post.body)).toEqual({
+      DisplayName: "New Co", CompanyName: "New Co",
+      PrimaryEmailAddr: { Address: "a@b.example" },
+      BillAddr: { Line1: "1 Main", City: "Roselle", CountrySubDivisionCode: "IL", PostalCode: "60172", Country: "US" },
+      ShipAddr: { Line1: "1 Main", City: "Roselle", CountrySubDivisionCode: "IL", PostalCode: "60172", Country: "US" },
+    });
   });
   it("voids with the current SyncToken via operation=void", async () => {
     const f = scriptedFetch((c) => (c.method === "GET" ? { json: { Invoice: { Id: "145", SyncToken: "3", TotalAmt: 285, Balance: 285 } } } : { json: { Invoice: { Id: "145", SyncToken: "4", TotalAmt: 0, Balance: 0 } } }));
@@ -306,6 +311,25 @@ describe("invoice payload", () => {
       PrivateNote: "RR Scheduler SR-1002",
     });
     expect(p).not.toHaveProperty("BillEmail");
+    expect(p).not.toHaveProperty("ShipAddr");
+  });
+  it("sets BillEmail and ShipAddr on the draft but keeps EmailStatus NotSet", () => {
+    const v = validateInvoiceDraft(draft({
+      billEmail: "office@example.com",
+      shipAddr: { line1: "2626 N Lincoln Ave", city: "Chicago", state: "IL", zip: "60614" },
+      customerMemo: "Fix lights basement",
+    }));
+    if ("error" in v) throw new Error(v.error);
+    const p = buildInvoicePayload({ ...v.draft, customerMemo: withServiceLocationMemo(v.draft.customerMemo, "2626 N Lincoln Ave, Chicago, IL 60614"), privateNote: "RR Scheduler SR-1002" });
+    expect(p.EmailStatus).toBe("NotSet");
+    expect(p.BillEmail).toEqual({ Address: "office@example.com" });
+    expect(p.ShipAddr).toEqual({ Line1: "2626 N Lincoln Ave", City: "Chicago", CountrySubDivisionCode: "IL", PostalCode: "60614", Country: "US" });
+    expect((p.CustomerMemo as { value: string }).value).toContain("Service location: 2626 N Lincoln Ave, Chicago, IL 60614");
+  });
+  it("describes the line with the SR number, issue, and visit", () => {
+    expect(defaultInvoiceLineDescription({ ticketNo: "SR-1002", summary: "Fix lights basement", description: "3x 2x4s being ballasts", visitLabel: "Mon, Nov 16 9:00 AM–11:00 AM" })).toBe(
+      "SR-1002 — Fix lights basement\n3x 2x4s being ballasts\nVisit: Mon, Nov 16 9:00 AM–11:00 AM",
+    );
   });
   it("applies a sales tax code to taxable invoices", () => {
     const v = validateInvoiceDraft(draft({ taxCodeId: "5" }));
@@ -410,5 +434,89 @@ describe("ticket invoice flow", () => {
     invoices["145"].Balance = 0;
     await expect(voidInvoiceForTicket(a, store, db.invoices[0], { id: "u1" }, "2026-11-13")).rejects.toThrow(/paid/);
     expect(f.calls.some((c) => c.url.searchParams.get("operation") === "void")).toBe(false);
+  });
+});
+
+
+describe("send invoice via QuickBooks /send only", () => {
+  it("POSTs /invoice/{id}/send?sendTo= and records emailed_at, and create still never calls /send", async () => {
+    const { store, db } = memoryStore();
+    const invoices: Record<string, { Id: string; SyncToken: string; DocNumber: string; TotalAmt: number; Balance: number; EmailStatus: string; DueDate: string; TxnDate: string }> = {};
+    const f = scriptedFetch((c) => {
+      const path = c.url.pathname.replace("/v3/company/123/", "");
+      if (path === "customer/58") return { json: { Customer: { Id: "58", DisplayName: "Golf Road Auto Body" } } };
+      if (path === "invoice" && c.method === "POST") { invoices["145"] = { Id: "145", SyncToken: "0", DocNumber: "1047", TotalAmt: 285, Balance: 285, EmailStatus: "NotSet", DueDate: "2026-12-13", TxnDate: "2026-11-13" }; return { json: { Invoice: invoices["145"] } }; }
+      if (path === "invoice/145/send") {
+        expect(c.method).toBe("POST");
+        expect(c.url.searchParams.get("sendTo")).toBe("office@example.com");
+        invoices["145"] = { ...invoices["145"], EmailStatus: "EmailSent", SyncToken: "1" };
+        return { json: { Invoice: invoices["145"] } };
+      }
+      if (path === "invoice/145") return { json: { Invoice: invoices["145"] } };
+      return { json: { QueryResponse: {} } };
+    });
+    const a = api(f.fetch);
+    const v = validateInvoiceDraft(draft());
+    if ("error" in v) throw new Error(v.error);
+    const row = await createInvoiceForTicket({ api: a, store, environment: "sandbox", serviceRequestId: "sr2", portalCustomerId: "c2", draft: v.draft, user: { id: "u1" } });
+    expect(f.calls.some((c) => c.url.pathname.endsWith("/send"))).toBe(false);
+    await expect(sendInvoiceForTicket({ api: a, store, row, sendTo: "not-an-email", user: { id: "u1", name: "Luke" }, today: "2026-11-13" })).rejects.toThrow(/valid email/);
+    const sent = await sendInvoiceForTicket({ api: a, store, row, sendTo: " office@example.com ", user: { id: "u1", name: "Luke" }, today: "2026-11-13" });
+    expect(sent.history).toBe("Invoice #1047 emailed to office@example.com by Luke.");
+    expect(sent.row).toMatchObject({ email_status: "EmailSent", status: "sent", emailed_to: "office@example.com" });
+    expect(sent.row.emailed_at).toBeTruthy();
+    expect(invoiceView(sent.row, "2026-11-13")).toMatchObject({ emailedTo: "office@example.com", status: "sent" });
+    expect(invoiceEmailedHistory("1047", "office@example.com", "Luke")).toBe(sent.history);
+  });
+});
+
+describe("sparse fill-blanks customer update", () => {
+  it("fills only blank QuickBooks fields and merges addresses so Country does not wipe Line1", async () => {
+    const { store } = memoryStore();
+    await store.setCustomerLink({ customer_id: "c9", realm_id: "123", qbo_customer_id: "99", qbo_display_name: "2626 N Lincoln Corporation", linked_by: "u1", linked_at: "2026-11-13T00:00:00Z" });
+    const existing = {
+      Id: "99", SyncToken: "4", DisplayName: "2626 N Lincoln Corporation",
+      PrimaryEmailAddr: { Address: "rjrajnauth@gmail.com" },
+      PrimaryPhone: { FreeFormNumber: "(312) 618-4349" },
+      BillAddr: { Line1: "2626 N Lincoln Ave", City: "Chicago", CountrySubDivisionCode: "IL", PostalCode: "60614" },
+    };
+    const f = scriptedFetch((c) => {
+      const path = c.url.pathname.replace("/v3/company/123/", "");
+      if (path === "customer/99" && c.method === "GET") return { json: { Customer: existing } };
+      if (path === "customer" && c.method === "POST") return { json: { Customer: { ...existing, ...JSON.parse(c.body), SyncToken: "5" } } };
+      return { json: {} };
+    });
+    const result = await fillLinkedCustomer(api(f.fetch), store, "c9", {
+      id: "c9", name: "2626 N Lincoln Corporation", email: "rjrajnauth@gmail.com", phone: "(312) 618-4349",
+      address: "2626 N Lincoln Ave", city: "Chicago", state: "IL", zip: "60614",
+      contactName: "Rodney Rajnauth", contactEmail: "rjrajnauth@gmail.com", contactPhone: "(312) 618-4349",
+      siteAddress: "2626 N Lincoln Ave", siteCity: "Chicago", siteState: "IL", siteZip: "60614",
+    });
+    expect(result).toBe("updated");
+    const post = f.calls.find((c) => c.method === "POST")!;
+    const body = JSON.parse(post.body);
+    expect(body).toMatchObject({ Id: "99", SyncToken: "4", sparse: true, CompanyName: "2626 N Lincoln Corporation", GivenName: "Rodney", FamilyName: "Rajnauth" });
+    expect(body.PrimaryEmailAddr).toBeUndefined();
+    expect(body.PrimaryPhone).toBeUndefined();
+    expect(body.BillAddr).toEqual({ Line1: "2626 N Lincoln Ave", City: "Chicago", CountrySubDivisionCode: "IL", PostalCode: "60614", Country: "US" });
+    expect(body.ShipAddr).toEqual({ Line1: "2626 N Lincoln Ave", City: "Chicago", CountrySubDivisionCode: "IL", PostalCode: "60614", Country: "US" });
+    expect(body.Notes).toBe("RR Scheduler customer c9");
+  });
+  it("is a no-op when QuickBooks already has the fields", async () => {
+    const { store } = memoryStore();
+    await store.setCustomerLink({ customer_id: "c9", realm_id: "123", qbo_customer_id: "99", qbo_display_name: "2626 N Lincoln Corporation", linked_by: "u1", linked_at: "2026-11-13T00:00:00Z" });
+    const full = {
+      Id: "99", SyncToken: "5", DisplayName: "2626 N Lincoln Corporation", CompanyName: "Edited in QBO", GivenName: "Rod", FamilyName: "Rajnauth",
+      PrimaryEmailAddr: { Address: "other@example.com" }, PrimaryPhone: { FreeFormNumber: "1" },
+      BillAddr: { Line1: "Edited St", City: "Chicago", CountrySubDivisionCode: "IL", PostalCode: "60614", Country: "US" },
+      ShipAddr: { Line1: "Edited St", City: "Chicago", CountrySubDivisionCode: "IL", PostalCode: "60614", Country: "US" },
+      Notes: "Keep this",
+    };
+    const f = scriptedFetch((c) => ({ json: { Customer: full } }));
+    expect(await fillLinkedCustomer(api(f.fetch), store, "c9", {
+      id: "c9", name: "2626 N Lincoln Corporation", contactName: "Rodney Rajnauth",
+      address: "2626 N Lincoln Ave", city: "Chicago", state: "IL", zip: "60614",
+    })).toBe("unchanged");
+    expect(f.calls.every((c) => c.method === "GET")).toBe(true);
   });
 });

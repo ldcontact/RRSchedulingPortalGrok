@@ -1,9 +1,12 @@
 # QuickBooks Online setup (sandbox first)
 
 RR Scheduler can create **draft** invoices in QuickBooks Online from a service request.
-Invoices are created with `EmailStatus = NotSet` and RR Scheduler never calls QuickBooks' send
-endpoint, so **nothing is emailed to a customer**. Only admins can connect/disconnect; admins and
-managers can create, refresh, and void invoices. Techs and sales never see invoices or prices.
+Invoices are created with `EmailStatus = NotSet`. Nothing is emailed until an admin or manager
+clicks **Send invoice**, confirms the To address, and QuickBooks itself sends the email
+(`POST /invoice/{id}/send?sendTo=`). RR Scheduler never sends the email (no portal email, SMTP,
+or Gmail) and does not CC anyone. Only admins can connect/disconnect; admins and managers can
+create, refresh, send, and void invoices, and update a linked customer (fill blank QuickBooks
+fields only). Techs and sales never see invoices or prices.
 
 Until the env vars below are set, Settings → Integrations shows **Not configured** and the
 Invoice card on a ticket says QuickBooks isn't set up. Nothing else changes.
@@ -55,7 +58,11 @@ during go-live, before the app is deployed.
 4. Open a service request with a service price → **Create invoice** → check the customer match
    (or search / create the customer) → **Create draft in QuickBooks** → **Confirm**.
 5. **Open in QuickBooks** shows the draft in the sandbox company. **Refresh status** pulls
-   Sent / Paid / Overdue back. **Void** (with confirmation) voids it in QuickBooks.
+   Sent / Paid / Overdue back. **Update customer in QuickBooks** (with confirmation) fills only
+   blank QuickBooks fields from the portal and never overwrites values edited in QuickBooks.
+   **Send invoice** (or **Resend**) asks you to confirm the To email; the copy says “QuickBooks
+   will email invoice #X to &lt;email&gt;”. After a send, History records who emailed it and the
+   card shows **Sent &lt;date&gt;**. **Void** (with confirmation) voids it in QuickBooks.
 
 ## 5. Later: switch to your real QuickBooks company (production keys)
 
@@ -81,8 +88,20 @@ during go-live, before the app is deployed.
   Access tokens (1 hour) refresh automatically; rotated refresh tokens are saved each time.
   Disconnect revokes the token at Intuit and deletes the row.
 - Customer links: `public.qbo_customer_links` (portal customer → QuickBooks Customer Id per company).
-  Creating a customer first checks for the same display name, so nothing is duplicated.
-- Invoices: `public.service_request_invoices` (one non-voided invoice per ticket).
+  Creating a customer maps GivenName/FamilyName (from the contact), CompanyName when the portal
+  customer is a company, DisplayName, email, phone, Mobile (only if the contact phone differs),
+  BillAddr, ShipAddr (service address, Country US), and Notes (`RR Scheduler customer <id>`).
+  Creating first checks for the same display name, so nothing is duplicated. Linked-customer
+  updates are sparse: fill blanks only, merge addresses field-by-field (setting Country does
+  not wipe Line1).
+- Invoices: `public.service_request_invoices` (one non-voided invoice per ticket). Line
+  descriptions include the SR number, issue title and description, and visit date; the memo
+  includes a Service location line; ShipAddr is the service address; BillEmail may be set;
+  EmailStatus stays NotSet until staff confirm Send.
+- Price history lives in `service_request_events` (kind `price`). Field techs never see those
+  rows: the ticket UI and `listServiceRequestEvents` filter them out, and RLS
+  `service_request_events_select` requires `private.can_see_service_price()` for kind `price`.
+  The amount itself is in `service_request_pricing`, which techs cannot read.
 - API calls use `minorversion=75`, retry once after a 401 with a refreshed token, back off on
   429 rate limits, and show Intuit's error message in plain language.
 - Local dev: with `NEXT_PUBLIC_RR_MOCK_MODE=1` and no `QBO_CLIENT_ID`, a local fake QuickBooks

@@ -24,7 +24,7 @@ vi.mock("@/lib/qbo/service", () => ({ getQboApi: h.getQboApi, getQboState: h.get
 vi.mock("@/lib/qbo/store", () => ({ getQboStore: vi.fn(() => ({ getActiveInvoice: vi.fn(async () => null), updateConnection: vi.fn() })) }));
 vi.mock("@/lib/qbo/connect", () => ({ disconnectQbo: h.disconnectQbo }));
 
-import { createInvoiceAction, createQboCustomerAction, searchQboCustomersAction, voidInvoiceAction } from "./invoice-actions";
+import { createInvoiceAction, createQboCustomerAction, searchQboCustomersAction, sendInvoiceAction, updateQboCustomerAction, voidInvoiceAction } from "./invoice-actions";
 import { disconnectQboAction } from "../settings/integrations/actions";
 
 const confirmFd = () => { const f = new FormData(); f.set("confirm", "1"); return f; };
@@ -38,6 +38,8 @@ describe("QuickBooks server actions permissions", () => {
     await expect(createQboCustomerAction("sr2")).rejects.toThrow("NEXT_REDIRECT /?denied=1");
     await expect(createInvoiceAction("sr2", {})).rejects.toThrow("NEXT_REDIRECT /?denied=1");
     await expect(voidInvoiceAction("sr2", confirmFd())).rejects.toThrow("NEXT_REDIRECT /?denied=1");
+    await expect(sendInvoiceAction("sr2", confirmFd())).rejects.toThrow("NEXT_REDIRECT /?denied=1");
+    await expect(updateQboCustomerAction("sr2", confirmFd())).rejects.toThrow("NEXT_REDIRECT /?denied=1");
     expect(h.getQboApi).not.toHaveBeenCalled();
   });
 
@@ -56,6 +58,15 @@ describe("QuickBooks server actions permissions", () => {
   it("void needs the confirm field", async () => {
     h.role = "admin";
     await expect(voidInvoiceAction("sr2", new FormData())).rejects.toThrow(/error=Confirm%20to%20void/);
+  });
+
+  it("send and update-customer need the confirm field, and send validates the email", async () => {
+    h.role = "admin";
+    await expect(sendInvoiceAction("sr2", new FormData())).rejects.toThrow(/error=Confirm%20to%20send/);
+    const bad = new FormData(); bad.set("confirm", "1"); bad.set("send_to", "not-an-email");
+    await expect(sendInvoiceAction("sr2", bad)).rejects.toThrow(/error=Enter%20a%20valid%20email/);
+    await expect(updateQboCustomerAction("sr2", new FormData())).rejects.toThrow(/error=Confirm%20to%20update/);
+    expect(h.getQboApi).not.toHaveBeenCalled();
   });
 
   it("only admins can disconnect, and only after confirming", async () => {

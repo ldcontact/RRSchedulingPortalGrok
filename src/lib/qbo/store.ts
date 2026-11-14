@@ -58,6 +58,8 @@ export type ServiceRequestInvoiceRow = {
   created_by: string | null;
   created_at: string;
   synced_at: string;
+  emailed_at: string | null;
+  emailed_to: string | null;
 };
 
 export interface QboStore {
@@ -172,7 +174,7 @@ function mockStore(): QboStore {
     async insertInvoice(row) {
       return mutateMock((db) => {
         if (db.invoices.some((i) => i.service_request_id === row.service_request_id && !i.voided_at)) throw new Error("This ticket already has an invoice.");
-        const full = { ...row, id: randomUUID(), created_at: new Date().toISOString() };
+        const full = { emailed_at: null, emailed_to: null, ...row, id: randomUUID(), created_at: new Date().toISOString() };
         db.invoices.push(full);
         return full;
       });

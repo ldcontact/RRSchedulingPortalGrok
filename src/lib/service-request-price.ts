@@ -27,8 +27,16 @@ export function formatServicePrice(amount: number): string {
   return amount.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** True when two USD amounts are the same to the cent (or both empty). Saving the same value must not log a new event. */
+export function sameServicePrice(a: number | null | undefined, b: number | null | undefined): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
+}
+
 /** Ticket history line for a price set, change, or clear. Callers must not show this to techs. */
 export function priceHistoryBody(prev: number | null, next: number | null): string {
+  if (sameServicePrice(prev, next)) return "Service price unchanged.";
   if (prev == null && next != null) return `Service price set to ${formatServicePrice(next)}.`;
   if (prev != null && next == null) return `Service price cleared (was ${formatServicePrice(prev)}).`;
   if (prev != null && next != null) return `Service price changed from ${formatServicePrice(prev)} to ${formatServicePrice(next)}.`;

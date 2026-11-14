@@ -4,6 +4,7 @@ import {
   formatServicePrice,
   parseServicePrice,
   priceHistoryBody,
+  sameServicePrice,
   visibleServiceRequestEvents,
 } from "./service-request-price";
 
@@ -52,6 +53,17 @@ describe("formatServicePrice and priceHistoryBody", () => {
     expect(priceHistoryBody(285, 310.5)).toBe("Service price changed from $285.00 to $310.50.");
     expect(priceHistoryBody(285, null)).toBe("Service price cleared (was $285.00).");
     expect(priceHistoryBody(null, null)).toBe("Service price unchanged.");
+    expect(priceHistoryBody(150, 150)).toBe("Service price unchanged.");
+    expect(priceHistoryBody(150, 150.00)).toBe("Service price unchanged.");
+  });
+  it("treats the same amount to the cent as unchanged so saving again does not log a duplicate", () => {
+    expect(sameServicePrice(null, null)).toBe(true);
+    expect(sameServicePrice(150, 150)).toBe(true);
+    expect(sameServicePrice(150, 150.0)).toBe(true);
+    expect(sameServicePrice(150.1, 150.10)).toBe(true);
+    expect(sameServicePrice(150, 175)).toBe(false);
+    expect(sameServicePrice(150, null)).toBe(false);
+    expect(sameServicePrice(null, 150)).toBe(false);
   });
 });
 

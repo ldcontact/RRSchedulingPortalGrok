@@ -18,8 +18,10 @@ import { ageText, formatAddress } from "@/lib/project-row";
 import { fmtDate, fmtReceived, visitDefaults } from "@/lib/tickets";
 import { canSeeServicePrice, formatServicePrice, visibleServiceRequestEvents } from "@/lib/service-request-price";
 import { CreateInvoiceDialog } from "@/components/qbo/create-invoice-dialog";
-import { InvoiceCard } from "@/components/qbo/invoice-card";
+import { InvoiceCard, UpdateQboCustomerDialog } from "@/components/qbo/invoice-card";
+import { SendInvoiceDialog } from "@/components/qbo/send-invoice-dialog";
 import { loadTicketInvoice } from "@/lib/qbo/ticket";
+import { defaultInvoiceLineDescription, withServiceLocationMemo } from "@/lib/qbo/invoice";
 import { voidInvoiceAction } from "../invoice-actions";
 import { dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, addDays } from "@/lib/time";
 import { DEFAULT_WARRANTY_MONTHS, PROJECT_TYPE_LABEL, SR_CHANNEL_LABEL, SR_OPEN, ticketNo, type SREvent } from "@/lib/types";
@@ -207,7 +209,7 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
           </div>
           )}
 
-          {qbo && <InvoiceCard requestId={id} base={base} invoice={invoice} state={qbo.state} />}
+          {qbo && <InvoiceCard requestId={id} base={base} invoice={invoice} state={qbo.state} customerLinked={qbo.customerLinked} />}
 
           <div className="card" data-testid="original-project">
             <div className="card-hd"><h3 className="font-semibold">Original project</h3>{project && <Link href={`/projects/${project.id}`} className="text-xs font-semibold text-brand">Open project</Link>}</div>
@@ -362,6 +364,13 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
           customerName={sr.customer_name}
           issueSummary={sr.summary}
           issueDescription={sr.description}
+          lineDescription={defaultInvoiceLineDescription({
+            ticketNo: ticketNo(sr.number), summary: sr.summary, description: sr.description,
+            visitLabel: scheduleVisit ? `${fmtDay(dayKey(scheduleVisit.starts_at))} ${fmtRange(scheduleVisit.starts_at, scheduleVisit.ends_at)}` : null,
+          })}
+          customerMemo={withServiceLocationMemo(sr.description, site)}
+          billEmail={sr.contact_email ?? ""}
+          shipAddr={sr.site_address || sr.site_city ? { line1: sr.site_address ?? "", city: sr.site_city ?? "", state: sr.site_state ?? "", zip: sr.site_zip ?? "", country: "US" } : null}
           servicePrice={price}
           items={qbo.create.items}
           terms={qbo.create.terms}
@@ -369,6 +378,22 @@ export default async function ServiceRequestPage({ params, searchParams }: PageP
           defaults={qbo.create.defaults}
           initialMatch={qbo.create.match}
           sandbox={qbo.sandbox}
+        />
+      )}
+      {qbo?.state === "connected" && qbo.customerLinked && str("update-customer") === "1" && (
+        <Modal title="Update customer in QuickBooks" sub="Only blank fields are filled in" closeHref={base}>
+          <UpdateQboCustomerDialog requestId={id} base={base} customerName={sr.customer_name} />
+        </Modal>
+      )}
+      {qbo?.state === "connected" && invoice && str("send") === "1" && (
+        <SendInvoiceDialog
+          requestId={id}
+          base={base}
+          ticketNo={ticketNo(sr.number)}
+          invoiceNumber={invoice.number}
+          amount={invoice.amount}
+          defaultEmail={invoice.emailedTo || qbo.defaultSendTo}
+          resend={!!invoice.emailedAt}
         />
       )}
       {voidingInvoice && invoice && (

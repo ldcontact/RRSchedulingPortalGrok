@@ -13,6 +13,8 @@ export type TicketInvoiceData = {
   state: "not_configured" | "disconnected" | "connected";
   sandbox: boolean;
   invoice: InvoiceView | null;
+  customerLinked: boolean;
+  defaultSendTo: string;
   create?: {
     items: QboPick[]; terms: QboTerm[]; taxOptions: QboTaxOption[];
     defaults: { itemId: string | null; termId: string | null; taxId: string | null };
@@ -30,12 +32,16 @@ export async function loadTicketInvoice(opts: {
   if (!canUseQboInvoices(opts.role)) return null;
   const state = await getQboState().catch(() => ({ kind: "not_configured" as const }));
   if (state.kind === "not_configured" || state.kind === "error") {
-    return { state: "not_configured", sandbox: state.kind === "error" ? state.config.environment === "sandbox" : true, invoice: null, createError: state.kind === "error" ? state.message : undefined };
+    return { state: "not_configured", sandbox: state.kind === "error" ? state.config.environment === "sandbox" : true, invoice: null, customerLinked: false, defaultSendTo: opts.sr.contact_email ?? "", createError: state.kind === "error" ? state.message : undefined };
   }
   const sandbox = state.config.environment === "sandbox";
   const store = getQboStore();
   const row = await store.getActiveInvoice(opts.sr.id).catch(() => null);
-  const out: TicketInvoiceData = { state: state.kind, sandbox, invoice: row ? invoiceView(row, todayKey()) : null };
+  const link = state.kind === "connected"
+    ? await store.getCustomerLink(opts.sr.customer_id, state.connection.realm_id).catch(() => null)
+    : null;
+  const defaultSendTo = (row?.emailed_to || opts.sr.contact_email || "").trim();
+  const out: TicketInvoiceData = { state: state.kind, sandbox, invoice: row ? invoiceView(row, todayKey()) : null, customerLinked: !!link, defaultSendTo };
   if (!opts.wantCreate || row || state.kind !== "connected") return out;
   try {
     const c = await getQboApi(store);

@@ -57,4 +57,6 @@ export type InvoiceView = {
   status: QboInvoiceStatus;
   lastSyncedAt: string;
   openUrl: string;
+  emailedAt: string | null;
+  emailedTo: string | null;
 };

@@ -2,13 +2,10 @@ import { QBO_MINOR_VERSION, qboApiBase, type QboEnvironment } from "./config";
 import { QboAuthError, QboError, intuitErrorMessage } from "./errors";
 import type { FetchLike } from "./oauth";
 import type { QboInvoiceRecord } from "./status";
+import { buildCustomerCreatePayload, desiredCustomerFromPortal, isValidEmail, type PortalCustomerSnapshot, type QboCustomerRecord } from "./customer";
 
 /** Minimal shapes of the QuickBooks entities we use. */
-export type QboCustomerEntity = {
-  Id: string; SyncToken?: string; DisplayName: string; CompanyName?: string; Active?: boolean;
-  PrimaryEmailAddr?: { Address?: string }; PrimaryPhone?: { FreeFormNumber?: string };
-  BillAddr?: { Line1?: string; City?: string; CountrySubDivisionCode?: string; PostalCode?: string };
-};
+export type QboCustomerEntity = QboCustomerRecord;
 export type QboInvoiceEntity = {
   Id: string; SyncToken: string; DocNumber?: string; TxnDate?: string; DueDate?: string;
   TotalAmt?: number; Balance?: number; EmailStatus?: string; PrivateNote?: string;
@@ -59,7 +56,9 @@ const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * QuickBooks Online Accounting API client (v3, minorversion pinned). Retries once after a
- * 401 with a refreshed token, and backs off on 429 rate limits. Never sends an invoice email.
+ * 401 with a refreshed token, and backs off on 429 rate limits. Creating an invoice never
+ * emails the customer (EmailStatus is NotSet). The only send path is sendInvoice, which
+ * calls QuickBooks POST /invoice/{id}/send — the portal itself never sends email.
  */
 export class QboApi {
   private base: string;
@@ -174,23 +173,63 @@ export class QboApi {
     }
   }
 
-  /** Create a customer, unless one with the same display name already exists (then return it). */
-  async createCustomer(input: { name: string; email?: string | null; phone?: string | null; address?: string | null; city?: string | null; state?: string | null; zip?: string | null }): Promise<{ customer: QboCustomer; existed: boolean }> {
-    const name = input.name.replace(/:/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
-    if (!name) throw new QboError("Customer name is required.");
-    const existing = await this.customerByDisplayName(name);
-    if (existing) return { customer: existing, existed: true };
-    const body: Record<string, unknown> = { DisplayName: name };
-    if (input.email?.trim()) body.PrimaryEmailAddr = { Address: input.email.trim() };
-    if (input.phone?.trim()) body.PrimaryPhone = { FreeFormNumber: input.phone.trim() };
-    if (input.address?.trim() || input.city?.trim()) {
-      body.BillAddr = {
-        Line1: input.address?.trim() || undefined, City: input.city?.trim() || undefined,
-        CountrySubDivisionCode: input.state?.trim() || undefined, PostalCode: input.zip?.trim() || undefined,
-      };
+  async getCustomerEntity(id: string): Promise<QboCustomerRecord | null> {
+    try {
+      const r = await this.request<{ Customer?: QboCustomerRecord }>("GET", `customer/${encodeURIComponent(id)}`);
+      return r.Customer ?? null;
+    } catch (e) {
+      if (e instanceof QboError && (e.status === 400 || e.status === 404) && e.code === "610") return null;
+      throw e;
     }
-    const r = await this.request<{ Customer: QboCustomerEntity }>("POST", "customer", { body });
+  }
+
+  /** Create a customer with every useful portal field, unless one with the same display name already exists. */
+  async createCustomer(input: PortalCustomerSnapshot | { name: string; email?: string | null; phone?: string | null; address?: string | null; city?: string | null; state?: string | null; zip?: string | null; id?: string }): Promise<{ customer: QboCustomer; existed: boolean }> {
+    const desired = desiredCustomerFromPortal({ id: "id" in input && input.id ? input.id : "", ...input });
+    if (!desired.displayName) throw new QboError("Customer name is required.");
+    const existing = await this.customerByDisplayName(desired.displayName);
+    if (existing) return { customer: existing, existed: true };
+    const r = await this.request<{ Customer: QboCustomerEntity }>("POST", "customer", { body: buildCustomerCreatePayload(desired) });
     return { customer: toQboCustomer(r.Customer), existed: false };
+  }
+
+  /**
+   * Sparse update: send only the provided fields plus Id and SyncToken. Retries once on a
+   * stale SyncToken (Intuit code 5010) with the current token. Callers must only pass
+   * fields that are blank in QuickBooks (see sparseCustomerPatch).
+   */
+  async updateCustomerSparse(id: string, patch: Record<string, unknown>, syncToken?: string): Promise<QboCustomerRecord> {
+    const send = async (token: string) => {
+      const r = await this.request<{ Customer: QboCustomerRecord }>("POST", "customer", {
+        body: { Id: id, SyncToken: token, sparse: true, ...patch },
+      });
+      return r.Customer;
+    };
+    let token = syncToken;
+    if (!token) {
+      const cur = await this.getCustomerEntity(id);
+      if (!cur) throw new QboError("That QuickBooks customer no longer exists. Pick another.");
+      token = String(cur.SyncToken ?? "0");
+    }
+    try {
+      return await send(token);
+    } catch (e) {
+      if (!(e instanceof QboError) || e.code !== "5010") throw e;
+      const cur = await this.getCustomerEntity(id);
+      if (!cur) throw e;
+      return await send(String(cur.SyncToken ?? "0"));
+    }
+  }
+
+  /**
+   * Ask QuickBooks to email the invoice to sendTo. This is the only send path: POST
+   * /invoice/{id}/send?sendTo=. The portal does not send email itself.
+   */
+  async sendInvoice(id: string, sendTo: string): Promise<QboInvoiceEntity> {
+    const email = sendTo.trim();
+    if (!isValidEmail(email)) throw new QboError("Enter a valid email address.");
+    const r = await this.request<{ Invoice?: QboInvoiceEntity }>("POST", `invoice/${encodeURIComponent(id)}/send`, { query: { sendTo: email } });
+    return r.Invoice ?? await this.getInvoice(id);
   }
 
   async listItems(): Promise<QboPick[]> {

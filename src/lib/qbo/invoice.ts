@@ -1,6 +1,8 @@
 /** Pure invoice-draft validation and QuickBooks payload building (no network). */
 export type InvoiceLineInput = { itemId: string; itemName?: string; description: string; qty: number; rate: number };
 
+export type InvoiceShipAddr = { line1: string; city: string; state: string; zip: string; country?: string };
+
 export type InvoiceDraftInput = {
   customerId: string;
   txnDate: string;
@@ -12,6 +14,9 @@ export type InvoiceDraftInput = {
   warrantyNote: string;
   /** Office-only note, e.g. "RR Scheduler SR-1002". Not shown to the customer. */
   privateNote: string;
+  /** Set on the draft so QuickBooks has a To address; EmailStatus stays NotSet and nothing is sent. */
+  billEmail?: string | null;
+  shipAddr?: InvoiceShipAddr | null;
 };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -57,19 +62,49 @@ export function validateInvoiceDraft(raw: unknown): { draft: InvoiceDraftInput }
   }
   const total = estimateTotals(lines, 0).subtotal;
   if (!(total > 0)) return { error: "Invoice total must be more than $0." };
+  const billEmail = str("billEmail", 200) || null;
+  const rawShip = (r.shipAddr ?? null) as Record<string, unknown> | null;
+  const shipAddr: InvoiceShipAddr | null = rawShip && typeof rawShip === "object" ? {
+    line1: String(rawShip.line1 ?? "").trim().slice(0, 500),
+    city: String(rawShip.city ?? "").trim().slice(0, 255),
+    state: String(rawShip.state ?? "").trim().slice(0, 50),
+    zip: String(rawShip.zip ?? "").trim().slice(0, 20),
+    country: String(rawShip.country ?? "US").trim().slice(0, 50) || "US",
+  } : null;
   return {
     draft: {
       customerId, txnDate, dueDate, termId, taxCodeId, lines,
       customerMemo: str("customerMemo", 1000),
       warrantyNote: str("warrantyNote", 500),
       privateNote: str("privateNote", 4000),
+      billEmail,
+      shipAddr: shipAddr && (shipAddr.line1 || shipAddr.city || shipAddr.zip) ? shipAddr : null,
     },
   };
 }
 
+export function defaultInvoiceLineDescription(opts: { ticketNo: string; summary: string; description?: string | null; visitLabel?: string | null }) {
+  const title = [opts.ticketNo.trim(), opts.summary.trim()].filter(Boolean).join(" — ");
+  const parts = [title];
+  const desc = (opts.description ?? "").trim();
+  if (desc && desc.toLowerCase() !== opts.summary.trim().toLowerCase()) parts.push(desc);
+  if (opts.visitLabel?.trim()) parts.push(`Visit: ${opts.visitLabel.trim()}`);
+  return parts.filter(Boolean).join("\n").slice(0, 4000);
+}
+
+export function withServiceLocationMemo(memo: string, serviceLocation: string | null | undefined) {
+  const loc = (serviceLocation ?? "").trim();
+  const base = memo.trim();
+  if (!loc) return base;
+  const line = `Service location: ${loc}`;
+  if (base.toLowerCase().includes(line.toLowerCase()) || base.toLowerCase().includes(loc.toLowerCase())) return base;
+  return [base, line].filter(Boolean).join("\n\n").slice(0, 1000);
+}
+
 /**
- * QuickBooks Invoice create body. EmailStatus is NotSet and BillEmail is not set, so
- * QuickBooks never emails the customer; RR Scheduler never calls the /send endpoint.
+ * QuickBooks Invoice create body. EmailStatus is always NotSet so create never emails.
+ * BillEmail may be set so the To address is ready; RR Scheduler only sends later via
+ * POST /invoice/{id}/send when staff confirm Send invoice. The portal itself never emails.
  */
 export function buildInvoicePayload(d: InvoiceDraftInput): Record<string, unknown> {
   const taxable = d.taxCodeId !== "NON";
@@ -94,6 +129,17 @@ export function buildInvoicePayload(d: InvoiceDraftInput): Record<string, unknow
   if (d.termId) payload.SalesTermRef = { value: d.termId };
   if (memo) payload.CustomerMemo = { value: memo };
   if (d.privateNote) payload.PrivateNote = d.privateNote;
+  const email = (d.billEmail ?? "").trim();
+  if (email) payload.BillEmail = { Address: email };
+  if (d.shipAddr && (d.shipAddr.line1 || d.shipAddr.city || d.shipAddr.zip)) {
+    payload.ShipAddr = {
+      Line1: d.shipAddr.line1 || undefined,
+      City: d.shipAddr.city || undefined,
+      CountrySubDivisionCode: d.shipAddr.state || undefined,
+      PostalCode: d.shipAddr.zip || undefined,
+      Country: d.shipAddr.country || "US",
+    };
+  }
   if (taxable && d.taxCodeId !== "TAX") payload.TxnTaxDetail = { TxnTaxCodeRef: { value: d.taxCodeId } };
   return payload;
 }

@@ -22,6 +22,7 @@ import { TASK_ACTIVE } from "@/lib/types";
 import { normalizeTeamSmsPrefs } from "@/lib/team-sms/prefs";
 import { applyTeamSmsPrefs, supabaseTeamSmsStore } from "@/lib/team-sms/supabase-adapter";
 import { notifyServiceRequestAssigned, notifyTaskAssigned, notifyVisitAssigneesChanged, notifyVisitCreated, notifyVisitUpdated } from "@/lib/team-sms/notify";
+import { visibleServiceRequestEvents } from "@/lib/service-request-price";
 
 /** Search term safe inside a PostgREST or=() filter: quoted, without wildcard/grouping chars. */
 const searchTerm = (q: string | undefined) => {
@@ -949,13 +950,18 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       type EvJoin = Omit<SREvent, "actor_name" | "actor_color" | "actor_avatar_url"> & { profiles: EvProfile | null };
       const rows = (data ?? []) as EvJoin[];
       const signed = await signAvatarPaths(s, rows.map((r) => (r.profiles?.avatar_source === "upload" ? r.profiles.avatar_path : null)));
-      return rows.map(({ profiles, ...e }) => ({
+      const events = rows.map(({ profiles, ...e }) => ({
         ...e,
         actor_name: e.actor_id ? authorLabel(e.actor_id, profiles) : "System",
         actor_color: authorColor(profiles),
         actor_avatar_url: serviceRequestActorAvatarUrl(profiles, profiles?.avatar_path ? signed.get(profiles.avatar_path) ?? null : null),
         edited_at: e.edited_at ?? null,
       }));
+      // Defense in depth: never return price (or invoice) amounts to a role that must not see them,
+      // even if a SELECT policy is later loosened. RLS also hides kind=price from techs.
+      const { data: { user } } = await s.auth.getUser();
+      const { data: me } = user ? await s.from("profiles").select("role").eq("id", user.id).maybeSingle() : { data: null };
+      return visibleServiceRequestEvents(events, (me as { role?: Role | null } | null)?.role ?? null);
     },
     async addServiceRequestEvent(requestId, e) {
       fail((await (await db()).from("service_request_events").insert({ request_id: requestId, kind: e.kind, body: e.body })).error);
@@ -969,13 +975,16 @@ export function supabaseRepo(db: () => Promise<UserDb> = createClient): Repo {
       const row = data as Omit<SREvent, "actor_name" | "actor_color" | "actor_avatar_url"> & { profiles: EvProfile | null };
       const { profiles, ...e } = row;
       const signed = await signAvatarPaths(s, [profiles?.avatar_source === "upload" ? profiles.avatar_path : null]);
-      return {
+      const ev = {
         ...e,
         actor_name: e.actor_id ? authorLabel(e.actor_id, profiles) : "System",
         actor_color: authorColor(profiles),
         actor_avatar_url: serviceRequestActorAvatarUrl(profiles, profiles?.avatar_path ? signed.get(profiles.avatar_path) ?? null : null),
         edited_at: e.edited_at ?? null,
       };
+      const { data: { user } } = await s.auth.getUser();
+      const { data: me } = user ? await s.from("profiles").select("role").eq("id", user.id).maybeSingle() : { data: null };
+      return visibleServiceRequestEvents([ev], (me as { role?: Role | null } | null)?.role ?? null)[0] ?? null;
     },
     async updateServiceRequestEvent(requestId, eventId, body) {
       const { data, error } = await (await db()).from("service_request_events").update({ body }).eq("id", eventId).eq("request_id", requestId).eq("kind", "note").select("id");

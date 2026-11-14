@@ -7,8 +7,18 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { INTUIT_REVOKE_URL, INTUIT_TOKEN_URL } from "./config";
 
-type Cust = { Id: string; SyncToken: string; DisplayName: string; Active: boolean; PrimaryEmailAddr?: { Address: string }; BillAddr?: { Line1?: string; City?: string; CountrySubDivisionCode?: string; PostalCode?: string } };
-type Inv = { Id: string; SyncToken: string; DocNumber: string; TxnDate: string; DueDate: string; TotalAmt: number; Balance: number; EmailStatus: string; CustomerRef: { value: string }; PrivateNote?: string; Line: unknown[] };
+type Addr = { Line1?: string; Line2?: string; City?: string; CountrySubDivisionCode?: string; PostalCode?: string; Country?: string };
+type Cust = {
+  Id: string; SyncToken: string; DisplayName: string; Active: boolean;
+  CompanyName?: string; GivenName?: string; FamilyName?: string; Notes?: string;
+  PrimaryEmailAddr?: { Address: string }; PrimaryPhone?: { FreeFormNumber?: string }; Mobile?: { FreeFormNumber?: string };
+  BillAddr?: Addr; ShipAddr?: Addr;
+};
+type Inv = {
+  Id: string; SyncToken: string; DocNumber: string; TxnDate: string; DueDate: string;
+  TotalAmt: number; Balance: number; EmailStatus: string; CustomerRef: { value: string };
+  PrivateNote?: string; CustomerMemo?: { value?: string }; BillEmail?: { Address?: string }; ShipAddr?: Addr; Line: unknown[];
+};
 type FakeDb = { nextId: number; nextDoc: number; customers: Cust[]; invoices: Inv[] };
 
 export const FAKE_REALM_ID = "9341455000000000";
@@ -103,13 +113,33 @@ export async function fakeIntuitFetch(input: string, init: RequestInit = {}): Pr
     return c ? json(200, { Customer: c }) : fault(400, "610", "Object Not Found");
   }
   if (path === "customer" && method === "POST") {
-    const b = JSON.parse(body) as Cust;
-    if (db.customers.some((c) => c.DisplayName.toLowerCase() === b.DisplayName.toLowerCase())) return fault(400, "6240", "Duplicate Name Exists Error");
+    const b = JSON.parse(body) as Cust & { sparse?: boolean };
+    if (b.Id) {
+      const c = db.customers.find((x) => x.Id === b.Id);
+      if (!c) return fault(400, "610", "Object Not Found");
+      if (String(c.SyncToken) !== String(b.SyncToken)) return fault(400, "5010", "Stale Object Error");
+      const { Id: _id, SyncToken: _tok, sparse: _sp, ...rest } = b as Cust & { sparse?: boolean };
+      Object.assign(c, rest, { SyncToken: String(Number(c.SyncToken) + 1) });
+      save(db);
+      return json(200, { Customer: c });
+    }
+    if (db.customers.some((c) => c.DisplayName.toLowerCase() === (b.DisplayName ?? "").toLowerCase())) return fault(400, "6240", "Duplicate Name Exists Error");
     const c = { ...b, Id: String(db.nextId++), SyncToken: "0", Active: true };
     db.customers.push(c); save(db);
     return json(200, { Customer: c });
   }
   if (path === "item" && method === "POST") return json(200, { Item: { Id: "1", Name: "Service call" } });
+  if (/^invoice\/[^/]+\/send$/.test(path) && method === "POST") {
+    const inv = db.invoices.find((x) => x.Id === path.split("/")[1]);
+    if (!inv) return fault(400, "610", "Object Not Found");
+    const sendTo = (url.searchParams.get("sendTo") ?? "").trim();
+    if (!sendTo || !sendTo.includes("@")) return fault(400, "2010", "A valid sendTo email is required");
+    inv.EmailStatus = "EmailSent";
+    inv.BillEmail = { Address: sendTo };
+    inv.SyncToken = String(Number(inv.SyncToken) + 1);
+    save(db);
+    return json(200, { Invoice: inv });
+  }
   if (path.startsWith("invoice/")) {
     const inv = db.invoices.find((x) => x.Id === path.split("/")[1]);
     return inv ? json(200, { Invoice: inv }) : fault(400, "610", "Object Not Found");
@@ -131,7 +161,12 @@ export async function fakeIntuitFetch(input: string, init: RequestInit = {}): Pr
     const total = Math.round((sub + (taxed ? sub * 0.1025 : 0)) * 100) / 100;
     const inv: Inv = {
       Id: String(db.nextId++), SyncToken: "0", DocNumber: String(db.nextDoc++), TxnDate: String(b.TxnDate), DueDate: String(b.DueDate),
-      TotalAmt: total, Balance: total, EmailStatus: "NotSet", CustomerRef: b.CustomerRef as { value: string }, PrivateNote: b.PrivateNote as string | undefined, Line: lines,
+      TotalAmt: total, Balance: total, EmailStatus: "NotSet", CustomerRef: b.CustomerRef as { value: string },
+      PrivateNote: b.PrivateNote as string | undefined,
+      CustomerMemo: b.CustomerMemo as { value?: string } | undefined,
+      BillEmail: b.BillEmail as { Address?: string } | undefined,
+      ShipAddr: b.ShipAddr as Addr | undefined,
+      Line: lines,
     };
     db.invoices.push(inv); save(db);
     return json(200, { Invoice: inv });

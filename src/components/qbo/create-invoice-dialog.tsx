@@ -25,6 +25,10 @@ export function CreateInvoiceDialog({
   customerName,
   issueSummary,
   issueDescription,
+  lineDescription,
+  customerMemo,
+  billEmail,
+  shipAddr,
   servicePrice,
   items,
   terms,
@@ -39,6 +43,10 @@ export function CreateInvoiceDialog({
   customerName: string;
   issueSummary: string;
   issueDescription: string;
+  lineDescription?: string;
+  customerMemo?: string;
+  billEmail?: string;
+  shipAddr?: { line1: string; city: string; state: string; zip: string; country?: string } | null;
   servicePrice: number | null;
   items: QboPick[];
   terms: QboTerm[];
@@ -60,12 +68,12 @@ export function CreateInvoiceDialog({
   const [termId, setTermId] = useState(defaultTerm?.id ?? "");
   const [due, setDue] = useState(addDays(todayKey(), defaultTerm?.dueDays ?? 30));
   const [taxId, setTaxId] = useState(taxOptions.some((t) => t.id === defaults.taxId) ? defaults.taxId! : taxOptions[0]?.id ?? "NON");
-  const [memo, setMemo] = useState(issueDescription);
+  const [memo, setMemo] = useState(customerMemo ?? issueDescription);
   const [warrantyNote, setWarrantyNote] = useState("");
   const [lines, setLines] = useState<Line[]>([{
     id: "line-1",
     itemId: defaultItemId,
-    description: issueSummary,
+    description: lineDescription || issueSummary,
     qty: "1",
     rate: servicePrice != null ? servicePrice.toFixed(2) : "",
   }]);
@@ -104,7 +112,7 @@ export function CreateInvoiceDialog({
     const r = await createInvoiceAction(requestId, {
       customerId: match?.id ?? "", txnDate: date, dueDate: due, termId, taxCodeId: taxId,
       lines: lines.map((l) => ({ itemId: l.itemId, itemName: items.find((i) => i.id === l.itemId)?.name ?? "", description: l.description, qty: l.qty, rate: l.rate })),
-      customerMemo: memo, warrantyNote,
+      customerMemo: memo, warrantyNote, billEmail: billEmail || undefined, shipAddr: shipAddr || undefined,
     });
     if ("error" in r) { setError(r.error); setStep("compose"); return; }
     router.push(`${base}?ok=${encodeURIComponent(r.ok)}`, { scroll: false });
