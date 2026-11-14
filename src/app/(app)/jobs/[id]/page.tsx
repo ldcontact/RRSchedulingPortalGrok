@@ -18,7 +18,8 @@ import { hasFleetAccess } from "@/lib/geotab/access";
 import { AssignedTruckCard } from "@/components/fleet/assigned-truck-card";
 import { getRepo } from "@/lib/data/repo";
 import { applicablePhotoRequirements } from "@/lib/photo-requirements";
-import { dayKey, fmtDateTime, fmtDay, fmtRange } from "@/lib/time";
+import { dayKey, fmtDateTime, fmtDay, fmtRange, fmtTime } from "@/lib/time";
+import { VisitTimingDuration } from "@/components/visit-duration-line";
 import { ticketNo } from "@/lib/types";
 import { addJobNote, approveJob, cancelJob, reopenJob, sendBack, startJob, submitJob } from "../actions";
 import { parseScopeItems } from "@/lib/scope-items";
@@ -48,12 +49,13 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
   const canDelete = hasDeleteAccess(user);
   const mine = job.assignees.some((a) => a.id === user.id);
   const tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : "overview";
-  const [project, contacts, visitPhotos, projectPhotos, notes, allRequirements, projectDocs, visitDocs] = await Promise.all([
+  const [project, contacts, visitPhotos, projectPhotos, notes, allRequirements, projectDocs, visitDocs, submittedBy] = await Promise.all([
     repo.getProject(job.project_id), repo.listContacts(job.customer_id),
     repo.listPhotos({ jobId: id }), repo.listPhotos({ projectId: job.project_id }), repo.listNotes({ jobId: id }),
     repo.listPhotoRequirements(job.project_id, id),
     repo.listProjectFiles({ projectId: job.project_id, projectOnly: true }),
     repo.listProjectFiles({ projectId: job.project_id, jobId: id }),
+    job.completed_by ? repo.getProfile(job.completed_by).catch(() => null) : Promise.resolve(null),
   ]);
   const phases = bucketPhotosByPhase(visitPhotos);
   const before = phases.before;
@@ -252,6 +254,38 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
                 </div>
               </div>
             </RailCard>
+            {(job.started_at || job.completed_at) && (
+              <RailCard title="Timing">
+                <div className="flex flex-col gap-3 p-4 text-sm" data-testid="visit-timing">
+                  <div>
+                    <div className="text-xs font-semibold tracking-wide text-muted uppercase">Scheduled</div>
+                    <div className="font-semibold">{fmtDay(dayKey(job.starts_at), { weekday: "long", month: "long", day: "numeric" })} · {fmtRange(job.starts_at, job.ends_at)}</div>
+                  </div>
+                  {job.started_at && (
+                    <div>
+                      <div className="text-xs font-semibold tracking-wide text-muted uppercase">Started</div>
+                      <div className="font-semibold">{fmtTime(job.started_at)}</div>
+                    </div>
+                  )}
+                  {job.completed_at && (
+                    <div>
+                      <div className="text-xs font-semibold tracking-wide text-muted uppercase">Finished</div>
+                      <div className="font-semibold">{fmtTime(job.completed_at)}</div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-xs font-semibold tracking-wide text-muted uppercase">Duration</div>
+                    <VisitTimingDuration status={job.status} startedAt={job.started_at} completedAt={job.completed_at} endsAt={job.ends_at} />
+                  </div>
+                  {submittedBy && (
+                    <div>
+                      <div className="text-xs font-semibold tracking-wide text-muted uppercase">Submitted by</div>
+                      <div className="font-semibold">{submittedBy.full_name}</div>
+                    </div>
+                  )}
+                </div>
+              </RailCard>
+            )}
             <RailCard title="Crew">
               <div className="flex flex-col gap-2 p-4">
                 {job.assignees.length === 0 && <div className="text-sm text-muted">Unassigned</div>}

@@ -3,6 +3,7 @@ import { Icon } from "./icons";
 import { AvatarStack, JobKindBadge, JobStatusPill } from "./status";
 import { dayKey, fmtDay, fmtRange } from "@/lib/time";
 import type { JobView } from "@/lib/types";
+import { VisitDurationLine } from "./visit-duration-line";
 
 /** Full My Jobs visit card (Overdue, Today, and Coming up share this). */
 export function TechJobCard({ j, overdue = false, overdueCaption }: { j: JobView; overdue?: boolean; overdueCaption?: string }) {
@@ -20,6 +21,7 @@ export function TechJobCard({ j, overdue = false, overdueCaption }: { j: JobView
           {overdue ? <span className="pill bg-red-50 text-red-700" data-testid="overdue-badge">Overdue · not started</span> : <JobStatusPill status={j.status} />}
         </span>
       </div>
+      <VisitDurationLine className="mt-1" status={j.status} startedAt={j.started_at} completedAt={j.completed_at} endsAt={j.ends_at} />
       <div className="mt-1 text-[16px] font-semibold">{j.title}</div>
       <div className="text-sm text-muted">{j.customer_name}</div>
       {j.address && (

@@ -10,6 +10,7 @@ import { getRepo } from "@/lib/data/repo";
 import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
 import { ComingUpList } from "@/components/coming-up-list";
 import { TechJobCard } from "@/components/tech-job-card";
+import { VisitDurationLine } from "@/components/visit-duration-line";
 import { listMyJobsVisits, overdueCaption, partitionMyJobs } from "@/lib/my-jobs";
 import { HOME_REVIEW_LIMIT, type JobView } from "@/lib/types";
 
@@ -20,7 +21,9 @@ function JobRow({ j, showCrew = true }: { j: JobView; showCrew?: boolean }) {
         <div>{fmtDay(dayKey(j.starts_at))}</div>
         <div>{fmtRange(j.starts_at, j.ends_at)}</div>
       </div>
-      <div className="min-w-0 flex-1"><div className="flex min-w-0 items-center gap-1.5"><span className="min-w-0 truncate font-semibold">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div><div className="truncate text-[12.5px] text-muted">{j.customer_name}</div></div>
+      <div className="min-w-0 flex-1"><div className="flex min-w-0 items-center gap-1.5"><span className="min-w-0 truncate font-semibold">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div><div className="truncate text-[12.5px] text-muted">{j.customer_name}</div>
+        <VisitDurationLine className="mt-0.5" status={j.status} startedAt={j.started_at} completedAt={j.completed_at} endsAt={j.ends_at} />
+      </div>
       {showCrew && <AvatarStack people={j.assignees} max={3} />}
       <JobStatusPill status={j.status} />
     </Link>

@@ -8,6 +8,7 @@ import { Avatar } from "@/components/ui";
 import { JOB_BAR, JobKindBadge, JobStatusPill, KIND_BAR } from "@/components/status";
 import { addDays, dayKey, fmtDay, fmtMinutes, fmtTime, minutesOfDay } from "@/lib/time";
 import { isOverdueNotStarted, overdueCaption } from "@/lib/my-jobs";
+import { VisitDurationLine } from "@/components/visit-duration-line";
 import type { JobView, Person } from "@/lib/types";
 import { moveJob } from "../jobs/actions";
 import { DispatchMap } from "@/components/fleet/dispatch-map";
@@ -112,6 +113,7 @@ export function ScheduleBoard(props: { view: View; date: string; start: string; 
                 <Link key={j.id} href={`/jobs/${j.id}`} className={`flex items-center gap-3 border-l-4 px-3 py-3 ${overdue ? "border-l-red-600" : `${JOB_BAR[j.status]} ${KIND_BAR[j.kind ?? "install"]}`}`} data-overdue={overdue ? "true" : undefined}>
                   <div className="w-[108px] shrink-0 text-[12px] font-semibold leading-tight text-muted"><div>{fmtDay(dayKey(j.starts_at))}</div><div>{fmtTime(j.starts_at)}–{fmtTime(j.ends_at)}</div></div>
                   <div className="min-w-0 flex-1"><div className="truncate font-semibold">{j.title}</div><div className="truncate text-[12.5px] text-muted">{j.customer_name}{j.address ? ` · ${j.address.split(" ").slice(-3, -2)[0] ?? ""}` : ""}</div>
+                    <VisitDurationLine className="mt-0.5" status={j.status} startedAt={j.started_at} completedAt={j.completed_at} endsAt={j.ends_at} />
                     {overdue && <div className="mt-0.5 text-[12px] font-semibold text-red-700">{overdueCaption(j.starts_at, today)}</div>}
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"><JobKindBadge kind={j.kind} size="sm" />{overdue ? <span className="pill bg-red-50 text-red-700">Overdue · not started</span> : <JobStatusPill status={j.status} />}{conflicted.has(j.id) && <span className="pill bg-red-50 text-red-700"><Icon name="alert" className="size-3" />Double-booked</span>}</div></div>
                   <span className="flex shrink-0 -space-x-1.5">{j.assignees.slice(0, 3).map((a) => <span key={a.id} className="rounded-full ring-2 ring-white"><Avatar name={a.full_name} color={a.color} size="sm" src={a.avatar_url} /></span>)}</span>
