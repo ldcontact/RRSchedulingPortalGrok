@@ -7,16 +7,19 @@ import { isStaff, requireMember } from "@/lib/auth";
 import { fleetScope } from "@/lib/geotab/access";
 import { CrewCard } from "@/components/fleet/crew-card";
 import { getRepo } from "@/lib/data/repo";
-import { addDays, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
+import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, todayKey, zonedToUtc } from "@/lib/time";
 import { ComingUpList } from "@/components/coming-up-list";
 import { TechJobCard } from "@/components/tech-job-card";
-import { partitionMyJobs } from "@/lib/my-jobs";
+import { listMyJobsVisits, overdueCaption, partitionMyJobs } from "@/lib/my-jobs";
 import { HOME_REVIEW_LIMIT, type JobView } from "@/lib/types";
 
 function JobRow({ j, showCrew = true }: { j: JobView; showCrew?: boolean }) {
   return (
     <Link href={`/jobs/${j.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-[#fafbf9]">
-      <div className="w-[72px] shrink-0 text-[12px] font-semibold text-muted">{fmtRange(j.starts_at, j.ends_at)}</div>
+      <div className="w-[108px] shrink-0 text-[12px] font-semibold leading-tight text-muted">
+        <div>{fmtDay(dayKey(j.starts_at))}</div>
+        <div>{fmtRange(j.starts_at, j.ends_at)}</div>
+      </div>
       <div className="min-w-0 flex-1"><div className="flex min-w-0 items-center gap-1.5"><span className="min-w-0 truncate font-semibold">{j.title}</span><JobKindBadge kind={j.kind} size="sm" /></div><div className="truncate text-[12.5px] text-muted">{j.customer_name}</div></div>
       {showCrew && <AvatarStack people={j.assignees} max={3} />}
       <JobStatusPill status={j.status} />
@@ -66,10 +69,10 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   }
 
   if (!isStaff(user.role)) {
-    // No upper date bound: Coming up lists every future assigned visit (jobs.starts_at index).
-    // Look back 7 days so in-progress / recently submitted still appear in Today / Recently submitted.
-    const jobs = (await repo.listJobs({ from: zonedToUtc(addDays(T, -7), 0), assignee: user.id })).filter((j) => j.status !== "cancelled");
-    const { today, upcoming, submitted, sentBack } = partitionMyJobs(jobs, T);
+    // Active visits have no lower date bound so overdue scheduled work stays visible;
+    // Recently submitted still looks back 7 days. Coming up has no upper bound.
+    const jobs = await listMyJobsVisits(repo, user.id, T);
+    const { overdue, today, upcoming, submitted, sentBack } = partitionMyJobs(jobs, T);
     return (
       <>
         {deniedBanner}
@@ -80,6 +83,14 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
         {sentBack.map((j) => (
           <Link key={j.id} href={`/jobs/${j.id}`} className="mb-3 block"><Banner tone="warn"><Icon name="undo" /><div><b>Sent back: {j.title}</b><div>{j.review_note}</div></div></Banner></Link>
         ))}
+        {overdue.length > 0 && (
+          <>
+            <h2 className="mb-2 text-sm font-bold text-red-700">Overdue</h2>
+            <div className="mb-5 flex flex-col gap-3" data-testid="my-jobs-overdue">
+              {overdue.map((j) => <TechJobCard key={j.id} j={j} overdue overdueCaption={overdueCaption(j.starts_at, T)} />)}
+            </div>
+          </>
+        )}
         <h2 className="mb-2 text-sm font-bold text-muted">Today</h2>
         <div className="mb-5 flex flex-col gap-3" data-testid="my-jobs-today">
           {!today.length && <div className="card p-6 text-center text-sm text-muted">No jobs today.</div>}

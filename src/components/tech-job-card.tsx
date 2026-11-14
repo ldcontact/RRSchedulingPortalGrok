@@ -1,17 +1,24 @@
 import Link from "next/link";
 import { Icon } from "./icons";
 import { AvatarStack, JobKindBadge, JobStatusPill } from "./status";
-import { fmtRange } from "@/lib/time";
+import { dayKey, fmtDay, fmtRange } from "@/lib/time";
 import type { JobView } from "@/lib/types";
 
-/** Full My Jobs visit card (Today + Coming up share this). */
-export function TechJobCard({ j }: { j: JobView }) {
+/** Full My Jobs visit card (Overdue, Today, and Coming up share this). */
+export function TechJobCard({ j, overdue = false, overdueCaption }: { j: JobView; overdue?: boolean; overdueCaption?: string }) {
   const cta = j.status === "scheduled" ? "Open & start" : j.status === "in_progress" ? "Continue" : "View";
+  const accent = overdue ? "border-l-4 border-l-red-600" : j.kind !== "install" ? "border-l-4 border-l-amber-500" : "";
   return (
-    <Link href={`/jobs/${j.id}`} className={`card block p-4 active:bg-[#fafbf9] ${j.kind !== "install" ? "border-l-4 border-l-amber-500" : ""}`} data-kind={j.kind}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-[13px] font-semibold text-muted">{fmtRange(j.starts_at, j.ends_at)}</div>
-        <span className="flex flex-wrap items-center justify-end gap-1.5"><JobKindBadge kind={j.kind} /><JobStatusPill status={j.status} /></span>
+    <Link href={`/jobs/${j.id}`} className={`card block p-4 active:bg-[#fafbf9] ${accent}`} data-kind={j.kind} data-overdue={overdue ? "true" : undefined}>
+      <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+        <div className="min-w-0 text-[13px] font-semibold text-muted">
+          <span className="whitespace-nowrap">{fmtDay(dayKey(j.starts_at))}</span>
+          <span className="whitespace-nowrap"> · {fmtRange(j.starts_at, j.ends_at)}</span>
+        </div>
+        <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <JobKindBadge kind={j.kind} />
+          {overdue ? <span className="pill bg-red-50 text-red-700" data-testid="overdue-badge">Overdue · not started</span> : <JobStatusPill status={j.status} />}
+        </span>
       </div>
       <div className="mt-1 text-[16px] font-semibold">{j.title}</div>
       <div className="text-sm text-muted">{j.customer_name}</div>
@@ -20,6 +27,9 @@ export function TechJobCard({ j }: { j: JobView }) {
           <Icon name="pin" className="mt-0.5 size-3.5 shrink-0" />
           <span className="min-w-0 break-words">{j.address}</span>
         </div>
+      )}
+      {overdue && overdueCaption && (
+        <div className="mt-1.5 text-[13px] font-semibold text-red-700">{overdueCaption}</div>
       )}
       <div className="mt-3 flex items-center justify-between gap-2">
         <AvatarStack people={j.assignees} />

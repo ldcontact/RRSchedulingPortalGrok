@@ -51,6 +51,8 @@ export const fmtDay = (day: string, opts: Intl.DateTimeFormatOptions = { weekday
   utcNoon(day).toLocaleDateString("en-US", { timeZone: "UTC", ...opts });
 export const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit" }).replace(":00", "").replace(" ", "").toLowerCase();
 export const fmtRange = (a: string, b: string) => `${fmtTime(a)}–${fmtTime(b)}`;
+/** Date + time window in the business zone, e.g. "Thu, Nov 12 · 8am–12pm". */
+export const fmtDateRange = (a: string, b: string) => `${fmtDay(dayKey(a))} · ${fmtRange(a, b)}`;
 export const fmtWhen = (iso: string) => `${fmtDay(dayKey(iso))} · ${fmtTime(iso)}`;
 export const fmtDateTime = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 /** Month + day in the business zone, with year only when it is not the current year (e.g. "Apr 29"). */

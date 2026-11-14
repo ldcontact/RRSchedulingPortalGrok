@@ -11,7 +11,7 @@ import { z } from "zod";
 import { findConflicts, type Repo } from "@/lib/data/repo";
 import { formatAddress } from "@/lib/project-row";
 import { addDays, dayKey, fmtDateTime, fmtDay, fmtRange, monthStart, todayKey, TZ, validDay, weekStart, zonedToUtc } from "@/lib/time";
-import { partitionMyJobs } from "@/lib/my-jobs";
+import { listMyJobsVisits, partitionMyJobs } from "@/lib/my-jobs";
 import {
   CHANNEL_LABEL, JOB_STATUS_LABEL, PAGE_SIZE, PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_TYPE_LABEL, ROLE_LABEL,
   HOME_REVIEW_LIMIT, type CustomerSort, type JobStatus, type JobView, type Message, type Note, type Person, type Photo, type PhotoRequirement, type ProjectSort, type Role, type SessionUser,
@@ -131,19 +131,20 @@ export const TOOLS = {
 
   get_overview: tool({
     title: "Home overview",
-    description: "The portal home screen. Staff: counts, today's visits, and visits awaiting review. Techs: My Jobs (today, coming up, sent back, recently submitted).",
+    description: "The portal home screen. Staff: counts, today's visits, and visits awaiting review. Techs: My Jobs (overdue, today, coming up, sent back, recently submitted).",
     input: z.object({}),
     async run(ctx) {
       const u = requireMember(ctx);
       const T = todayKey();
       if (!isStaff(u)) {
-        // Same window as My Jobs: a week back so in-progress / recently submitted still show.
-        const jobs = (await ctx.repo.listJobs({ from: zonedToUtc(addDays(T, -7), 0), assignee: u.id }))
+        // Same split as My Jobs: all active assigned visits, plus submitted from the last 7 days.
+        const jobs = (await listMyJobsVisits(ctx.repo, u.id, T))
           .filter((j) => j.status !== "cancelled" && j.assignees.some((a) => a.id === u.id));
-        const { today, upcoming, submitted, sentBack } = partitionMyJobs(jobs, T);
+        const { overdue, today, upcoming, submitted, sentBack } = partitionMyJobs(jobs, T);
         return {
           today: T, time_zone: TZ, link: link(ctx, "/"),
           sent_back: sentBack.map((j) => ({ ...visit(ctx, j), review_note: j.review_note })),
+          overdue_visits: overdue.map((j) => visit(ctx, j)),
           today_visits: today.map((j) => visit(ctx, j)),
           coming_up: upcoming.slice(0, 50).map((j) => visit(ctx, j)),
           recently_submitted: submitted.map((j) => visit(ctx, j)),
